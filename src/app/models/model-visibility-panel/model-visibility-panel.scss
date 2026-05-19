@@ -1,0 +1,29 @@
+.b5d-model-visibility-panel {
+  min-width: 100%;
+  min-height: 100%;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.b5d-model-visibility-panel__title {
+  padding: 8px 10px;
+  background: #dbeafe;
+  border-bottom: 1px solid #bfc7d5;
+  font-weight: 700;
+}
+
+.b5d-model-visibility-panel__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: pointer;
+}
+
+.b5d-model-visibility-panel__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

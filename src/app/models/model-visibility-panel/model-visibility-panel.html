@@ -1,0 +1,10 @@
+@if (modelos.length) {
+  <section class="b5d-model-visibility-panel">
+    @for (modelo of modelos; track modelo.id) {
+      <label class="b5d-model-visibility-panel__item">
+        <input type="checkbox" [checked]="modelo.visible" (change)="alternar.emit(modelo.id)" />
+        <span class="b5d-model-visibility-panel__name" [title]="modelo.name">{{ modelo.name }}</span>
+      </label>
+    }
+  </section>
+}

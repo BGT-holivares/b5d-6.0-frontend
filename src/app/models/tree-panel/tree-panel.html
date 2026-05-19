@@ -1,0 +1,29 @@
+@if (visible && datosArbol.length) {
+  <section class="b5d-tree-panel">
+    <div class="b5d-tree-panel__header">
+      <div class="b5d-tree-panel__header-cell b5d-tree-panel__header-cell--type">Tipo</div>
+      <div class="b5d-tree-panel__header-cell">Tipo / Elemento</div>
+    </div>
+
+    @for (item of nodosVisibles; track item.nodo.id) {
+      <button
+        class="b5d-tree-panel__row"
+        type="button"
+        [class.b5d-tree-panel__row--selected]="esSeleccionado(item.nodo)"
+        (click)="manejarClickNodo(item.nodo)"
+      >
+        <span class="b5d-tree-panel__type-cell" [style.padding-left]="obtenerSangria(item.nivel)">
+          <span class="b5d-tree-panel__toggle">
+            @if (item.nodo.children.length) {
+              {{ nodosExpandidos[item.nodo.id] ? '−' : '+' }}
+            }
+          </span>
+          <span class="b5d-tree-panel__icon">{{ obtenerIcono(item.nodo) }}</span>
+          <span class="b5d-tree-panel__type" [title]="item.nodo.type">{{ item.nodo.type }}</span>
+        </span>
+
+        <span class="b5d-tree-panel__label" [title]="item.nodo.label">{{ item.nodo.label }}</span>
+      </button>
+    }
+  </section>
+}

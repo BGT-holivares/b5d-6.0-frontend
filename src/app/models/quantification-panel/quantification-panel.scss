@@ -1,0 +1,39 @@
+.b5d-quantification-panel {
+  min-width: 100%;
+  min-height: 100%;
+  overflow: auto;
+  padding: 10px;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.b5d-quantification-panel__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.b5d-quantification-panel__summary {
+  margin-bottom: 8px;
+}
+
+.b5d-quantification-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.b5d-quantification-panel__table th {
+  padding: 5px;
+  background: #e5edf8;
+  border-bottom: 1px solid #cbd5e1;
+  text-align: left;
+}
+
+.b5d-quantification-panel__table td {
+  padding: 5px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.b5d-quantification-panel__number {
+  text-align: right;
+  font-weight: 700;
+}

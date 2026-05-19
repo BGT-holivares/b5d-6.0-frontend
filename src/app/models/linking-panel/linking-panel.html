@@ -1,0 +1,120 @@
+@if (datos) {
+  <section class="b5d-linking-panel">
+    <header class="b5d-linking-panel__toolbar">
+      <strong>B5D - Vinculación de conceptos y propiedades IFC</strong>
+      <button class="b5d-linking-panel__button" type="button" (click)="agregarVinculo()">
+        Asignar propiedad
+      </button>
+    </header>
+
+    <div class="b5d-linking-panel__grid">
+      <section class="b5d-linking-panel__box">
+        <div class="b5d-linking-panel__box-title">Estructura de conceptos</div>
+
+        <table class="b5d-linking-panel__table">
+          <thead>
+            <tr>
+              <th>Clave</th>
+              <th>Descripción</th>
+              <th>Unidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (concepto of conceptos; track concepto.code) {
+              <tr
+                class="b5d-linking-panel__selectable"
+                [class.b5d-linking-panel__selectable--active]="codigoConceptoSeleccionado === concepto.code"
+                (click)="codigoConceptoSeleccionado = concepto.code"
+              >
+                <td class="b5d-linking-panel__blue">{{ concepto.code }}</td>
+                <td>{{ concepto.description }}</td>
+                <td>{{ concepto.unit }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+
+      <section class="b5d-linking-panel__box">
+        <div class="b5d-linking-panel__box-title">Objetos IFC</div>
+
+        <table class="b5d-linking-panel__table">
+          <thead>
+            <tr>
+              <th>Tipo de objeto</th>
+              <th>Material</th>
+              <th>Prop. Cantidad</th>
+              <th>Descripción</th>
+              <th>Nombre IFC</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (objeto of objetosIfc; track objeto.id) {
+              <tr
+                class="b5d-linking-panel__selectable"
+                [class.b5d-linking-panel__selectable--active]="idObjetoSeleccionado === objeto.id"
+                (click)="seleccionarObjeto(objeto.id)"
+              >
+                <td class="b5d-linking-panel__blue">{{ objeto.objectType }}</td>
+                <td>{{ objeto.material || '-' }}</td>
+                <td>
+                  @if (idObjetoSeleccionado === objeto.id) {
+                    <select
+                      class="b5d-linking-panel__select"
+                      [(ngModel)]="llavePropiedadSeleccionada"
+                      (click)="$event.stopPropagation()"
+                    >
+                      <option value="">Seleccionar...</option>
+                      @for (opcion of opcionesPropiedad; track opcion) {
+                        <option [value]="opcion">{{ opcion }}</option>
+                      }
+                    </select>
+                  } @else {
+                    -
+                  }
+                </td>
+                <td>{{ objeto.description }}</td>
+                <td>{{ objeto.ifcName }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <section class="b5d-linking-panel__bottom">
+      <div class="b5d-linking-panel__box-title">Vínculos relacionados</div>
+
+      <table class="b5d-linking-panel__table">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Descripción del concepto</th>
+            <th>Objeto IFC</th>
+            <th>Propiedad con cantidad</th>
+            <th>Factor</th>
+            <th>Descripción</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (vinculo of vinculos; track vinculo.id) {
+            <tr>
+              <td class="b5d-linking-panel__blue">{{ vinculo.conceptCode }}</td>
+              <td>{{ vinculo.conceptDescription }}</td>
+              <td>{{ vinculo.ifcName }}</td>
+              <td class="b5d-linking-panel__blue">{{ vinculo.propertyLabel }}</td>
+              <td>{{ vinculo.conversionFactor.toFixed(3) }}</td>
+              <td>{{ vinculo.description }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="b5d-linking-panel__muted" colspan="6">
+                Sin vínculos. Selecciona concepto, objeto IFC y propiedad.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  </section>
+}
