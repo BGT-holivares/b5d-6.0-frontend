@@ -56,15 +56,15 @@
 
   @if (fileTabVisible) {
     <div class="b5d-toolbar__file-panel">
-      <label class="b5d-toolbar-action b5d-toolbar-action--small">
-        <span class="b5d-toolbar-action__icon">IFC</span>
-        <span class="b5d-toolbar-action__label">{{ translate('toolbar.file.loadIfc') }}</span>
+      <label class="b5d-toolbar-action b5d-toolbar-action-small">
+        <span class="b5d-toolbar-action_icon">IFC</span>
+        <span class="b5d-toolbar-action_label">{{ translate('toolbar.file.loadIfc') }}</span>
         <input class="b5d-toolbar__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
       </label>
 
-      <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button" (click)="i18n.toggleLanguage()">
-        <span class="b5d-toolbar-action__icon">{{ i18n.language() === 'es-MX' ? 'ES' : 'EN' }}</span>
-        <span class="b5d-toolbar-action__label">{{ i18n.language() === 'es-MX' ? 'English' : 'Español' }}</span>
+      <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button" (click)="i18n.toggleLanguage()">
+        <span class="b5d-toolbar-action_icon">{{ i18n.language() === 'es-MX' ? 'ES' : 'EN' }}</span>
+        <span class="b5d-toolbar-action_label">{{ i18n.language() === 'es-MX' ? 'English' : 'Español' }}</span>
       </button>
     </div>
   }
@@ -74,20 +74,101 @@
       @case ('home') {
         <div class="b5d-tab-category">
           <div class="b5d-tab-category-buttons-vertical">
-            <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button">
-              <span class="b5d-toolbar-action__icon">+</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.home.add') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button">
+              <span class="b5d-toolbar-action_icon">
+                <img class="b5d-toolbar-action_image" src="assets/images/Add_32x32.png" alt="" />
+              </span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.add') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button">
-              <span class="b5d-toolbar-action__icon">−</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.home.remove') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button">
+              <span class="b5d-toolbar-action_icon">
+                <img class="b5d-toolbar-action_image" src="assets/images/Remove_32x32.png" alt="" />
+              </span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.remove') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button">
-              <span class="b5d-toolbar-action__icon">✣</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.home.selectAll') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button">
+              <span class="b5d-toolbar-action_icon">✣</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.selectAll') }}</span>
             </button>
           </div>
-          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category') }}</label>
+          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category.edit') }}</label>
+        </div>
+
+        <div class="b5d-tab-category">
+          <div class="b5d-tab-category-buttons-horizontal">
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.selctFilter') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.objInfo') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.linksView') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.asignPorpt') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.unlinkedObjs') }}</span>
+            </button>
+          </div>
+          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category.model') }}</label>
+        </div>
+
+        <div class="b5d-tab-category">
+          <div class="b5d-tab-category-buttons-horizontal">
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.addConceptEst') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.deleteConceptEst') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.dupConceptEst') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.conceptEstInfo') }}</span>
+            </button>
+          </div>
+
+          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category.concept') }}</label>
+        </div>
+
+        <div class="b5d-tab-category">
+          <div class="b5d-tab-category-buttons-horizontal">
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.calcInfo') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.calcBOQ') }}</span>
+            </button>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.deleteCalc') }}</span>
+            </button>
+          </div>
+          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category.boq') }}</label>
+        </div>
+
+        <div class="b5d-tab-category">
+          <div class="b5d-tab-category-buttons-horizontal">
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.home.placeholder') }}</span>
+            </button>
+          </div>
+          <label class="b5d-tab-category-label">{{ translate('toolbar.home.category.parameters') }}</label>
         </div>
       }
 
@@ -102,9 +183,9 @@
       @case ('tools') {
         <div class="b5d-tab-category">
           <div class="b5d-tab-category-buttons-horizontal">
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="cuantificarB5D.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">5D</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.tools.quantify') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="cuantificarB5D.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">5D</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.tools.quantify') }}</span>
             </button>
           </div>
           <label class="b5d-tab-category-label">{{ translate('toolbar.tools') }}</label>
@@ -114,17 +195,17 @@
       @case ('view') {
         <div class="b5d-tab-category">
           <div class="b5d-tab-category-buttons-horizontal">
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="acercar.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">＋</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.zoomIn') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="acercar.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">＋</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.zoomIn') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="alejar.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">－</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.zoomOut') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="alejar.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">－</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.zoomOut') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="restablecer.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">⌕</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.reset') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="restablecer.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">⌕</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.reset') }}</span>
             </button>
           </div>
           <label class="b5d-tab-category-label">{{ translate('toolbar.view.category.camera') }}</label>
@@ -133,31 +214,31 @@
         <div class="b5d-tab-category">
           <div class="b5d-tab-category-buttons-horizontal">
             <div class="b5d-toolbar-action-grid">
-              <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button" (click)="desplazarIzquierda.emit()">
-                <span class="b5d-toolbar-action__icon">←</span>
-                <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.panLeft') }}</span>
+              <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button" (click)="desplazarIzquierda.emit()">
+                <span class="b5d-toolbar-action_icon">←</span>
+                <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.panLeft') }}</span>
               </button>
-              <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button" (click)="desplazarDerecha.emit()">
-                <span class="b5d-toolbar-action__icon">→</span>
-                <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.panRight') }}</span>
+              <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button" (click)="desplazarDerecha.emit()">
+                <span class="b5d-toolbar-action_icon">→</span>
+                <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.panRight') }}</span>
               </button>
-              <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button" (click)="desplazarArriba.emit()">
-                <span class="b5d-toolbar-action__icon">↑</span>
-                <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.panUp') }}</span>
+              <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button" (click)="desplazarArriba.emit()">
+                <span class="b5d-toolbar-action_icon">↑</span>
+                <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.panUp') }}</span>
               </button>
-              <button class="b5d-toolbar-action b5d-toolbar-action--small" type="button" (click)="desplazarAbajo.emit()">
-                <span class="b5d-toolbar-action__icon">↓</span>
-                <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.panDown') }}</span>
+              <button class="b5d-toolbar-action b5d-toolbar-action-small" type="button" (click)="desplazarAbajo.emit()">
+                <span class="b5d-toolbar-action_icon">↓</span>
+                <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.panDown') }}</span>
               </button>
             </div>
 
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="rotarIzquierda.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">↺</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.rotateLeft') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="rotarIzquierda.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">↺</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.rotateLeft') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="rotarDerecha.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">↻</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.rotateRight') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="rotarDerecha.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">↻</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.rotateRight') }}</span>
             </button>
           </div>
           <label class="b5d-tab-category-label">{{ translate('toolbar.view.category.viewer') }}</label>
@@ -165,28 +246,28 @@
 
         <div class="b5d-tab-category">
           <div class="b5d-tab-category-buttons-horizontal">
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="expandirArbol.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">▤</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.expandTree') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="expandirArbol.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">▤</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.expandTree') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="colapsarArbol.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">▥</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.collapseTree') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="colapsarArbol.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">▥</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.collapseTree') }}</span>
             </button>
-            <button class="b5d-toolbar-action b5d-toolbar-action--large" type="button" (click)="limpiarSeleccion.emit()">
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">⌫</span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.clearSelection') }}</span>
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="limpiarSeleccion.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">⌫</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.clearSelection') }}</span>
             </button>
             <button
-              class="b5d-toolbar-action b5d-toolbar-action--large"
+              class="b5d-toolbar-action b5d-toolbar-action-large"
               type="button"
               [class.b5d-toolbar-action--selected]="temaVisual.modoOscuroActivo"
               (click)="temaVisual.alternarTema()"
             >
-              <span class="b5d-toolbar-action__icon b5d-toolbar-action__icon--large">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">
                 {{ temaVisual.modoOscuroActivo ? '☾' : '☼' }}
               </span>
-              <span class="b5d-toolbar-action__label">{{ translate('toolbar.view.darkMode') }}</span>
+              <span class="b5d-toolbar-action_label">{{ translate('toolbar.view.darkMode') }}</span>
             </button>
           </div>
           <label class="b5d-tab-category-label">{{ translate('toolbar.view') }}</label>
@@ -196,17 +277,27 @@
           <div class="b5d-toolbar-action-grid">
             @for (panel of floatingPanelOptions; track panel.id) {
               <button
-                class="b5d-toolbar-action b5d-toolbar-action--small"
+                class="b5d-toolbar-action b5d-toolbar-action-small"
                 type="button"
                 [class.b5d-toolbar-action--selected]="isFloatingPanelVisible(panel.id)"
                 (click)="toggleFloatingPanel.emit(panel.id)"
               >
-                <span class="b5d-toolbar-action__icon">{{ panel.icon }}</span>
-                <span class="b5d-toolbar-action__label">{{ panel.label }}</span>
+                <span class="b5d-toolbar-action_icon">{{ panel.icon }}</span>
+                <span class="b5d-toolbar-action_label">{{ panel.label }}</span>
               </button>
             }
           </div>
           <label class="b5d-tab-category-label">Panels</label>
+        </div>
+
+        <div class="b5d-tab-category">
+          <div class="b5d-tab-category-buttons-horizontal">
+            <button class="b5d-toolbar-action b5d-toolbar-action-large" type="button" (click)="hideToolbar.emit()">
+              <span class="b5d-toolbar-action_icon b5d-toolbar-action_icon-large">▴</span>
+              <span class="b5d-toolbar-action_label">Hide toolbar</span>
+            </button>
+          </div>
+          <label class="b5d-tab-category-label">Toolbar</label>
         </div>
       }
 

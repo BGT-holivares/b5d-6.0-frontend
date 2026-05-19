@@ -1,0 +1,29 @@
+<section class="b5d-boq-panel">
+  <table class="b5d-boq-panel__table">
+    <thead>
+      <tr>
+        <th>Concepto</th>
+        <th>Tipo</th>
+        <th>Unidad</th>
+        <th class="b5d-boq-panel__number">Cantidad</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      @for (row of rows; track row.id) {
+        <tr>
+          <td class="b5d-boq-panel__name" [style.padding-left]="getIndentation(row.level)">
+            {{ row.name }}
+          </td>
+          <td>{{ row.type }}</td>
+          <td>{{ row.unit }}</td>
+          <td class="b5d-boq-panel__number">{{ row.quantity.toFixed(2) }}</td>
+        </tr>
+      } @empty {
+        <tr>
+          <td class="b5d-boq-panel__empty" colspan="4">Sin cantidades. Ejecuta la cuantificación B5D.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</section>

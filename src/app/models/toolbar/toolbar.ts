@@ -17,10 +17,9 @@ export class Toolbar {
   activeTab: PestanaToolbar = 'home';
   readonly floatingPanelOptions: { id: FloatingPanelId; icon: string; label: string }[] = [
     { id: 'tree', icon: 'T', label: 'Tree' },
-    { id: 'quantification', icon: 'Q', label: 'Quantification' },
-    { id: 'linking', icon: 'L', label: 'Linking' },
     { id: 'models', icon: 'M', label: 'Models' },
     { id: 'properties', icon: 'P', label: 'Properties' },
+    { id: 'bottom', icon: 'B', label: 'B5D panel' },
   ];
 
   readonly i18n = inject(I18nService);
@@ -29,10 +28,9 @@ export class Toolbar {
   @Input() cargando = false;
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
-    quantification: true,
-    linking: true,
     models: true,
     properties: true,
+    bottom: true,
   };
 
   @Output() archivoSeleccionado = new EventEmitter<File>();
@@ -50,6 +48,7 @@ export class Toolbar {
   @Output() colapsarArbol = new EventEmitter<void>();
   @Output() cuantificarB5D = new EventEmitter<void>();
   @Output() toggleFloatingPanel = new EventEmitter<FloatingPanelId>();
+  @Output() hideToolbar = new EventEmitter<void>();
 
   // Procesa el archivo seleccionado desde el input del visor.
   manejarCambioArchivo(evento: Event): void {

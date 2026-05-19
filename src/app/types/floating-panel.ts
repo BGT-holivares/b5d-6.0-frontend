@@ -1,1 +1,1 @@
-export type FloatingPanelId = 'tree' | 'quantification' | 'linking' | 'models' | 'properties';
+export type FloatingPanelId = 'tree' | 'models' | 'properties' | 'bottom';

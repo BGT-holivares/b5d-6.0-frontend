@@ -4,6 +4,7 @@ export type TranslationDictionary = Record<string, string>;
 
 export const B5D_TRANSLATIONS: Record<B5DLanguage, TranslationDictionary> = {
   'es-MX': {
+    // Tabs
     'toolbar.file': 'Archivo',
     'toolbar.home': 'Inicio',
     'toolbar.objects': 'Objetos',
@@ -11,11 +12,35 @@ export const B5D_TRANSLATIONS: Record<B5DLanguage, TranslationDictionary> = {
     'toolbar.tools': 'Herramientas',
     'toolbar.view': 'Ver',
     'toolbar.about': 'Créditos',
+    // File-buttons
     'toolbar.file.loadIfc': 'Cargar IFC',
+    // Home-edit-cat
     'toolbar.home.add': 'Agregar',
     'toolbar.home.remove': 'Eliminar',
     'toolbar.home.selectAll': 'Seleccionar todos',
-    'toolbar.home.category': 'Home',
+    'toolbar.home.category.edit': 'Editar',
+    // Home-model-cat
+    'toolbar.home.selctFilter': 'Filtro de selección',
+    'toolbar.home.objInfo': 'Información del objeto',
+    'toolbar.home.linksView': 'Vista de vínculos',
+    'toolbar.home.asignPorpt': 'Asignar propiedades',
+    'toolbar.home.unlinkedObjs': 'Objetos sin vínculo',
+    'toolbar.home.category.model': 'Modelo',
+    // Home-concept-cat
+    'toolbar.home.addConceptEst': 'Crear estructura de conceptos',
+    'toolbar.home.deleteConceptEst': 'Eliminar estructura de conceptos',
+    'toolbar.home.dupConceptEst': 'Duplicar estructura de conceptos',
+    'toolbar.home.conceptEstInfo': 'Información de la estructura de conceptos',
+    'toolbar.home.category.concept': 'Estructura de conceptos',
+    // Home-boq-cat
+    'toolbar.home.calcInfo': 'Información de cálculo',
+    'toolbar.home.calcBOQ': 'Calcular cuantificación',
+    'toolbar.home.deleteCalc': 'Eliminar cálculo',
+    'toolbar.home.category.boq': 'Cuantificación',
+    // Home-parameters-cat
+    'toolbar.home.placeholder': 'Placeholder',
+    'toolbar.home.category.parameters': 'Parámetros',
+    // View-buttons
     'toolbar.view.category.camera': 'Cámara',
     'toolbar.view.category.viewer': 'Visor',
     'toolbar.view.zoomIn': 'Zoom +',
@@ -31,7 +56,9 @@ export const B5D_TRANSLATIONS: Record<B5DLanguage, TranslationDictionary> = {
     'toolbar.view.collapseTree': 'Colapsar árbol',
     'toolbar.view.clearSelection': 'Limpiar selección',
     'toolbar.view.darkMode': 'Modo oscuro',
+    // Tools-buttons
     'toolbar.tools.quantify': 'B5D',
+    // Loading text
     'toolbar.loading': 'Procesando...',
     'toolbar.empty.objects': 'Objetos',
     'toolbar.empty.measurement': 'Medidas',
