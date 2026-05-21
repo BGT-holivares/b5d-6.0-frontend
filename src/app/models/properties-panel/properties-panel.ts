@@ -1,8 +1,15 @@
 import { Component, Input } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
+import { classifyInfrastructureElement } from '../../utils/ifc-infrastructure-translator'
 
-type PestanaPropiedades = 'properties' | 'location' | 'classification' | 'relations' | 'quantities';
+type PestanaPropiedades =
+  | 'properties'
+  | 'location'
+  | 'classification'
+  | 'relations'
+  | 'quantities';
+
 type FilaPropiedad = [string, string | number];
 
 @Component({
@@ -15,15 +22,16 @@ export class PropertiesPanel {
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
 
   activeTab: PestanaPropiedades = 'properties';
-  seccionesAbiertas: Record<string, boolean> = {
-    identity: true,
-    geometry: true,
-    quantities: true,
-    archicad: true,
-    other: true,
-    location: true,
-    classification: true,
-    relations: true,
+    seccionesAbiertas: Record<string, boolean> = {
+    identity: true, // Identity section visibility
+    geometry: true, // Geometry section visibility
+    quantities: true, // Base quantities section visibility
+    archicad: true, // ArchiCAD quantities section visibility
+    other: true, // Other IFC quantities section visibility
+    location: true, // Location section visibility
+    classification: true, // Classification section visibility
+    relations: true, // Relations section visibility
+    infrastructure: true, // Infrastructure section visibility
   };
 
   readonly pestanas: { id: PestanaPropiedades; etiqueta: string }[] = [
@@ -34,8 +42,39 @@ export class PropertiesPanel {
     { id: 'quantities', etiqueta: 'Cantidades' },
   ];
 
+  /**
+   * Toggles a collapsible section.
+   */
+
   alternarSeccion(llave: string): void {
     this.seccionesAbiertas[llave] = !this.seccionesAbiertas[llave];
+  }
+/**
+   * Returns infrastructure classification for the selected IFC element.
+   */
+  clasificacionInfraestructura() {
+    const informacion = this.informacionSeleccionada;
+    if (!informacion) return null;
+
+    return classifyInfrastructureElement(
+  informacion.ifcClass,
+  informacion.name,
+  informacion.objectType
+  );
+  }
+
+  /**
+   * Returns infrastructure-related rows.
+   */
+  filasInfraestructura(): FilaPropiedad[] {
+    const infraestructura = this.clasificacionInfraestructura();
+    if (!infraestructura) return [];
+
+    return [
+      ['Categoría de infraestructura', infraestructura.category],
+      ['Tipo de infraestructura', infraestructura.type],
+      ['Unidad sugerida', infraestructura.defaultUnit],
+    ];
   }
 
   filasIdentidad(): FilaPropiedad[] {
@@ -120,6 +159,7 @@ export class PropertiesPanel {
 
         if (tipo === 'archicad') return esArchiCAD;
         if (tipo === 'base') return esBase;
+
         return !esArchiCAD && !esBase;
       })
       .sort((a, b) => a[0].localeCompare(b[0], 'es'));

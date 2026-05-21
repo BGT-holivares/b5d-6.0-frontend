@@ -23,48 +23,92 @@
       @if (activeTab === 'properties') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'identity', titulo: 'Tipo / Elemento', filas: filasIdentidad() }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'identity',
+            titulo: 'Tipo / Elemento',
+            filas: filasIdentidad()
+          }"
+        ></ng-container>
+
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'geometry', titulo: 'Geometry', filas: filasGeometria() }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'geometry',
+            titulo: 'Geometry',
+            filas: filasGeometria()
+          }"
+        ></ng-container>
       }
 
       @if (activeTab === 'quantities') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'archicad', titulo: 'ArchiCADQuantities', filas: filasCantidades('archicad') }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'archicad',
+            titulo: 'ArchiCADQuantities',
+            filas: filasCantidades('archicad')
+          }"
+        ></ng-container>
+
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'quantities', titulo: 'BaseQuantities', filas: filasCantidades('base') }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'quantities',
+            titulo: 'BaseQuantities',
+            filas: filasCantidades('base')
+          }"
+        ></ng-container>
+
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'other', titulo: 'Otras cantidades IFC', filas: filasCantidades('other') }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'other',
+            titulo: 'Otras cantidades IFC',
+            filas: filasCantidades('other')
+          }"
+        ></ng-container>
       }
 
       @if (activeTab === 'location') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'location', titulo: 'Location', filas: filasUbicacion() }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'location',
+            titulo: 'Location',
+            filas: filasUbicacion()
+          }"
+        ></ng-container>
       }
 
       @if (activeTab === 'classification') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'classification', titulo: 'Classification', filas: filasClasificacion() }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'classification',
+            titulo: 'Classification',
+            filas: filasClasificacion()
+          }"
+        ></ng-container>
+
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'infrastructure',
+            titulo: 'Clasificación de infraestructura',
+            filas: filasInfraestructura()
+          }"
+        ></ng-container>
       }
 
       @if (activeTab === 'relations') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'relations', titulo: 'Relaciones', filas: filasRelaciones() }"
-        />
+          [ngTemplateOutletContext]="{
+            llave: 'relations',
+            titulo: 'Relaciones',
+            filas: filasRelaciones()
+          }"
+        ></ng-container>
       }
     </div>
   </aside>
@@ -73,7 +117,153 @@
 <ng-template #seccion let-llave="llave" let-titulo="titulo" let-filas="filas">
   @if (filas.length) {
     <section class="b5d-properties-panel__section">
-      <button class="b5d-properties-panel__section-title" type="button" (click)="alternarSeccion(llave)">
+      <button
+        class="b5d-properties-panel__section-title"
+        type="button"
+        (click)="alternarSeccion(llave)"
+      >
+        <span>{{ seccionesAbiertas[llave] ? '−' : '+' }}</span>
+        <span>{{ titulo }}</span>
+      </button>
+
+      @if (seccionesAbiertas[llave]) {
+        <table class="b5d-properties-panel__table">
+          <tbody>
+            @for (fila of filas; track fila[0]) {
+              <tr>
+                <td>{{ fila[0] }}</td>
+                <td>{{ fila[1] }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  }
+</ng-template>@if (informacionSeleccionada) {
+  <aside class="b5d-properties-panel">
+    <nav class="b5d-properties-panel__tabs">
+      @for (pestana of pestanas; track pestana.id) {
+        <button
+          class="b5d-properties-panel__tab"
+          type="button"
+          [class.b5d-properties-panel__tab--active]="activeTab === pestana.id"
+          (click)="activeTab = pestana.id"
+        >
+          {{ pestana.etiqueta }}
+        </button>
+      }
+    </nav>
+
+    <div class="b5d-properties-panel__content">
+      @if (informacionSeleccionada.quantitiesMessage && activeTab === 'properties') {
+        <div class="b5d-properties-panel__notice">
+          {{ informacionSeleccionada.quantitiesMessage }}
+        </div>
+      }
+
+      @if (activeTab === 'properties') {
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'identity',
+            titulo: 'Tipo / Elemento',
+            filas: filasIdentidad()
+          }"
+        ></ng-container>
+
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'geometry',
+            titulo: 'Geometry',
+            filas: filasGeometria()
+          }"
+        ></ng-container>
+      }
+
+      @if (activeTab === 'quantities') {
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'archicad',
+            titulo: 'ArchiCADQuantities',
+            filas: filasCantidades('archicad')
+          }"
+        ></ng-container>
+
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'quantities',
+            titulo: 'BaseQuantities',
+            filas: filasCantidades('base')
+          }"
+        ></ng-container>
+
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'other',
+            titulo: 'Otras cantidades IFC',
+            filas: filasCantidades('other')
+          }"
+        ></ng-container>
+      }
+
+      @if (activeTab === 'location') {
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'location',
+            titulo: 'Location',
+            filas: filasUbicacion()
+          }"
+        ></ng-container>
+      }
+
+      @if (activeTab === 'classification') {
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'classification',
+            titulo: 'Classification',
+            filas: filasClasificacion()
+          }"
+        ></ng-container>
+
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'infrastructure',
+            titulo: 'Clasificación de infraestructura',
+            filas: filasInfraestructura()
+          }"
+        ></ng-container>
+      }
+
+      @if (activeTab === 'relations') {
+        <ng-container
+          [ngTemplateOutlet]="seccion"
+          [ngTemplateOutletContext]="{
+            llave: 'relations',
+            titulo: 'Relaciones',
+            filas: filasRelaciones()
+          }"
+        ></ng-container>
+      }
+    </div>
+  </aside>
+}
+
+<ng-template #seccion let-llave="llave" let-titulo="titulo" let-filas="filas">
+  @if (filas.length) {
+    <section class="b5d-properties-panel__section">
+      <button
+        class="b5d-properties-panel__section-title"
+        type="button"
+        (click)="alternarSeccion(llave)"
+      >
         <span>{{ seccionesAbiertas[llave] ? '−' : '+' }}</span>
         <span>{{ titulo }}</span>
       </button>

@@ -152,24 +152,58 @@ export function construirIndiceRutaEspacial(estructuraCruda: any): Map<number, R
 
 export function recolectarLocalIdsEspaciales(estructuraCruda: any): number[] {
   const ids = new Set<number>();
+
+  const recorrer = (nodo: any): void => {
+    if (!nodo || typeof nodo !== 'object') return;
+
+    const localId =
+      nodo.localId ??
+      nodo.LocalId ??
+      nodo.expressID ??
+      nodo.ExpressID;
+
+    if (typeof localId === 'number') {
+      ids.add(localId);
+    }
+
+    const posiblesHijos = [
+      nodo.children,
+      nodo.Children,
+      nodo.items,
+      nodo.Items,
+      nodo.ContainsElements,
+      nodo.RelatedElements,
+      nodo.RelatedObjects,
+      nodo.IsDecomposedBy,
+      nodo.ContainedInStructure,
+      nodo.Contains,
+      nodo.Elements,
+      nodo.Nests,
+      nodo.RelatedObjects,
+      nodo.RelatingObject,
+    ];
+
+    for (const grupo of posiblesHijos) {
+      if (Array.isArray(grupo)) {
+        for (const hijo of grupo) {
+          recorrer(hijo);
+        }
+      } else if (grupo && typeof grupo === 'object') {
+        recorrer(grupo);
+      }
+    }
+  };
+
   const raices = Array.isArray(estructuraCruda)
     ? estructuraCruda
     : estructuraCruda
       ? [estructuraCruda]
       : [];
 
-  const recorrer = (nodo: any): void => {
-    if (!nodo || typeof nodo !== 'object') return;
+  for (const raiz of raices) {
+    recorrer(raiz);
+  }
 
-    const localId = obtenerLocalIdNodo(nodo);
-    if (localId !== null) ids.add(localId);
-
-    for (const hijo of obtenerHijosNodo(nodo)) {
-      recorrer(hijo);
-    }
-  };
-
-  for (const raiz of raices) recorrer(raiz);
   return Array.from(ids);
 }
 

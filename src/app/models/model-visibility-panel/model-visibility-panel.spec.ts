@@ -18,5 +18,6 @@ describe('ModelVisibilityPanel', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+
   });
 });

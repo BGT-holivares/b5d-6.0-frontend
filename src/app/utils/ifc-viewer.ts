@@ -1,6 +1,7 @@
 import { Inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import type { Box3, Sphere } from 'three';
+import * as WEBIFC from 'web-ifc';
 import type {
   InformacionElementoSeleccionado,
   ModeloIfcCargado,
@@ -277,9 +278,33 @@ export class VisorIfc {
       }
     }
   }
+  private async seleccionarElementoPorLocalId(localId: number): Promise<void> {
+  if (!this.modeloCargado || !this.mundo) return;
 
+  try {
+    const { informacion, esfera } = await this.construirInformacionSeleccionada(
+      this.modeloCargado,
+      localId,
+    );
+
+    this.cacheSeleccion.set(`element-${localId}`, {
+      info: informacion,
+      sphere: esfera,
+    });
+
+    this.informacionSeleccionada.set(informacion);
+
+    await this.resaltarPorLocalId(localId);
+
+    if (esfera) {
+      await this.enfocarEsfera(this.mundo, esfera);
+    }
+  } catch (error) {
+    console.warn('No se pudo seleccionar el elemento por localId:', error);
+  }
+}
   async seleccionarElementoDesdeArbol(localId: number): Promise<void> {
-    if (!this.modeloCargado || !this.mundo) return;
+  await this.seleccionarElementoPorLocalId(localId);
 
     try {
       const { informacion, esfera } = await this.construirInformacionSeleccionada(
@@ -445,10 +470,77 @@ export class VisorIfc {
 
     return false;
   }
+private obtenerTipoIfcDesdeResultado(
+  tipos: any,
+  localId: number,
+  posicion: number
+): unknown {
+  if (!tipos) return undefined;
+
+  if (Array.isArray(tipos)) {
+    return tipos[posicion] ?? tipos[0];
+  }
+
+  if (tipos instanceof Map) {
+    return tipos.get(localId) ?? tipos.get(String(localId));
+  }
+
+  if (typeof tipos === 'object') {
+    return tipos[localId] ?? tipos[String(localId)] ?? tipos[posicion] ?? tipos[0];
+  }
+
+  return tipos;
+}
+
+private normalizarClaseIfc(valor: unknown): string {
+  const texto = obtenerValorIfc(valor).trim();
+
+  if (!texto) return '';
+
+  const textoMayusculas = texto.toUpperCase();
+
+  if (
+    textoMayusculas === 'OBJECT' ||
+    textoMayusculas === '[OBJECT OBJECT]' ||
+    textoMayusculas === 'N/D' ||
+    textoMayusculas === '-'
+  ) {
+    return '';
+  }
+
+  if (/^\d+$/.test(textoMayusculas)) {
+    const tipoNumerico = Number(textoMayusculas);
+    return this.mapaTiposIfc[tipoNumerico] || `IFC_${tipoNumerico}`;
+  }
+
+  return textoMayusculas;
+}
+
+private etiquetaClaseIfc(claseIfc: string): string {
+  const cls = claseIfc.toUpperCase();
+
+  if (cls === 'IFCPROJECT') return 'IfcProject';
+  if (cls === 'IFCSITE') return 'IfcSite';
+  if (cls === 'IFCBRIDGE') return 'IfcBridge';
+  if (cls === 'IFCBRIDGEPART') return 'IfcBridgePart';
+  if (cls === 'IFCWALL') return 'IfcWall';
+  if (cls === 'IFCSLAB') return 'IfcSlab';
+  if (cls === 'IFCBEAM') return 'IfcBeam';
+  if (cls === 'IFCCOLUMN') return 'IfcColumn';
+  if (cls === 'IFCFOOTING') return 'IfcFooting';
+  if (cls === 'IFCBUILDINGELEMENTPROXY') return 'IfcBuildingElementProxy';
+  if (cls === 'IFCALIGNMENT') return 'IfcAlignment';
+  if (cls === 'IFCROAD') return 'IfcRoad';
+
+  return claseIfc && claseIfc !== 'N/D' ? claseIfc : 'N/D';
+  }
 
   private async precargarRegistrosDesdeEstructura(modelo: any, estructuraCruda: any): Promise<void> {
+    
     const indiceEspacial = construirIndiceRutaEspacial(estructuraCruda);
     const localIds = recolectarLocalIdsEspaciales(estructuraCruda);
+    console.log('Total localIds recolectados:', localIds.length);
+    console.log('Primeros localIds:', localIds.slice(0, 30));
 
     this.registrosArbol.clear();
     if (!localIds.length) return;
@@ -478,20 +570,38 @@ export class VisorIfc {
           const item = items?.[posicion];
 
           if (!item || typeof localId !== 'number') continue;
+          
+          const tipoId = this.obtenerTipoIfcDesdeResultado(tipos, localId, posicion);
 
-          const tipoId = Array.isArray(tipos) ? tipos[posicion] : undefined;
-          const claseIfc =
+          let claseIfc =
             typeof tipoId === 'number'
               ? this.mapaTiposIfc[tipoId] || `IFC_${tipoId}`
-              : (
-                  obtenerValorIfc(item?.type) ||
-                  obtenerValorIfc(item?.entity) ||
-                  obtenerValorIfc(item?.ObjectType) ||
-                  'N/D'
-                ).toUpperCase();
+              : typeof tipoId === 'string' && tipoId.trim()
+                ? tipoId
+                : (
+                    obtenerValorIfc(item?.type) ||
+                    obtenerValorIfc(item?.entity) ||
+                    obtenerValorIfc(item?.ifcClass) ||
+                    obtenerValorIfc(item?.ObjectType) ||
+                    obtenerValorIfc(item?.PredefinedType) ||
+                    'N/D'
+                  );
 
-          const nombre = obtenerValorIfc(item?.Name) || '-';
-          const tipoObjeto = obtenerValorIfc(item?.ObjectType) || '-';
+          claseIfc = this.normalizarClaseIfc(claseIfc) || 'N/D';
+
+          const claseIfcVisible = this.etiquetaClaseIfc(claseIfc);
+
+          const nombre =
+            obtenerValorIfc(item?.Name) ||
+            obtenerValorIfc(item?.LongName) ||
+            obtenerValorIfc(item?.ObjectType) ||
+            claseIfcVisible;
+
+          const tipoObjeto =
+            obtenerValorIfc(item?.ObjectType) ||
+            obtenerValorIfc(item?.PredefinedType) ||
+            '-';
+
           const ruta = indiceEspacial.get(localId);
           const registro: RegistroElemento = {
             localId,
@@ -501,12 +611,12 @@ export class VisorIfc {
                 : typeof item?.expressID === 'number'
                   ? item.expressID
                   : undefined,
-            ifcClass: claseIfc,
+            ifcClass: claseIfcVisible,
             name: nombre,
             objectType: tipoObjeto,
             project: ruta?.project || 'Proyecto',
             site: ruta?.site || 'Sitio',
-            building: ruta?.building || 'Edificio',
+            building: ruta?.building || 'Infraestructura',
             storey: ruta?.storey || 'Sin nivel asignado',
             z: typeof elevaciones?.[posicion] === 'number' ? elevaciones[posicion] : 0,
           };
@@ -704,7 +814,100 @@ export class VisorIfc {
     };
   }
 
+
+  private extraerPropiedadesIfc(datos: any): Record<string, string> {
+    const propiedades: Record<string, string> = {};
+    const visitados = new WeakSet<object>();
+
+    const agregar = (grupo: string, llave: string, valor: unknown): void => {
+      const texto = obtenerValorIfc(valor);
+
+      if (
+        !texto ||
+        texto === '-' ||
+        texto === 'N/D' ||
+        texto === 'Object' ||
+        texto === '[object Object]'
+      ) {
+        return;
+      }
+
+      propiedades[`${grupo}.${llave}`] = texto;
+    };
+
+    const recorrer = (objeto: any, grupo: string): void => {
+      if (!objeto || typeof objeto !== 'object') return;
+      if (visitados.has(objeto)) return;
+
+      visitados.add(objeto);
+
+      if (Array.isArray(objeto)) {
+        objeto.forEach((item, index) => recorrer(item, `${grupo}_${index + 1}`));
+        return;
+      }
+
+      for (const [llave, valor] of Object.entries(objeto)) {
+        if (
+          llave === 'children' ||
+          llave === 'Children' ||
+          llave === 'geometry' ||
+          llave === 'representations' ||
+          llave === 'object' ||
+          llave === 'model'
+        ) {
+          continue;
+        }
+
+        if (
+          valor === null ||
+          valor === undefined ||
+          typeof valor === 'string' ||
+          typeof valor === 'number' ||
+          typeof valor === 'boolean'
+        ) {
+          agregar(grupo, llave, valor);
+          continue;
+        }
+
+        const valorDirecto = obtenerValorIfc(valor);
+
+        if (
+          valorDirecto &&
+          valorDirecto !== '-' &&
+          valorDirecto !== 'N/D' &&
+          valorDirecto !== 'Object' &&
+          valorDirecto !== '[object Object]'
+        ) {
+          agregar(grupo, llave, valorDirecto);
+        }
+
+        if (valor && typeof valor === 'object') {
+          recorrer(valor, `${grupo}.${llave}`);
+        }
+      }
+    };
+
+    recorrer(datos, 'DatosGenerales');
+
+    const relaciones = [
+      'IsDefinedBy',
+      'DefinesOcurrence',
+      'ContainedInStructure',
+      'HasAssociations',
+      'HasAssignments',
+      'IsDecomposedBy',
+      'Decomposes',
+    ];
+
+    for (const relacion of relaciones) {
+      recorrer(datos?.[relacion], relacion);
+    }
+
+    return propiedades;
+  }
+
   private async construirInformacionSeleccionada(
+  
     modelo: any,
     localId: number,
   ): Promise<{ informacion: InformacionElementoSeleccionado; esfera: Sphere | null }> {
@@ -732,18 +935,62 @@ export class VisorIfc {
           IsDefinedBy: { attributes: true, relations: true },
           DefinesOcurrence: { attributes: true, relations: true },
           ContainedInStructure: { attributes: true, relations: true },
+          HasAssociations: { attributes: true, relations: true },
+          HasAssignments: { attributes: true, relations: true },
+          IsDecomposedBy: { attributes: true, relations: true },
+          Decomposes: { attributes: true, relations: true },
         },
       }),
       modelo.getItemsGeometry([localId]),
     ]);
 
+    console.log('RAW seleccionado:', datos);
+    console.log('IFC Class raw:', datos?.type);
+    console.log('Name raw:', datos?.Name);
+    console.log('ObjectType raw:', datos?.ObjectType);
+    console.log('PredefinedType raw:', datos?.PredefinedType);
+    console.log('ContainedInStructure raw:', datos?.ContainedInStructure);
+    console.log('HasAssociations raw:', datos?.HasAssociations);
+    console.log('IsDefinedBy raw:', datos?.IsDefinedBy);
     const { caja, esfera, dimensiones } = this.construirCajaYEsferaDesdeGeometria(
       coleccionGeometria ?? [],
     );
 
-    const claseIfc = await this.obtenerClaseIfcRapida(modelo, localId);
-    const cantidades = this.extraerCantidadesDesdeRelaciones(datos);
+    const claseIfcSeleccionada = await this.obtenerClaseIfcRapida(modelo, localId);
     const registroCacheado = this.registrosArbol.get(localId);
+
+    const nombreSeleccionado =
+      obtenerValorIfc(datos?.Name) ||
+      obtenerValorIfc(datos?.LongName) ||
+      obtenerValorIfc(datos?.ObjectType) ||
+      registroCacheado?.name ||
+      `Elemento ${localId}`;
+
+    const tipoObjetoSeleccionado =
+      obtenerValorIfc(datos?.ObjectType) ||
+      obtenerValorIfc(datos?.PredefinedType) ||
+      registroCacheado?.objectType ||
+      '-';
+
+    const claseIfcSeleccionadaCorregida =
+      this.normalizarClaseIfc(claseIfcSeleccionada) ||
+      this.normalizarClaseIfc(datos?.type) ||
+      this.normalizarClaseIfc(datos?.ifcClass) ||
+      this.normalizarClaseIfc(datos?.entity) ||
+      this.normalizarClaseIfc(datos?.ObjectType) ||
+      this.normalizarClaseIfc(datos?.PredefinedType) ||
+      this.normalizarClaseIfc(registroCacheado?.ifcClass) ||
+      'N/D';
+
+    const claseIfcSeleccionadaVisible = this.etiquetaClaseIfc(claseIfcSeleccionadaCorregida);
+
+    console.log('claseIfc original:', claseIfcSeleccionada);
+    console.log('claseIfc corregida:', claseIfcSeleccionadaCorregida);
+    console.log('claseIfc visible:', claseIfcSeleccionadaVisible);
+    console.log('nombreElemento:', nombreSeleccionado);
+    console.log('tipoObjeto:', tipoObjetoSeleccionado);
+
+    const cantidades = this.extraerCantidadesDesdeRelaciones(datos);
     const areaBruta = this.elegirNumeroCantidad(cantidades, [/gross.*area/, /bruta/]);
     const areaNeta = this.elegirNumeroCantidad(cantidades, [/net.*area/, /neta/]);
     const areaTotal =
@@ -762,15 +1009,21 @@ export class VisorIfc {
     const minimo = caja?.min;
     const maximo = caja?.max;
     const centro = caja?.getCenter(new (this.moduloThree as typeof import('three')).Vector3());
-    const hayCantidadesIfc = Object.keys(cantidades).length > 0;
+    const propiedadesIfc = this.extraerPropiedadesIfc(datos);
+    const cantidadesCompletas: Record<string, string> = {
+      ...cantidades,
+      ...propiedadesIfc,
+    };
+    const hayCantidadesIfc = Object.keys(cantidadesCompletas).length > 0;
 
     const informacion: InformacionElementoSeleccionado = {
       expressID: obtenerValorIfc(datos?.ExpressID) || obtenerValorIfc(datos?.expressID) || '-',
       localId,
       globalId: obtenerValorIfc(datos?.GlobalId) || '-',
-      ifcClass: claseIfc,
-      name: obtenerValorIfc(datos?.Name) || registroCacheado?.name || '-',
-      objectType: obtenerValorIfc(datos?.ObjectType) || registroCacheado?.objectType || '-',
+      ifcClass: claseIfcSeleccionadaVisible,
+     name: nombreSeleccionado,
+     objectType: tipoObjetoSeleccionado,
+
       width: longitud !== null ? this.formatearValorConUnidad(longitud, 'm') : dimensiones.width,
       depth: dimensiones.depth,
       height: dimensiones.height,
@@ -791,7 +1044,7 @@ export class VisorIfc {
       building: registroCacheado?.building || '-',
       storey: registroCacheado?.storey || '-',
       layer: '-',
-      quantities: cantidades,
+      quantities: cantidadesCompletas,
       quantitiesMessage: hayCantidadesIfc
         ? ''
         : 'Este elemento no contiene cantidades IFC exportadas. Solo se muestran dimensiones geométricas y volumen de respaldo si está disponible.',
@@ -804,20 +1057,31 @@ export class VisorIfc {
     try {
       if (typeof modelo.getItemsType === 'function') {
         const tipos = await modelo.getItemsType([localId]);
-        const tipoId = Array.isArray(tipos) ? tipos[0] : tipos?.[localId] ?? tipos?.[0];
+        const tipoId = this.obtenerTipoIfcDesdeResultado(tipos, localId, 0);
 
-        if (typeof tipoId === 'number') return this.mapaTiposIfc[tipoId] || `IFC_${tipoId}`;
+        if (typeof tipoId === 'number') {
+          return this.mapaTiposIfc[tipoId] || `IFC_${tipoId}`;
+        }
+
+        if (typeof tipoId === 'string' && tipoId.trim()) {
+          return this.normalizarClaseIfc(tipoId) || 'N/D';
+        }
       }
 
-      const [item] = await modelo.getItemsData([localId], { attributesDefault: true });
+      const [item] = await modelo.getItemsData([localId], {
+        attributesDefault: true,
+      });
 
       return (
-        obtenerValorIfc(item?.type) ||
-        obtenerValorIfc(item?.entity) ||
-        obtenerValorIfc(item?.ObjectType) ||
+        this.normalizarClaseIfc(item?.type) ||
+        this.normalizarClaseIfc(item?.entity) ||
+        this.normalizarClaseIfc(item?.ifcClass) ||
+        this.normalizarClaseIfc(item?.ObjectType) ||
+        this.normalizarClaseIfc(item?.PredefinedType) ||
         'N/D'
-      ).toUpperCase();
-    } catch {
+      );
+    } catch (error) {
+      console.warn('No se pudo obtener IFC Class:', error);
       return 'N/D';
     }
   }
@@ -1038,6 +1302,25 @@ export class VisorIfc {
     const nombreNormalizado = (nombre || '').toLowerCase();
     const tipoObjetoNormalizado = (tipoObjeto || '').toLowerCase();
 
+    if (clase.includes('IFCPROJECT')) return 'IfcProject';
+    if (clase.includes('IFCSITE')) return 'IfcSite';
+    if (clase.includes('IFCBRIDGE') && !clase.includes('IFCBRIDGEPART')) return 'IfcBridge';
+    if (clase.includes('IFCBRIDGEPART')) return 'IfcBridgePart';
+
+    if (
+      clase.includes('IFCWALL') ||
+      clase.includes('IFCSLAB') ||
+      clase.includes('IFCBEAM') ||
+      clase.includes('IFCCOLUMN') ||
+      clase.includes('IFCFOOTING') ||
+      clase.includes('IFCBUILDINGELEMENTPROXY')
+    ) {
+      return 'Elements';
+    }
+
+    if (clase.includes('IFCALIGNMENT')) return 'IfcAlignment';
+    if (clase.includes('IFCROAD')) return 'IfcRoad';
+
     if (clase.includes('IFCCOVERING') || clase.includes('IFCROOF') || tipoObjetoNormalizado.includes('roof')) {
       return 'Cubiertas';
     }
@@ -1070,6 +1353,19 @@ export class VisorIfc {
     const clase = claseIfc.toUpperCase();
     const nombreNormalizado = (nombre || '').toLowerCase();
     const tipoObjetoNormalizado = (tipoObjeto || '').toLowerCase();
+
+    if (clase.includes('IFCPROJECT')) return 'IfcProject';
+    if (clase.includes('IFCSITE')) return 'IfcSite';
+    if (clase.includes('IFCBRIDGE') && !clase.includes('IFCBRIDGEPART')) return 'IfcBridge';
+    if (clase.includes('IFCBRIDGEPART')) return 'IfcBridgePart';
+    if (clase.includes('IFCWALL')) return 'IfcWall';
+    if (clase.includes('IFCSLAB')) return 'IfcSlab';
+    if (clase.includes('IFCBEAM')) return 'IfcBeam';
+    if (clase.includes('IFCCOLUMN')) return 'IfcColumn';
+    if (clase.includes('IFCFOOTING')) return 'IfcFooting';
+    if (clase.includes('IFCBUILDINGELEMENTPROXY')) return 'IfcBuildingElementProxy';
+    if (clase.includes('IFCALIGNMENT')) return 'IfcAlignment';
+    if (clase.includes('IFCROAD')) return 'IfcRoad';
 
     if (clase.includes('IFCCOVERING') || clase.includes('IFCROOF') || tipoObjetoNormalizado.includes('roof')) {
       return 'Cubierta';
