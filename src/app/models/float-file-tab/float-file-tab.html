@@ -1,0 +1,50 @@
+<section class="b5d-float-file-tab">
+  <header class="b5d-float-file-tab__header">Archivo</header>
+
+  <div class="b5d-float-file-tab__content">
+    <nav class="b5d-float-file-tab__menu">
+      <label class="b5d-float-file-tab__item">
+        <span class="b5d-float-file-tab__icon">
+          <img src="assets/images/AddFile_32x32.png" alt="" />
+        </span>
+        <span>Abrir</span>
+        <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
+      </label>
+
+      <label class="b5d-float-file-tab__item">
+        <span class="b5d-float-file-tab__icon">
+          <img src="assets/images/Add_32x32.png" alt="" />
+        </span>
+        <span>Añadir archivo</span>
+        <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
+      </label>
+
+      <button class="b5d-float-file-tab__item" type="button">
+        <span class="b5d-float-file-tab__icon">S</span>
+        <span>Guardar</span>
+      </button>
+
+      <button class="b5d-float-file-tab__item" type="button" (click)="toggleLanguage.emit()">
+        <span class="b5d-float-file-tab__icon">L</span>
+        <span>Lengua</span>
+      </button>
+
+      <button class="b5d-float-file-tab__item" type="button">
+        <span class="b5d-float-file-tab__icon">?</span>
+        <span>Ayuda</span>
+      </button>
+    </nav>
+
+    <section class="b5d-float-file-tab__recent">
+      <h3>Abiertos recientemente</h3>
+      <button type="button">1 750 ELEMENTOS.ifc</button>
+      <button type="button">2 SampleHouse.ifc</button>
+      <button type="button">3 SampleHouse.ifc</button>
+      <button type="button">4 750 ELEMENTOS.ifc</button>
+    </section>
+  </div>
+
+  <footer class="b5d-float-file-tab__footer">
+    <button type="button" (click)="closePanel.emit()">Cerrar</button>
+  </footer>
+</section>

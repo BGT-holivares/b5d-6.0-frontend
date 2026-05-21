@@ -1,44 +1,43 @@
 <main class="b5d-viewer-screen">
   <app-toolbar
     [cargando]="visorIfc.cargando()"
+    [toolbarContentVisible]="toolbarContentVisible()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     (archivoSeleccionado)="cargarArchivo($event)"
-    (acercar)="visorIfc.acercar()"
-    (alejar)="visorIfc.alejar()"
-    (desplazarIzquierda)="visorIfc.desplazarIzquierda()"
-    (desplazarDerecha)="visorIfc.desplazarDerecha()"
-    (desplazarArriba)="visorIfc.desplazarArriba()"
-    (desplazarAbajo)="visorIfc.desplazarAbajo()"
-    (rotarIzquierda)="visorIfc.rotarIzquierda()"
-    (rotarDerecha)="visorIfc.rotarDerecha()"
-    (restablecer)="visorIfc.restablecerVista()"
-    (limpiarSeleccion)="visorIfc.limpiarSeleccion()"
-    (expandirArbol)="visorIfc.expandirArbolCompleto()"
-    (colapsarArbol)="visorIfc.colapsarArbolCompleto()"
-    (cuantificarB5D)="cuantificarB5D()"
+    (toolbarAction)="handleToolbarAction($event)"
     (toggleFloatingPanel)="toggleFloatingPanel($event)"
+    (toolbarContentVisibleChange)="setToolbarContentVisible($event)"
   />
 
   @if (isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {
     <section
       class="b5d-floating-panel"
-      [style.left.px]="floatingPanels().tree.left"
-      [style.top.px]="floatingPanels().tree.top"
-      [style.width.px]="floatingPanels().tree.width"
-      [style.height.px]="floatingPanels().tree.height"
-      [style.z-index]="floatingPanels().tree.zIndex"
+      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('tree')"
+      [ngStyle]="getFloatingPanelStyles('tree')"
     >
       <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'tree')">
         <span class="b5d-floating-panel__title">Estructura IFC</span>
-        <button
-          class="b5d-floating-panel__action"
-          type="button"
-          aria-label="Hide panel"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="hideFloatingPanel('tree')"
-        >
-          x
-        </button>
+        <span class="b5d-floating-panel__actions">
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            [attr.aria-label]="getDockActionTitle('tree')"
+            [title]="getDockActionTitle('tree')"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="toggleFloatingPanelDock('tree')"
+          >
+            {{ isFloatingPanelDocked('tree') ? '□' : '▣' }}
+          </button>
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            aria-label="Hide panel"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="hideFloatingPanel('tree')"
+          >
+            x
+          </button>
+        </span>
       </header>
 
       <div class="b5d-floating-panel__body">
@@ -51,85 +50,102 @@
           (seleccionarElemento)="visorIfc.seleccionarElementoDesdeArbol($event)"
         />
       </div>
+      <span class="b5d-floating-panel__resize-handle" (pointerdown)="startFloatingPanelResize($event, 'tree')"></span>
     </section>
   }
 
-  @if (isFloatingPanelVisible('quantification') && cuantificacion()) {
+  @if (isFloatingPanelVisible('bottom')) {
     <section
       class="b5d-floating-panel"
-      [style.left.px]="floatingPanels().quantification.left"
-      [style.top.px]="floatingPanels().quantification.top"
-      [style.width.px]="floatingPanels().quantification.width"
-      [style.height.px]="floatingPanels().quantification.height"
-      [style.z-index]="floatingPanels().quantification.zIndex"
+      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('bottom')"
+      [ngStyle]="getFloatingPanelStyles('bottom')"
     >
-      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'quantification')">
-        <span class="b5d-floating-panel__title">Resumen B5D</span>
-        <button
-          class="b5d-floating-panel__action"
-          type="button"
-          aria-label="Hide panel"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="hideFloatingPanel('quantification')"
-        >
-          x
-        </button>
+      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'bottom')">
+        <span class="b5d-floating-panel__title">B5D</span>
+        <span class="b5d-floating-panel__actions">
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            [attr.aria-label]="getDockActionTitle('bottom')"
+            [title]="getDockActionTitle('bottom')"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="toggleFloatingPanelDock('bottom')"
+          >
+            {{ isFloatingPanelDocked('bottom') ? '□' : '▣' }}
+          </button>
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            aria-label="Hide panel"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="hideFloatingPanel('bottom')"
+          >
+            x
+          </button>
+        </span>
       </header>
 
       <div class="b5d-floating-panel__body">
-        <app-quantification-panel [datos]="cuantificacion()" />
-      </div>
-    </section>
-  }
+        <nav class="b5d-viewer-screen__bottom-tabs">
+          @for (tab of bottomPanelTabs; track tab.id) {
+            <button
+              class="b5d-viewer-screen__bottom-tab"
+              type="button"
+              [class.b5d-viewer-screen__bottom-tab--active]="bottomPanelTab() === tab.id"
+              (click)="setBottomPanelTab(tab.id)"
+            >
+              {{ tab.label }}
+            </button>
+          }
+        </nav>
 
-  @if (isFloatingPanelVisible('linking') && cuantificacion()) {
-    <section
-      class="b5d-floating-panel"
-      [style.left.px]="floatingPanels().linking.left"
-      [style.top.px]="floatingPanels().linking.top"
-      [style.width.px]="floatingPanels().linking.width"
-      [style.height.px]="floatingPanels().linking.height"
-      [style.z-index]="floatingPanels().linking.zIndex"
-    >
-      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'linking')">
-        <span class="b5d-floating-panel__title">B5D - Vinculación de conceptos y propiedades IFC</span>
-        <button
-          class="b5d-floating-panel__action"
-          type="button"
-          aria-label="Hide panel"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="hideFloatingPanel('linking')"
-        >
-          x
-        </button>
-      </header>
-
-      <div class="b5d-floating-panel__body">
-        <app-linking-panel [datos]="cuantificacion()" />
+        <div class="b5d-viewer-screen__bottom-content">
+          @switch (bottomPanelTab()) {
+            @case ('links') {
+              <app-linking-panel [datos]="cuantificacion()" />
+            }
+            @case ('boq') {
+              <app-boq-panel [datos]="cuantificacion()" />
+            }
+            @case ('parameters') {
+              <app-parameters-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />
+            }
+          }
+        </div>
       </div>
+      <span class="b5d-floating-panel__resize-handle" (pointerdown)="startFloatingPanelResize($event, 'bottom')"></span>
     </section>
   }
 
   @if (isFloatingPanelVisible('models') && visorIfc.modelosIfcCargados().length) {
     <section
       class="b5d-floating-panel"
-      [style.left.px]="floatingPanels().models.left"
-      [style.top.px]="floatingPanels().models.top"
-      [style.width.px]="floatingPanels().models.width"
-      [style.height.px]="floatingPanels().models.height"
-      [style.z-index]="floatingPanels().models.zIndex"
+      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('models')"
+      [ngStyle]="getFloatingPanelStyles('models')"
     >
       <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'models')">
         <span class="b5d-floating-panel__title">Modelos IFC</span>
-        <button
-          class="b5d-floating-panel__action"
-          type="button"
-          aria-label="Hide panel"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="hideFloatingPanel('models')"
-        >
-          x
-        </button>
+        <span class="b5d-floating-panel__actions">
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            [attr.aria-label]="getDockActionTitle('models')"
+            [title]="getDockActionTitle('models')"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="toggleFloatingPanelDock('models')"
+          >
+            {{ isFloatingPanelDocked('models') ? '□' : '▣' }}
+          </button>
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            aria-label="Hide panel"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="hideFloatingPanel('models')"
+          >
+            x
+          </button>
+        </span>
       </header>
 
       <div class="b5d-floating-panel__body">
@@ -138,34 +154,45 @@
           (alternar)="visorIfc.alternarVisibilidadIfc($event)"
         />
       </div>
+      <span class="b5d-floating-panel__resize-handle" (pointerdown)="startFloatingPanelResize($event, 'models')"></span>
     </section>
   }
 
   @if (isFloatingPanelVisible('properties') && visorIfc.informacionSeleccionada()) {
     <section
       class="b5d-floating-panel"
-      [style.left.px]="floatingPanels().properties.left"
-      [style.top.px]="floatingPanels().properties.top"
-      [style.width.px]="floatingPanels().properties.width"
-      [style.height.px]="floatingPanels().properties.height"
-      [style.z-index]="floatingPanels().properties.zIndex"
+      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('properties')"
+      [ngStyle]="getFloatingPanelStyles('properties')"
     >
       <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'properties')">
         <span class="b5d-floating-panel__title">Estructura IFC</span>
-        <button
-          class="b5d-floating-panel__action"
-          type="button"
-          aria-label="Hide panel"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="hideFloatingPanel('properties')"
-        >
-          x
-        </button>
+        <span class="b5d-floating-panel__actions">
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            [attr.aria-label]="getDockActionTitle('properties')"
+            [title]="getDockActionTitle('properties')"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="toggleFloatingPanelDock('properties')"
+          >
+            {{ isFloatingPanelDocked('properties') ? '□' : '▣' }}
+          </button>
+          <button
+            class="b5d-floating-panel__action"
+            type="button"
+            aria-label="Hide panel"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="hideFloatingPanel('properties')"
+          >
+            x
+          </button>
+        </span>
       </header>
 
       <div class="b5d-floating-panel__body">
         <app-properties-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />
       </div>
+      <span class="b5d-floating-panel__resize-handle" (pointerdown)="startFloatingPanelResize($event, 'properties')"></span>
     </section>
   }
 

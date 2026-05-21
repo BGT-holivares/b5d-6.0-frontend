@@ -1,0 +1,39 @@
+.b5d-boq-panel {
+  min-width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.b5d-boq-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.b5d-boq-panel__table th,
+.b5d-boq-panel__table td {
+  padding: 5px;
+  border: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.b5d-boq-panel__table th {
+  background: #f1f5f9;
+  white-space: nowrap;
+}
+
+.b5d-boq-panel__name {
+  min-width: 220px;
+}
+
+.b5d-boq-panel__number {
+  text-align: right;
+  font-weight: 700;
+}
+
+.b5d-boq-panel__empty {
+  color: #64748b;
+  font-style: italic;
+}

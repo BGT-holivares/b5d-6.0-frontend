@@ -1,0 +1,16 @@
+<section class="b5d-parameters-panel">
+  @if (rows.length) {
+    <table class="b5d-parameters-panel__table">
+      <tbody>
+        @for (row of rows; track row.key) {
+          <tr>
+            <td>{{ row.key }}</td>
+            <td>{{ row.value }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <div class="b5d-parameters-panel__empty">Selecciona un elemento IFC para ver sus parámetros.</div>
+  }
+</section>
