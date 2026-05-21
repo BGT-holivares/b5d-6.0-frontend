@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { NgStyle } from '@angular/common';
-import { Toolbar } from '../../models/toolbar/toolbar';
+import { Toolbar, type ToolbarActionId } from '../../models/toolbar/toolbar';
 import { TreePanel } from '../../models/tree-panel/tree-panel';
 import { PropertiesPanel } from '../../models/properties-panel/properties-panel';
 import { LinkingPanel } from '../../models/linking-panel/linking-panel';
@@ -107,7 +107,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       bottom: panels.bottom.visible,
     };
   });
-  readonly toolbarVisible = signal(true);
+  readonly toolbarContentVisible = signal(true);
   readonly bottomPanelTab = signal<BottomPanelTab>('links');
   readonly bottomPanelTabs: { id: BottomPanelTab; label: string }[] = [
     { id: 'links', label: 'Links' },
@@ -178,7 +178,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       };
     }
 
-    const top = this.toolbarVisible() ? panel.top : Math.max(8, panel.top - 118);
+    const top = this.toolbarContentVisible() ? panel.top : Math.max(34, panel.top - 86);
 
     return {
       [panel.dockSide]: '0',
@@ -221,14 +221,48 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     });
   }
 
-  // Hides the ribbon toolbar to maximize model visibility.
-  hideToolbar(): void {
-    this.toolbarVisible.set(false);
+  // Applies toolbar actions emitted by toolbar-owned button declarations.
+  handleToolbarAction(action: ToolbarActionId): void {
+    const actionMap: Record<ToolbarActionId, () => void> = {
+      'zoom-in': () => this.visorIfc.acercar(),
+      'zoom-out': () => this.visorIfc.alejar(),
+      'reset-view': () => this.visorIfc.restablecerVista(),
+      'rotate-left': () => this.visorIfc.rotarIzquierda(),
+      'rotate-right': () => this.visorIfc.rotarDerecha(),
+      'clear-selection': () => this.visorIfc.limpiarSeleccion(),
+      'expand-tree': () => this.visorIfc.expandirArbolCompleto(),
+      'collapse-tree': () => this.visorIfc.colapsarArbolCompleto(),
+      'quantify-b5d': () => this.cuantificarB5D(),
+      'toggle-theme': () => undefined,
+      'show-all-objects': () => this.visorIfc.showAllModelElements(),
+      'show-selected-objects': () => this.visorIfc.showSelectedElements(),
+      'transparent-selected-objects': () => this.visorIfc.makeSelectedElementsTransparent(),
+      'hide-selected-objects': () => this.visorIfc.hideSelectedElements(),
+      'show-not-selected-objects': () => this.visorIfc.showNotSelectedElements(),
+      'transparent-not-selected-objects': () => this.visorIfc.makeNotSelectedElementsTransparent(),
+      'hide-not-selected-objects': () => this.visorIfc.hideNotSelectedElements(),
+      'view-3d': () => this.visorIfc.set3DView(),
+      'view-2d': () => this.visorIfc.set2DView(),
+      'focus-selection': () => this.visorIfc.focusSelectedElements(),
+      'view-default': () => this.visorIfc.setDefaultModelView(),
+      'view-front': () => this.visorIfc.setFrontModelView(),
+      'view-back': () => this.visorIfc.setBackModelView(),
+      'view-up': () => this.visorIfc.setTopModelView(),
+      'view-right': () => this.visorIfc.setRightModelView(),
+      'view-left': () => this.visorIfc.setLeftModelView(),
+      'movement-axis-x': () => this.visorIfc.setMovementAxis('x'),
+      'movement-axis-y': () => this.visorIfc.setMovementAxis('y'),
+      'movement-axis-z': () => this.visorIfc.setMovementAxis('z'),
+      'restore-selected-movement': () => this.visorIfc.restoreSelectedElementMovements(),
+      'restore-all-movement': () => this.visorIfc.restoreAllElementMovements(),
+    };
+
+    actionMap[action]();
   }
 
-  // Restores the ribbon toolbar after it has been hidden.
-  showToolbar(): void {
-    this.toolbarVisible.set(true);
+  // Stores whether the toolbar command content is visible.
+  setToolbarContentVisible(isVisible: boolean): void {
+    this.toolbarContentVisible.set(isVisible);
   }
 
   // Starts moving a floating panel from its title bar.
@@ -338,7 +372,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     if (panel.dockSide === 'right') {
       return {
         left: Math.max(gap, window.innerWidth - panel.width - gap),
-        top: this.toolbarVisible() ? 136 : gap,
+        top: this.toolbarContentVisible() ? 136 : 42,
       };
     }
 
@@ -351,7 +385,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
     return {
       left: gap,
-      top: this.toolbarVisible() ? 136 : gap,
+      top: this.toolbarContentVisible() ? 136 : 42,
     };
   }
 

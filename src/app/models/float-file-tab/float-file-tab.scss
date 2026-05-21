@@ -1,0 +1,116 @@
+.b5d-float-file-tab {
+  position: fixed;
+  top: 26px;
+  left: 0;
+  z-index: 1250;
+  width: min(610px, calc(100vw - 16px));
+  height: 420px;
+  border: 1px solid var(--primary-color);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  color: #374151;
+  font-size: 12px;
+}
+
+.b5d-float-file-tab__header {
+  height: 26px;
+  padding: 6px 12px 0;
+  background: var(--primary-color);
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.b5d-float-file-tab__content {
+  display: grid;
+  height: calc(100% - 56px);
+  grid-template-columns: 170px 1fr;
+}
+
+.b5d-float-file-tab__menu {
+  border-right: 1px solid #d1d5db;
+  padding: 4px 0;
+}
+
+.b5d-float-file-tab__item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.b5d-float-file-tab__item:hover {
+  background: #e8f2fb;
+}
+
+.b5d-float-file-tab__icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.b5d-float-file-tab__icon img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.b5d-float-file-tab__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.b5d-float-file-tab__recent {
+  padding: 8px 12px;
+}
+
+.b5d-float-file-tab__recent h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.b5d-float-file-tab__recent button {
+  display: block;
+  width: 100%;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.b5d-float-file-tab__recent button:hover {
+  color: var(--primary-color);
+}
+
+.b5d-float-file-tab__footer {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 10px;
+  background: #f3f4f6;
+}
+
+.b5d-float-file-tab__footer button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
