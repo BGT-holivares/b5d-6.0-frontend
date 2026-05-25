@@ -1,14 +1,5 @@
 import { Component, Input } from '@angular/core';
-import type { NodoCuantificacion } from '../../types/quantity-take-off';
-
-type BoqRow = {
-  id: string;
-  name: string;
-  type: string;
-  level: number;
-  unit: string;
-  quantity: number;
-};
+import type { CuantificacionB5DOrm, ProyectoTrabajoOrm } from '../../types/b5d-orm';
 
 @Component({
   selector: 'app-boq-panel',
@@ -17,32 +8,24 @@ type BoqRow = {
   styleUrl: './boq-panel.scss',
 })
 export class BoqPanel {
-  @Input() datos: NodoCuantificacion | null = null;
+  @Input() proyectoActivo: ProyectoTrabajoOrm | null = null;
+  @Input() cuantificacionesB5d: CuantificacionB5DOrm[] = [];
+  @Input() cargandoB5d = false;
 
-  // Builds a flattened bill of quantities table from the current quantity tree.
-  get rows(): BoqRow[] {
-    if (!this.datos) return [];
+  cuantificacionSeleccionadaId: number | null = null;
 
-    const rows: BoqRow[] = [];
-    const visitNode = (node: NodoCuantificacion, level: number): void => {
-      rows.push({
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        level,
-        unit: node.unit ?? '-',
-        quantity: node.quantity,
-      });
-
-      for (const child of node.children) visitNode(child, level + 1);
-    };
-
-    for (const child of this.datos.children) visitNode(child, 0);
-    return rows;
+  get cuantificacionSeleccionada(): CuantificacionB5DOrm | null {
+    if (this.cuantificacionSeleccionadaId == null) {
+      return this.cuantificacionesB5d[0] ?? null;
+    }
+    return this.cuantificacionesB5d.find((item) => item.id === this.cuantificacionSeleccionadaId) ?? null;
   }
 
-  // Returns the indentation used to keep hierarchy readable in the table.
-  getIndentation(level: number): string {
-    return `${8 + level * 18}px`;
+  seleccionarCuantificacion(id: number): void {
+    this.cuantificacionSeleccionadaId = id;
+  }
+
+  get etiquetaTienePlantilla(): string {
+    return this.cuantificacionSeleccionada?.tiene_libro_excel ? 'Si' : 'No';
   }
 }

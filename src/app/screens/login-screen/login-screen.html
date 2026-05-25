@@ -1,0 +1,35 @@
+<main class="b5d-login-screen">
+  <form class="b5d-login-card" (ngSubmit)="iniciarSesion()">
+    <h1>Iniciar sesion</h1>
+
+    <label>
+      <span>Usuario</span>
+      <input
+        type="text"
+        name="username"
+        required
+        autocomplete="username"
+        [(ngModel)]="username"
+      />
+    </label>
+
+    <label>
+      <span>Contrasena</span>
+      <input
+        type="password"
+        name="password"
+        required
+        autocomplete="current-password"
+        [(ngModel)]="password"
+      />
+    </label>
+
+    @if (mensajeError()) {
+      <p class="b5d-login-card__error">{{ mensajeError() }}</p>
+    }
+
+    <button type="submit" [disabled]="cargando()">
+      {{ cargando() ? 'Ingresando...' : 'Entrar' }}
+    </button>
+  </form>
+</main>

@@ -2,12 +2,30 @@
   <app-toolbar
     [cargando]="visorIfc.cargando()"
     [toolbarContentVisible]="toolbarContentVisible()"
+    [usuarioSesion]="usuarioSesion()"
+    [proyectoActivo]="proyectoB5dActivo()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     (archivoSeleccionado)="cargarArchivo($event)"
+    (abrirB5dSolicitado)="abrirSelectorImportacionB5d()"
+    (loginSolicitado)="irALogin()"
+    (logoutSolicitado)="cerrarSesionBackend()"
     (toolbarAction)="handleToolbarAction($event)"
     (toggleFloatingPanel)="toggleFloatingPanel($event)"
     (toolbarContentVisibleChange)="setToolbarContentVisible($event)"
   />
+  <input
+    #inputB5d
+    hidden
+    type="file"
+    accept=".b5d"
+    (change)="procesarArchivoB5dSeleccionado($event)"
+  />
+
+  @if (b5dMensaje()) {
+    <div class="b5d-viewer-screen__b5d-status">
+      {{ b5dMensaje() }}
+    </div>
+  }
 
   @if (isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {
     <section
@@ -102,10 +120,20 @@
         <div class="b5d-viewer-screen__bottom-content">
           @switch (bottomPanelTab()) {
             @case ('links') {
-              <app-linking-panel [datos]="cuantificacion()" />
+              <app-linking-panel
+                [datosIfc]="cuantificacion()"
+                [proyectoActivo]="proyectoB5dActivo()"
+                [conceptosB5d]="conceptosB5d()"
+                [vinculosB5d]="vinculosB5d()"
+                [cargandoB5d]="b5dCargando()"
+              />
             }
             @case ('boq') {
-              <app-boq-panel [datos]="cuantificacion()" />
+              <app-boq-panel
+                [proyectoActivo]="proyectoB5dActivo()"
+                [cuantificacionesB5d]="cuantificacionesB5d()"
+                [cargandoB5d]="b5dCargando()"
+              />
             }
             @case ('parameters') {
               <app-parameters-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />

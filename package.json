@@ -4,7 +4,12 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:local": "ng serve --configuration development",
+    "start:server": "ng serve --configuration server",
+    "start:private-vm": "ng serve --configuration private-vm",
     "build": "ng build",
+    "build:server": "ng build --configuration server",
+    "build:private-vm": "ng build --configuration private-vm",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:frontend": "node dist/frontend/server/server.mjs"

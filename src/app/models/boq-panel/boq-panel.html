@@ -1,29 +1,67 @@
 <section class="b5d-boq-panel">
-  <table class="b5d-boq-panel__table">
-    <thead>
-      <tr>
-        <th>Concepto</th>
-        <th>Tipo</th>
-        <th>Unidad</th>
-        <th class="b5d-boq-panel__number">Cantidad</th>
-      </tr>
-    </thead>
+  <header class="b5d-boq-panel__header">
+    <strong>Cuantificaciones del archivo B5D</strong>
+    @if (proyectoActivo) {
+      <span>Proyecto: {{ proyectoActivo.nombre }} ({{ proyectoActivo.id }})</span>
+    } @else {
+      <span class="b5d-boq-panel__muted">Sin proyecto activo</span>
+    }
+  </header>
 
-    <tbody>
-      @for (row of rows; track row.id) {
-        <tr>
-          <td class="b5d-boq-panel__name" [style.padding-left]="getIndentation(row.level)">
-            {{ row.name }}
-          </td>
-          <td>{{ row.type }}</td>
-          <td>{{ row.unit }}</td>
-          <td class="b5d-boq-panel__number">{{ row.quantity.toFixed(2) }}</td>
-        </tr>
-      } @empty {
-        <tr>
-          <td class="b5d-boq-panel__empty" colspan="4">Sin cantidades. Ejecuta la cuantificación B5D.</td>
-        </tr>
+  @if (cargandoB5d) {
+    <div class="b5d-boq-panel__loading">Cargando cuantificaciones...</div>
+  }
+
+  <div class="b5d-boq-panel__layout">
+    <aside class="b5d-boq-panel__list">
+      <table class="b5d-boq-panel__table">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Nombre</th>
+            <th>Grupo</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (qto of cuantificacionesB5d; track qto.id) {
+            <tr
+              class="b5d-boq-panel__selectable"
+              [class.b5d-boq-panel__selectable--active]="cuantificacionSeleccionada?.id === qto.id"
+              (click)="seleccionarCuantificacion(qto.id)"
+            >
+              <td>{{ qto.tipo ?? '-' }}</td>
+              <td>{{ qto.nombre || '-' }}</td>
+              <td>{{ qto.grupo || '-' }}</td>
+              <td>{{ qto.fecha || '-' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="b5d-boq-panel__muted" colspan="4">No hay cuantificaciones en este proyecto.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </aside>
+
+    <section class="b5d-boq-panel__preview">
+      @if (cuantificacionSeleccionada; as seleccionada) {
+        <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>
+        <p><strong>Descripcion:</strong> {{ seleccionada.descripcion || '-' }}</p>
+        <p><strong>Comentarios:</strong> {{ seleccionada.comentarios || '-' }}</p>
+        <p><strong>Calculada:</strong> {{ seleccionada.calculada ? 'Si' : 'No' }}</p>
+        <p><strong>Libro Excel asociado:</strong> {{ etiquetaTienePlantilla }}</p>
+
+        <div class="b5d-boq-panel__placeholder">
+          <p>Vista previa XLSX pendiente de endpoint dedicado.</p>
+          <p>
+            Ya se muestra la metadata real importada desde B5D; cuando tengas definido el formato esperado de
+            previsualizacion, se conecta aqui.
+          </p>
+        </div>
+      } @else {
+        <p class="b5d-boq-panel__muted">Selecciona una cuantificacion para ver su detalle.</p>
       }
-    </tbody>
-  </table>
+    </section>
+  </div>
 </section>

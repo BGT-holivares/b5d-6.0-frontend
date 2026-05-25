@@ -1,4 +1,5 @@
-import { Component, EventEmitter, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
 
 @Component({
   selector: 'app-float-file-tab',
@@ -7,7 +8,12 @@ import { Component, EventEmitter, Output } from '@angular/core';
   styleUrl: './float-file-tab.scss',
 })
 export class FloatFileTab {
+  @Input() usuarioSesion: UsuarioSesionOrm | null = null;
+  @Input() proyectoActivo: ProyectoTrabajoOrm | null = null;
   @Output() archivoSeleccionado = new EventEmitter<File>();
+  @Output() abrirB5dSolicitado = new EventEmitter<void>();
+  @Output() loginSolicitado = new EventEmitter<void>();
+  @Output() logoutSolicitado = new EventEmitter<void>();
   @Output() closePanel = new EventEmitter<void>();
   @Output() toggleLanguage = new EventEmitter<void>();
 

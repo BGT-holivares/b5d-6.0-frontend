@@ -7,17 +7,14 @@
         <span class="b5d-float-file-tab__icon">
           <img src="assets/images/AddFile_32x32.png" alt="" />
         </span>
-        <span>Abrir</span>
+        <span>Abrir ifc</span>
         <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
       </label>
 
-      <label class="b5d-float-file-tab__item">
-        <span class="b5d-float-file-tab__icon">
-          <img src="assets/images/Add_32x32.png" alt="" />
-        </span>
-        <span>Añadir archivo</span>
-        <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
-      </label>
+      <button class="b5d-float-file-tab__item" type="button" (click)="abrirB5dSolicitado.emit()">
+        <span class="b5d-float-file-tab__icon">B5D</span>
+        <span>Importar base B5D</span>
+      </button>
 
       <button class="b5d-float-file-tab__item" type="button">
         <span class="b5d-float-file-tab__icon">S</span>
@@ -26,8 +23,24 @@
 
       <button class="b5d-float-file-tab__item" type="button" (click)="toggleLanguage.emit()">
         <span class="b5d-float-file-tab__icon">L</span>
-        <span>Lengua</span>
+        <span>Idioma</span>
       </button>
+
+      @if (usuarioSesion) {
+        <button class="b5d-float-file-tab__item" type="button" (click)="loginSolicitado.emit()">
+          <span class="b5d-float-file-tab__icon">U</span>
+          <span>Cambiar usuario</span>
+        </button>
+        <button class="b5d-float-file-tab__item" type="button" (click)="logoutSolicitado.emit()">
+          <span class="b5d-float-file-tab__icon">-</span>
+          <span>Cerrar sesion</span>
+        </button>
+      } @else {
+        <button class="b5d-float-file-tab__item" type="button" (click)="loginSolicitado.emit()">
+          <span class="b5d-float-file-tab__icon">+</span>
+          <span>Iniciar sesion</span>
+        </button>
+      }
 
       <button class="b5d-float-file-tab__item" type="button">
         <span class="b5d-float-file-tab__icon">?</span>
@@ -37,10 +50,20 @@
 
     <section class="b5d-float-file-tab__recent">
       <h3>Abiertos recientemente</h3>
-      <button type="button">1 750 ELEMENTOS.ifc</button>
-      <button type="button">2 SampleHouse.ifc</button>
-      <button type="button">3 SampleHouse.ifc</button>
-      <button type="button">4 750 ELEMENTOS.ifc</button>
+      @if (proyectoActivo) {
+        <div class="b5d-float-file-tab__recent-line">
+          <strong>Proyecto B5D:</strong> {{ proyectoActivo.nombre }}
+        </div>
+        <div class="b5d-float-file-tab__recent-line">
+          <strong>Archivo B5D:</strong> {{ proyectoActivo.archivo_original }}
+        </div>
+        <div class="b5d-float-file-tab__recent-line">
+          <strong>IFC reciente:</strong>
+          {{ proyectoActivo.ifc_nombre_archivo || 'Sin referencia IFC todavia' }}
+        </div>
+      } @else {
+        <div class="b5d-float-file-tab__recent-line">Sin proyecto B5D activo.</div>
+      }
     </section>
   </div>
 

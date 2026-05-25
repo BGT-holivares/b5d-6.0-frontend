@@ -52,3 +52,17 @@
   min-height: 0;
   overflow: auto;
 }
+
+.b5d-viewer-screen__b5d-status {
+  position: fixed;
+  top: 76px;
+  right: 14px;
+  z-index: 1350;
+  max-width: 520px;
+  padding: 8px 10px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: rgba(239, 246, 255, 0.96);
+  color: #1e3a8a;
+  font-size: 12px;
+}

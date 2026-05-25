@@ -4,12 +4,16 @@ import { I18nService } from '../../utils/i18n/i18n.service';
 import { ThemeService } from '../../utils/theme.service';
 import { FloatFileTab } from '../float-file-tab/float-file-tab';
 import type { FloatingPanelId } from '../../types/floating-panel';
+import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
 
 type ToolbarTab = 'home' | 'objects' | 'measurement' | 'tools' | 'view' | 'about';
 type ToolbarButtonVariant = 'small' | 'large' | 'small-dropdown' | 'large-dropdown';
 type ToolbarCategoryLayout = 'vertical' | 'horizontal' | 'grid';
 
 export type ToolbarActionId =
+  | 'import-b5d-project'
+  | 'export-b5d-project'
+  | 'refresh-b5d-project'
   | 'zoom-in'
   | 'zoom-out'
   | 'reset-view'
@@ -90,6 +94,8 @@ export class Toolbar {
 
   @Input() cargando = false;
   @Input() toolbarContentVisible = true;
+  @Input() usuarioSesion: UsuarioSesionOrm | null = null;
+  @Input() proyectoActivo: ProyectoTrabajoOrm | null = null;
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
@@ -98,6 +104,9 @@ export class Toolbar {
   };
 
   @Output() archivoSeleccionado = new EventEmitter<File>();
+  @Output() abrirB5dSolicitado = new EventEmitter<void>();
+  @Output() loginSolicitado = new EventEmitter<void>();
+  @Output() logoutSolicitado = new EventEmitter<void>();
   @Output() toolbarAction = new EventEmitter<ToolbarActionId>();
   @Output() toggleFloatingPanel = new EventEmitter<FloatingPanelId>();
   @Output() toolbarContentVisibleChange = new EventEmitter<boolean>();
@@ -284,10 +293,10 @@ export class Toolbar {
         layout: 'horizontal',
         buttons: [
           { labelKey: 'toolbar.tools.importExcel', iconSrc: 'assets/images/ImportExcel_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.tools.importB5D', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.tools.importB5D', iconSrc: 'assets/images/Add_32x32.png', action: 'import-b5d-project', variant: 'large' },
           { labelKey: 'toolbar.tools.importAXA', iconSrc: 'assets/images/ImportAXA_32x32.png', variant: 'large' },
           { labelKey: 'toolbar.tools.cloneDB', iconSrc: 'assets/images/CloneDB_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.tools.objLinks', iconSrc: 'assets/images/CopyLinks_32x32.png', variant: 'large-dropdown' },
+          { labelKey: 'toolbar.tools.objLinks', iconSrc: 'assets/images/CopyLinks_32x32.png', action: 'refresh-b5d-project', variant: 'large-dropdown' },
         ],
       },
       {
@@ -295,7 +304,7 @@ export class Toolbar {
         layout: 'horizontal',
         buttons: [
           { labelKey: 'toolbar.tools.exportExcel', iconSrc: 'assets/images/ExportExcel_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.tools.exportDB', iconSrc: 'assets/images/ExportDB_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.tools.exportDB', iconSrc: 'assets/images/ExportDB_32x32.png', action: 'export-b5d-project', variant: 'large' },
           { labelKey: 'toolbar.tools.copyAXA', iconSrc: 'assets/images/CopyAXA_32x32.png', variant: 'large' },
           { labelKey: 'toolbar.tools.getImages', iconSrc: 'assets/images/SnapShoots_32x32.png', variant: 'large-dropdown' },
           { labelKey: 'toolbar.tools.QTOScheme', iconSrc: 'assets/images/ExcelTemplate_32x32.png', variant: 'large-dropdown' },

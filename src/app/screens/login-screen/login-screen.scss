@@ -1,0 +1,58 @@
+.b5d-login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(140deg, #eff6ff 0%, #f8fafc 65%, #dbeafe 100%);
+}
+
+.b5d-login-card {
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
+}
+
+.b5d-login-card h1 {
+  margin: 0 0 6px;
+  color: #1e3a8a;
+  font-size: 22px;
+}
+
+.b5d-login-card label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.b5d-login-card input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.b5d-login-card button {
+  height: 38px;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.b5d-login-card button[disabled] {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.b5d-login-card__error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 12px;
+}

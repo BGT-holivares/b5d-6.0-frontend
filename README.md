@@ -7,10 +7,34 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 To start a local development server, run:
 
 ```bash
-ng serve
+npm run start:local
 ```
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+
+## Backend API environments
+
+The API base URL is managed in `src/environments`:
+
+- `environment.ts`: local backend (`http://localhost:8000`)
+- `environment.server.ts`: server IP placeholder (`http://SERVER_IP:8000`)
+- `environment.private-vm.ts`: private VM placeholder (`http://PRIVATE_VM_IP:8000`)
+
+Use the matching scripts:
+
+```bash
+npm run start:local
+npm run start:server
+npm run start:private-vm
+```
+
+Build targets:
+
+```bash
+npm run build
+npm run build:server
+npm run build:private-vm
+```
 
 ## Code scaffolding
 

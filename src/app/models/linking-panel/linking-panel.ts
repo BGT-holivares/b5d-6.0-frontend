@@ -1,13 +1,11 @@
 import { Component, Input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { NodoCuantificacion } from '../../types/quantity-take-off';
-
-type ConceptoB5D = {
-  code: string;
-  description: string;
-  unit: string;
-  group: string;
-};
+import type {
+  ConceptoB5DOrm,
+  ProyectoTrabajoOrm,
+  VinculoConceptoBimOrm,
+} from '../../types/b5d-orm';
 
 type ObjetoIfc = {
   id: string;
@@ -18,8 +16,9 @@ type ObjetoIfc = {
   properties: Record<string, unknown>[];
 };
 
-type VinculoB5D = {
+type VinculoPanel = {
   id: string;
+  conceptoId: number | null;
   conceptCode: string;
   conceptDescription: string;
   objectType: string;
@@ -30,6 +29,15 @@ type VinculoB5D = {
   description: string;
 };
 
+type ConceptoFila = {
+  id: number;
+  level: number;
+  clave: string;
+  descripcion: string;
+  unidad: string;
+  linked: boolean;
+};
+
 @Component({
   selector: 'app-linking-panel',
   imports: [FormsModule],
@@ -37,38 +45,21 @@ type VinculoB5D = {
   styleUrl: './linking-panel.scss',
 })
 export class LinkingPanel {
-  @Input() datos: NodoCuantificacion | null = null;
+  @Input() datosIfc: NodoCuantificacion | null = null;
+  @Input() proyectoActivo: ProyectoTrabajoOrm | null = null;
+  @Input() conceptosB5d: ConceptoB5DOrm[] = [];
+  @Input() vinculosB5d: VinculoConceptoBimOrm[] = [];
+  @Input() cargandoB5d = false;
 
-  codigoConceptoSeleccionado = '';
+  conceptoSeleccionadoId: number | null = null;
   idObjetoSeleccionado = '';
   llavePropiedadSeleccionada = '';
-  vinculos: VinculoB5D[] = [];
-
-  readonly conceptos: ConceptoB5D[] = [
-    {
-      code: 'CIM01-05',
-      description: 'Cimbra común en cimentación',
-      unit: 'm2',
-      group: 'CIMENTACIONES',
-    },
-    {
-      code: 'EC01-08',
-      description: 'Concreto premezclado en estructura',
-      unit: 'm3',
-      group: 'ESTRUCTURA DE CONCRETO',
-    },
-    {
-      code: 'ALB01-01',
-      description: 'Castillo de sección de 15 x 15 cm',
-      unit: 'm',
-      group: 'ALBAÑILERÍA',
-    },
-  ];
+  vinculosLocales: VinculoPanel[] = [];
 
   get objetosIfc(): ObjetoIfc[] {
-    if (!this.datos) return [];
+    if (!this.datosIfc) return [];
 
-    return this.datos.children.flatMap((categoria) =>
+    return this.datosIfc.children.flatMap((categoria) =>
       categoria.children.map((tipoNodo) => {
         const nodoConPropiedades = tipoNodo as NodoCuantificacion & {
           properties?: Record<string, unknown>[];
@@ -84,6 +75,83 @@ export class LinkingPanel {
         };
       }),
     );
+  }
+
+  get conceptosEstructurados(): ConceptoFila[] {
+    const conceptos = [...this.conceptosB5d];
+    const hijosPorPadre = new Map<number | null, ConceptoB5DOrm[]>();
+    const ids = new Set<number>(conceptos.map((concepto) => concepto.id));
+
+    for (const concepto of conceptos) {
+      const parentId =
+        concepto.agrupador_padre_id && ids.has(concepto.agrupador_padre_id)
+          ? concepto.agrupador_padre_id
+          : null;
+      const hijos = hijosPorPadre.get(parentId) ?? [];
+      hijos.push(concepto);
+      hijosPorPadre.set(parentId, hijos);
+    }
+
+    const linkedIds = this.idsConceptoConVinculo();
+    const filas: ConceptoFila[] = [];
+    const visitados = new Set<number>();
+
+    const recorrer = (parentId: number | null, level: number): void => {
+      const hijos = hijosPorPadre.get(parentId) ?? [];
+      for (const concepto of hijos) {
+        if (visitados.has(concepto.id)) continue;
+        visitados.add(concepto.id);
+        filas.push({
+          id: concepto.id,
+          level,
+          clave: concepto.clave ?? '',
+          descripcion: concepto.descripcion ?? '',
+          unidad: concepto.unidad ?? '',
+          linked: linkedIds.has(concepto.id),
+        });
+        recorrer(concepto.id, level + 1);
+      }
+    };
+
+    recorrer(null, 0);
+    for (const concepto of conceptos) {
+      if (visitados.has(concepto.id)) continue;
+      filas.push({
+        id: concepto.id,
+        level: 0,
+        clave: concepto.clave ?? '',
+        descripcion: concepto.descripcion ?? '',
+        unidad: concepto.unidad ?? '',
+        linked: linkedIds.has(concepto.id),
+      });
+    }
+
+    return filas;
+  }
+
+  get vinculosRelacionados(): VinculoPanel[] {
+    const conceptosPorId = new Map<number, ConceptoB5DOrm>();
+    for (const concepto of this.conceptosB5d) {
+      conceptosPorId.set(concepto.id, concepto);
+    }
+
+    const desdeBackend = this.vinculosB5d.map((vinculo) => {
+      const concepto = vinculo.concepto_id != null ? conceptosPorId.get(vinculo.concepto_id) : null;
+      return {
+        id: `db-${vinculo.id}`,
+        conceptoId: vinculo.concepto_id,
+        conceptCode: concepto?.clave ?? '',
+        conceptDescription: concepto?.descripcion ?? '',
+        objectType: vinculo.tipo_objeto_bim ?? '',
+        ifcName: vinculo.tipo_objeto_bim ?? '',
+        propertyKey: vinculo.propiedad_cantidad_bim ?? '',
+        propertyLabel: vinculo.propiedad_cantidad_bim ?? '',
+        conversionFactor: vinculo.factor_conversion ?? 1,
+        description: vinculo.descripcion ?? '',
+      } satisfies VinculoPanel;
+    });
+
+    return [...desdeBackend, ...this.vinculosLocales];
   }
 
   get opcionesPropiedad(): string[] {
@@ -123,18 +191,36 @@ export class LinkingPanel {
     this.llavePropiedadSeleccionada = '';
   }
 
+  seleccionarConcepto(id: number): void {
+    this.conceptoSeleccionadoId = id;
+  }
+
+  isObjetoVinculado(objetoIfc: ObjetoIfc): boolean {
+    const linkedObjectTypes = new Set(
+      this.vinculosRelacionados
+        .map((vinculo) => this.normalizarTexto(vinculo.objectType))
+        .filter((valor) => !!valor),
+    );
+    return linkedObjectTypes.has(this.normalizarTexto(objetoIfc.objectType));
+  }
+
+  indentation(level: number): string {
+    return `${10 + level * 18}px`;
+  }
+
   agregarVinculo(): void {
-    const concepto = this.conceptos.find((item) => item.code === this.codigoConceptoSeleccionado);
+    const concepto = this.conceptosB5d.find((item) => item.id === this.conceptoSeleccionadoId);
     const objeto = this.objetosIfc.find((item) => item.id === this.idObjetoSeleccionado);
 
     if (!concepto || !objeto || !this.llavePropiedadSeleccionada) return;
 
-    this.vinculos = [
-      ...this.vinculos,
+    this.vinculosLocales = [
+      ...this.vinculosLocales,
       {
         id: `link-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        conceptCode: concepto.code,
-        conceptDescription: concepto.description,
+        conceptoId: concepto.id,
+        conceptCode: concepto.clave ?? '',
+        conceptDescription: concepto.descripcion ?? '',
         objectType: objeto.objectType,
         ifcName: objeto.ifcName,
         propertyKey: this.llavePropiedadSeleccionada,
@@ -143,5 +229,24 @@ export class LinkingPanel {
         description: objeto.description,
       },
     ];
+  }
+
+  private idsConceptoConVinculo(): Set<number> {
+    const ids = new Set<number>();
+    for (const vinculo of this.vinculosB5d) {
+      if (vinculo.concepto_id != null) {
+        ids.add(vinculo.concepto_id);
+      }
+    }
+    for (const vinculo of this.vinculosLocales) {
+      if (vinculo.conceptoId != null) {
+        ids.add(vinculo.conceptoId);
+      }
+    }
+    return ids;
+  }
+
+  private normalizarTexto(valor: string | null): string {
+    return (valor ?? '').trim().toLowerCase();
   }
 }

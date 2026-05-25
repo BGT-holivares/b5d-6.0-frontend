@@ -22,7 +22,12 @@
 
   @if (fileTabVisible) {
     <app-float-file-tab
+      [usuarioSesion]="usuarioSesion"
+      [proyectoActivo]="proyectoActivo"
       (archivoSeleccionado)="archivoSeleccionado.emit($event)"
+      (abrirB5dSolicitado)="abrirB5dSolicitado.emit()"
+      (loginSolicitado)="loginSolicitado.emit()"
+      (logoutSolicitado)="logoutSolicitado.emit()"
       (toggleLanguage)="i18n.toggleLanguage()"
       (closePanel)="fileTabVisible = false"
     />
