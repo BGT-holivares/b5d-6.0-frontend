@@ -1,7 +1,7 @@
 <div class="b5d-toolbar">
   <div class="b5d-tab">
     <button class="b5d-tab-archive-button" type="button" (click)="toggleFileTab()">
-      {{ translate('toolbar.file') }}
+      {{ i18n.translateForComponent(toolbarTranslations, 'toolbar.file') }}
     </button>
 
     @for (tab of toolbarTabs; track tab.id) {
@@ -11,7 +11,7 @@
         [class.b5d-tab-button--selected]="activeTab === tab.id"
         (click)="updateTab(tab.id)"
       >
-        {{ translate(tab.labelKey) }}
+        {{ i18n.translateForComponent(toolbarTranslations, tab.labelKey) }}
       </button>
     }
 
@@ -23,9 +23,10 @@
   @if (fileTabVisible) {
     <app-float-file-tab
       [usuarioSesion]="usuarioSesion"
-      [proyectoActivo]="proyectoActivo"
+      [activeProject]="activeProject"
       (archivoSeleccionado)="archivoSeleccionado.emit($event)"
       (abrirB5dSolicitado)="abrirB5dSolicitado.emit()"
+      (guardarB5dSolicitado)="guardarB5dSolicitado.emit()"
       (loginSolicitado)="loginSolicitado.emit()"
       (logoutSolicitado)="logoutSolicitado.emit()"
       (toggleLanguage)="i18n.toggleLanguage()"
@@ -43,6 +44,7 @@
                 [class]="getButtonClass(button)"
                 type="button"
                 [class.b5d-toolbar-action--selected]="button.selected"
+                [disabled]="button.disabled"
                 (click)="runToolbarAction(button)"
               >
                 <span
@@ -65,12 +67,12 @@
 
       @if (!getActiveCategories().length) {
         <div class="b5d-toolbar__placeholder">
-          {{ activeTab === 'measurement' ? translate('toolbar.empty.measurement') : translate('toolbar.empty.about') }}
+          {{ activeTab === 'measurement' ? i18n.translateForComponent(toolbarTranslations, 'toolbar.empty.measurement') : i18n.translateForComponent(toolbarTranslations, 'toolbar.empty.about') }}
         </div>
       }
 
       @if (cargando) {
-        <span class="b5d-toolbar__status">{{ translate('toolbar.loading') }}</span>
+        <span class="b5d-toolbar__status">{{ i18n.translateForComponent(toolbarTranslations, 'toolbar.loading') }}</span>
       }
     </div>
   }

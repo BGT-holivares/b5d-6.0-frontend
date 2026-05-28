@@ -27,11 +27,13 @@
     "@angular/ssr": "^21.2.11",
     "@thatopen/components": "^3.4.2",
     "@thatopen/components-front": "^3.4.2",
+    "bootstrap-icons": "^1.13.1",
     "express": "^5.1.0",
     "rxjs": "~7.8.0",
     "three": "^0.184.0",
     "tslib": "^2.3.0",
-    "web-ifc": "^0.0.77"
+    "web-ifc": "^0.0.77",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@angular/build": "^21.2.11",

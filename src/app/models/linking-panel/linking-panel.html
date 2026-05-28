@@ -1,142 +1,192 @@
 <section class="b5d-linking-panel">
   <header class="b5d-linking-panel__toolbar">
-    <strong>Estructura de conceptos y objetos IFC</strong>
-    @if (proyectoActivo) {
-      <span class="b5d-linking-panel__project">Proyecto: {{ proyectoActivo.nombre }} ({{ proyectoActivo.id }})</span>
+    <strong>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.title') }}</strong>
+    @if (activeProject) {
+      <span class="b5d-linking-panel__project">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.proyect') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
     } @else {
-      <span class="b5d-linking-panel__project b5d-linking-panel__muted">Sin proyecto B5D activo</span>
+      <span class="b5d-linking-panel__project b5d-linking-panel__muted">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.noB5DProject') }}</span>
     }
-    <button class="b5d-linking-panel__button" type="button" (click)="agregarVinculo()">
-      Asignar propiedad
-    </button>
+    <label class="b5d-linking-panel__catalog-selector">
+      <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.catalog') }}</span>
+      <select
+        class="b5d-linking-panel__select"
+        [ngModel]="selectedCatalogId"
+        (ngModelChange)="selectCatalog($event)"
+      >
+        @if (!catalogosDisponibles.length) {
+          <option [ngValue]="null">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.noCatalog') }}</option>
+        }
+        @for (catalogo of catalogosDisponibles; track catalogo.id) {
+          <option [ngValue]="catalogo.id">{{ catalogo.nombre || (i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.option') + catalogo.id) }}</option>
+        }
+      </select>
+    </label>
   </header>
 
-  @if (cargandoB5d) {
-    <div class="b5d-linking-panel__loading">Cargando datos B5D...</div>
+  @if (b5dLoading) {
+    <div class="b5d-linking-panel__loading">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.b5dLoading') }}</div>
   }
 
-  <div class="b5d-linking-panel__grid">
-    <section class="b5d-linking-panel__box">
-      <div class="b5d-linking-panel__box-title">Estructura de conceptos</div>
+  <div class="b5d-linking-panel__workspace" #layoutWorkspace [style.grid-template-rows]="workspaceTemplateRows">
+    <div class="b5d-linking-panel__top-row" [style.grid-template-columns]="topRowTemplateColumns">
+      <section class="b5d-linking-panel__box" (click)="selectActivePanel('concepts')">
+        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</div>
 
-      <table class="b5d-linking-panel__table">
-        <thead>
-          <tr>
-            <th>Clave</th>
-            <th>Descripcion</th>
-            <th>Unidad</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (concepto of conceptosEstructurados; track concepto.id) {
-            <tr
-              class="b5d-linking-panel__selectable"
-              [class.b5d-linking-panel__selectable--active]="conceptoSeleccionadoId === concepto.id"
-              (click)="seleccionarConcepto(concepto.id)"
-            >
-              <td
-                [style.padding-left]="indentation(concepto.level)"
-                [class.b5d-linking-panel__linked]="concepto.linked"
-              >
-                {{ concepto.clave || '-' }}
-              </td>
-              <td [class.b5d-linking-panel__linked]="concepto.linked">{{ concepto.descripcion || '-' }}</td>
-              <td>{{ concepto.unidad || '-' }}</td>
-            </tr>
-          } @empty {
-            <tr>
-              <td class="b5d-linking-panel__muted" colspan="3">No hay conceptos importados para este proyecto.</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </section>
-
-    <section class="b5d-linking-panel__box">
-      <div class="b5d-linking-panel__box-title">Objetos IFC</div>
-
-      <table class="b5d-linking-panel__table">
-        <thead>
-          <tr>
-            <th>Tipo de objeto</th>
-            <th>Material</th>
-            <th>Prop. Cantidad</th>
-            <th>Descripcion</th>
-            <th>Nombre IFC</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (objeto of objetosIfc; track objeto.id) {
-            <tr
-              class="b5d-linking-panel__selectable"
-              [class.b5d-linking-panel__selectable--active]="idObjetoSeleccionado === objeto.id"
-              (click)="seleccionarObjeto(objeto.id)"
-            >
-              <td [class.b5d-linking-panel__linked]="isObjetoVinculado(objeto)">
-                {{ objeto.objectType }}
-              </td>
-              <td>{{ objeto.material || '-' }}</td>
-              <td>
-                @if (idObjetoSeleccionado === objeto.id) {
-                  <select
-                    class="b5d-linking-panel__select"
-                    [(ngModel)]="llavePropiedadSeleccionada"
-                    (click)="$event.stopPropagation()"
+        <div class="b5d-linking-panel__box-content">
+          <table class="b5d-linking-panel__table">
+            <thead>
+              <tr>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.id') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.description') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.unit') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (concepto of conceptosEstructurados; track concepto.id) {
+                <tr
+                  class="b5d-linking-panel__selectable"
+                  [class.b5d-linking-panel__selectable--active]="isSelectedConcept(concepto.id)"
+                  (click)="selectConcept(concepto.id, $event)"
+                >
+                  <td
+                    [style.padding-left]="indentation(concepto.level)"
+                    [class.b5d-linking-panel__linked]="concepto.linked"
                   >
-                    <option value="">Seleccionar...</option>
-                    @for (opcion of opcionesPropiedad; track opcion) {
-                      <option [value]="opcion">{{ opcion }}</option>
+                    {{ concepto.clave || '-' }}
+                  </td>
+                  <td [class.b5d-linking-panel__linked]="concepto.linked">{{ concepto.descripcion || '-' }}</td>
+                  <td>{{ concepto.unidad || '-' }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td class="b5d-linking-panel__muted" colspan="3">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.none') }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div
+        class="b5d-linking-panel__splitter b5d-linking-panel__splitter--vertical"
+        (pointerdown)="startInternalResize($event, 'vertical')"
+      ></div>
+
+      <section class="b5d-linking-panel__box" (click)="selectActivePanel('ifc-objects')">
+        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</div>
+
+        <div class="b5d-linking-panel__box-content">
+          <table class="b5d-linking-panel__table">
+            <thead>
+              <tr>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.type') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.material') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.propQuantity') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.description') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.unit') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcEntity') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcName') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcDescription') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (objeto of objetosIfc; track objeto.id) {
+                <tr
+                  class="b5d-linking-panel__selectable"
+                  [class.b5d-linking-panel__selectable--active]="isSelectedObject(objeto.id)"
+                  (click)="selectObject(objeto.id, $event)"
+                >
+                  <td [class.b5d-linking-panel__linked]="isLinkedObject(objeto)">
+                    {{ objeto.objectType }}
+                  </td>
+                  <td>{{ objeto.material || '-' }}</td>
+                  <td>
+                    @if (idSelectedObject === objeto.id) {
+                      <select
+                        class="b5d-linking-panel__select"
+                        [(ngModel)]="selectedPropertyKey"
+                        (click)="$event.stopPropagation()"
+                      >
+                        <option value="">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.select') }}</option>
+                        @for (opcion of opcionesPropiedad; track opcion) {
+                          <option [value]="opcion">{{ opcion }}</option>
+                        }
+                      </select>
+                    } @else {
+                      {{ objeto.propertyLabel || '-' }}
                     }
-                  </select>
-                } @else {
-                  -
-                }
-              </td>
-              <td>{{ objeto.description }}</td>
-              <td>{{ objeto.ifcName }}</td>
-            </tr>
-          } @empty {
-            <tr>
-              <td class="b5d-linking-panel__muted" colspan="5">Sin objetos IFC cuantificados.</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </section>
+                  </td>
+                  <td>{{ objeto.description || '-' }}</td>
+                  <td>{{ getObjectUnit(objeto) }}</td>
+                  <td>{{ getObjectEntity(objeto) }}</td>
+                  <td>{{ getObjectName(objeto) }}</td>
+                  <td>{{ getObjectIfcDescription(objeto) }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td class="b5d-linking-panel__muted" colspan="8">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.none') }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    @if (relatedLinksVisible) {
+      <div
+        class="b5d-linking-panel__splitter b5d-linking-panel__splitter--horizontal"
+        (pointerdown)="startInternalResize($event, 'horizontal')"
+      ></div>
+
+      <section class="b5d-linking-panel__box b5d-linking-panel__bottom" (click)="selectActivePanel('related-links')">
+        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.title') }}</div>
+
+        <div class="b5d-linking-panel__box-content">
+          <table class="b5d-linking-panel__table">
+            <thead>
+              <tr>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptId') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptDescription') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.type') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.material') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.propQuantity') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.factor') }}</th>
+                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.description') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (vinculo of relatedLinksFiltrados; track vinculo.id) {
+                <tr
+                  class="b5d-linking-panel__selectable"
+                  [class.b5d-linking-panel__selectable--active]="isSelectedLink(vinculo.id)"
+                  (click)="selectLink(vinculo.id, $event)"
+                >
+                  <td [class.b5d-linking-panel__linked]="!!vinculo.conceptCode">{{ vinculo.conceptCode || '-' }}</td>
+                  <td>{{ vinculo.conceptDescription || '-' }}</td>
+                  <td [class.b5d-linking-panel__linked]="!!vinculo.objectType">{{ vinculo.objectType || '-' }}</td>
+                  <td>{{ vinculo.material || '-' }}</td>
+                  <td [class.b5d-linking-panel__linked]="!!vinculo.propertyLabel">{{ vinculo.propertyLabel || '-' }}</td>
+                  <td>{{ vinculo.conversionFactor.toFixed(3) }}</td>
+                  <td>{{ vinculo.description || '-' }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td class="b5d-linking-panel__muted" colspan="10">
+                    {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.none') }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
   </div>
 
-  <section class="b5d-linking-panel__bottom">
-    <div class="b5d-linking-panel__box-title">Vinculos relacionados</div>
-
-    <table class="b5d-linking-panel__table">
-      <thead>
-        <tr>
-          <th>Concepto</th>
-          <th>Descripcion del concepto</th>
-          <th>Objeto IFC</th>
-          <th>Propiedad con cantidad</th>
-          <th>Factor</th>
-          <th>Descripcion</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (vinculo of vinculosRelacionados; track vinculo.id) {
-          <tr>
-            <td [class.b5d-linking-panel__linked]="!!vinculo.conceptCode">{{ vinculo.conceptCode || '-' }}</td>
-            <td>{{ vinculo.conceptDescription || '-' }}</td>
-            <td [class.b5d-linking-panel__linked]="!!vinculo.objectType">{{ vinculo.ifcName || '-' }}</td>
-            <td [class.b5d-linking-panel__linked]="!!vinculo.propertyLabel">{{ vinculo.propertyLabel || '-' }}</td>
-            <td>{{ vinculo.conversionFactor.toFixed(3) }}</td>
-            <td>{{ vinculo.description || '-' }}</td>
-          </tr>
-        } @empty {
-          <tr>
-            <td class="b5d-linking-panel__muted" colspan="6">
-              Sin vinculos. Selecciona concepto, objeto IFC y propiedad.
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </section>
+  @if (!b5dLoading && !activeProject) {
+    <section class="b5d-linking-panel__empty">
+      <div class="b5d-linking-panel__muted">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.none') }}</div>
+    </section>
+  }
 </section>

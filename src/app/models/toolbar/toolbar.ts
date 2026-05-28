@@ -5,12 +5,25 @@ import { ThemeService } from '../../utils/theme.service';
 import { FloatFileTab } from '../float-file-tab/float-file-tab';
 import type { FloatingPanelId } from '../../types/floating-panel';
 import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
+import type { HomeToolbarState } from '../../types/home-toolbar';
+import { TOOLBAR_TRANSLATIONS } from './toolbar.translations';
 
 type ToolbarTab = 'home' | 'objects' | 'measurement' | 'tools' | 'view' | 'about';
 type ToolbarButtonVariant = 'small' | 'large' | 'small-dropdown' | 'large-dropdown';
 type ToolbarCategoryLayout = 'vertical' | 'horizontal' | 'grid';
 
 export type ToolbarActionId =
+  | 'home-add-item'
+  | 'home-remove-item'
+  | 'home-select-all'
+  | 'home-cut'
+  | 'home-copy'
+  | 'home-paste'
+  | 'home-select-filter'
+  | 'home-object-info'
+  | 'home-links-view'
+  | 'home-assign-property'
+  | 'home-unlinked-objects'
   | 'import-b5d-project'
   | 'export-b5d-project'
   | 'refresh-b5d-project'
@@ -55,6 +68,7 @@ type ToolbarButton = {
   panelId?: FloatingPanelId;
   variant: ToolbarButtonVariant;
   selected?: boolean;
+  disabled?: boolean;
 };
 
 type ToolbarCategory = {
@@ -91,20 +105,34 @@ export class Toolbar {
 
   readonly i18n = inject(I18nService);
   readonly visualTheme = inject(ThemeService);
+  readonly toolbarTranslations = TOOLBAR_TRANSLATIONS;
 
   @Input() cargando = false;
   @Input() toolbarContentVisible = true;
   @Input() usuarioSesion: UsuarioSesionOrm | null = null;
-  @Input() proyectoActivo: ProyectoTrabajoOrm | null = null;
+  @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
     properties: true,
     bottom: true,
   };
+  @Input() homeToolbarState: HomeToolbarState = {
+    activePanel: 'concepts',
+    linksViewVisible: true,
+    conceptsTotal: 0,
+    objectsTotal: 0,
+    linksTotal: 0,
+    selectedConceptIds: [],
+    selectedNonGroupingConceptIds: [],
+    selectedObjectIds: [],
+    selectedLinkIds: [],
+    canPasteConcept: false,
+  };
 
   @Output() archivoSeleccionado = new EventEmitter<File>();
   @Output() abrirB5dSolicitado = new EventEmitter<void>();
+  @Output() guardarB5dSolicitado = new EventEmitter<void>();
   @Output() loginSolicitado = new EventEmitter<void>();
   @Output() logoutSolicitado = new EventEmitter<void>();
   @Output() toolbarAction = new EventEmitter<ToolbarActionId>();
@@ -124,6 +152,8 @@ export class Toolbar {
 
   // Emits the requested toolbar action or handles local toolbar actions.
   runToolbarAction(button: ToolbarButton): void {
+    if (button.disabled) return;
+
     if (button.panelId) {
       this.toggleFloatingPanel.emit(button.panelId);
       return;
@@ -164,7 +194,7 @@ export class Toolbar {
 
   // Returns a translation or literal label for descriptor rendering.
   getLabel(item: { label?: string; labelKey?: string }): string {
-    if (item.labelKey) return this.translate(item.labelKey);
+    if (item.labelKey) return this.i18n.translateForComponent(this.toolbarTranslations, item.labelKey);
     return item.label ?? '';
   }
 
@@ -173,11 +203,6 @@ export class Toolbar {
     if (category.layout === 'vertical') return 'b5d-tab-category-buttons-vertical';
     if (category.layout === 'grid') return 'b5d-toolbar-action-grid';
     return 'b5d-tab-category-buttons-horizontal';
-  }
-
-  // Returns a short translation for use from the template.
-  translate(key: string): string {
-    return this.i18n.translate(key);
   }
 
   // Returns the active visibility state for a floating panel option.
@@ -191,50 +216,138 @@ export class Toolbar {
         labelKey: 'toolbar.home.category.edit',
         layout: 'vertical',
         buttons: [
-          { labelKey: 'toolbar.home.add', iconSrc: 'assets/images/Add_32x32.png', variant: 'small-dropdown' },
-          { labelKey: 'toolbar.home.remove', iconSrc: 'assets/images/Remove_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.home.selectAll', iconSrc: 'assets/images/SelectAll_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.home.cut', iconSrc: 'assets/images/Cut_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.home.copy', iconSrc: 'assets/images/Copy_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.home.paste', iconSrc: 'assets/images/Paste_32x32.png', variant: 'small' },
-        ],
-      },
-      {
-        labelKey: 'toolbar.home.category.concept',
-        layout: 'horizontal',
-        buttons: [
-          { labelKey: 'toolbar.home.addConceptEst', iconSrc: 'assets/images/AddFile_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.deleteConceptEst', iconSrc: 'assets/images/DeleteList_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.dupConceptEst', iconSrc: 'assets/images/CloneCat_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.conceptEstInfo', iconSrc: 'assets/images/CatPanelInfo_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.home.add',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-add-item',
+            disabled: this.isHomeActionDisabled('home-add-item'),
+            variant: 'small-dropdown',
+          },
+          {
+            labelKey: 'toolbar.home.remove',
+            iconSrc: 'assets/images/Remove_32x32.png',
+            action: 'home-remove-item',
+            disabled: this.isHomeActionDisabled('home-remove-item'),
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.selectAll',
+            iconSrc: 'assets/images/SelectAll_32x32.png',
+            action: 'home-select-all',
+            disabled: this.isHomeActionDisabled('home-select-all'),
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.cut',
+            iconSrc: 'assets/images/Cut_32x32.png',
+            action: 'home-cut',
+            disabled: this.isHomeActionDisabled('home-cut'),
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.copy',
+            iconSrc: 'assets/images/Copy_32x32.png',
+            action: 'home-copy',
+            disabled: this.isHomeActionDisabled('home-copy'),
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.paste',
+            iconSrc: 'assets/images/Paste_32x32.png',
+            action: 'home-paste',
+            disabled: this.isHomeActionDisabled('home-paste'),
+            variant: 'small',
+          },
         ],
       },
       {
         labelKey: 'toolbar.home.category.model',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.home.selctFilter', iconSrc: 'assets/images/SeleccFiltro_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.home.objInfo', iconSrc: 'assets/images/ObjPanelInfo_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.linksView', iconSrc: 'assets/images/LinksView_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.asignPorpt', iconSrc: 'assets/images/Paste_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.unlinkedObjs', iconSrc: 'assets/images/ObjWoLink_32x32.png', variant: 'large-dropdown' },
+          {
+            labelKey: 'toolbar.home.selectFilter',
+            iconSrc: 'assets/images/SeleccFiltro_32x32.png',
+            action: 'home-select-filter',
+            disabled: this.isHomeActionDisabled('home-select-filter'),
+            variant: 'large-dropdown',
+          },
+          {
+            labelKey: 'toolbar.home.objInfo',
+            iconSrc: 'assets/images/ObjPanelInfo_32x32.png',
+            action: 'home-object-info',
+            disabled: this.isHomeActionDisabled('home-object-info'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.linksView',
+            iconSrc: 'assets/images/LinksView_32x32.png',
+            action: 'home-links-view',
+            disabled: this.isHomeActionDisabled('home-links-view'),
+            selected: this.homeToolbarState.linksViewVisible,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.asignPorpt',
+            iconSrc: 'assets/images/Paste_32x32.png',
+            action: 'home-assign-property',
+            disabled: this.isHomeActionDisabled('home-assign-property'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.unlinkedObjs',
+            iconSrc: 'assets/images/ObjWoLink_32x32.png',
+            action: 'home-unlinked-objects',
+            disabled: this.isHomeActionDisabled('home-unlinked-objects'),
+            variant: 'large-dropdown',
+          },
         ],
-      },
-      {
-        labelKey: 'toolbar.home.category.boq',
-        layout: 'horizontal',
-        buttons: [
-          { labelKey: 'toolbar.home.calcInfo', iconSrc: 'assets/images/QTOInfo_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.home.calcBOQ', iconText: '5D', action: 'quantify-b5d', variant: 'large' },
-          { labelKey: 'toolbar.home.deleteCalc', iconSrc: 'assets/images/DeleteList_32x32.png', variant: 'large' },
-        ],
-      },
-      {
-        labelKey: 'toolbar.home.category.parameters',
-        layout: 'horizontal',
-        buttons: [{ labelKey: 'toolbar.placeholder', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' }],
       },
     ];
+  }
+
+  private isHomeActionDisabled(actionId: ToolbarActionId): boolean {
+    const state = this.homeToolbarState;
+    const hasConceptSelection = state.selectedConceptIds.length > 0;
+    const hasObjectSelection = state.selectedObjectIds.length > 0;
+    const hasLinkSelection = state.selectedLinkIds.length > 0;
+    const isConceptPanel = state.activePanel === 'concepts';
+    const isIfcObjectsPanel = state.activePanel === 'ifc-objects';
+    const isRelatedLinksPanel = state.activePanel === 'related-links';
+
+    if (actionId === 'home-add-item') return !isConceptPanel;
+
+    if (actionId === 'home-remove-item') {
+      if (isConceptPanel) return !hasConceptSelection;
+      if (isIfcObjectsPanel || isRelatedLinksPanel) return !(hasObjectSelection || hasLinkSelection);
+      return true;
+    }
+
+    if (actionId === 'home-select-all') {
+      if (isConceptPanel) return state.conceptsTotal === 0;
+      if (isIfcObjectsPanel) return state.objectsTotal === 0;
+      return state.linksTotal === 0;
+    }
+
+    if (actionId === 'home-cut' || actionId === 'home-copy') {
+      return !isConceptPanel || !hasConceptSelection;
+    }
+
+    if (actionId === 'home-paste') {
+      return !isConceptPanel || !state.canPasteConcept;
+    }
+
+    if (actionId === 'home-select-filter' || actionId === 'home-unlinked-objects') {
+      return state.objectsTotal === 0;
+    }
+
+    if (actionId === 'home-object-info') return true;
+    if (actionId === 'home-links-view') return false;
+
+    if (actionId === 'home-assign-property') {
+      return state.selectedNonGroupingConceptIds.length === 0 || !hasObjectSelection;
+    }
+
+    return false;
   }
 
   private get objectCategories(): ToolbarCategory[] {
@@ -338,7 +451,7 @@ export class Toolbar {
         labelKey: 'toolbar.view.category.type',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.view.3D', action: 'view-3d', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.view.3D', action: 'view-3d', iconSrc: 'assets/images/3D_32x32.png', variant: 'large' },
           { labelKey: 'toolbar.view.2D', action: 'view-2d', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
         ],
       },
@@ -375,43 +488,6 @@ export class Toolbar {
           { labelKey: 'toolbar.view.cleanAll', action: 'restore-all-movement', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
         ],
       },
-      // {
-      //   labelKey: 'toolbar.view.category.camera',
-      //   layout: 'horizontal',
-      //   buttons: [
-      //     { labelKey: 'toolbar.view.zoomIn', iconText: '+', action: 'zoom-in', variant: 'large' },
-      //     { labelKey: 'toolbar.view.zoomOut', iconText: '-', action: 'zoom-out', variant: 'large' },
-      //     { labelKey: 'toolbar.view.reset', iconText: 'R', action: 'reset-view', variant: 'large' },
-      //   ],
-      // },
-      // {
-      //   labelKey: 'toolbar.view.category.viewer',
-      //   layout: 'grid',
-      //   buttons: [
-      //     { labelKey: 'toolbar.view.panLeft', iconText: '<', action: 'pan-left', variant: 'small' },
-      //     { labelKey: 'toolbar.view.panRight', iconText: '>', action: 'pan-right', variant: 'small' },
-      //     { labelKey: 'toolbar.view.panUp', iconText: '^', action: 'pan-up', variant: 'small' },
-      //     { labelKey: 'toolbar.view.panDown', iconText: 'v', action: 'pan-down', variant: 'small' },
-      //     { labelKey: 'toolbar.view.rotateLeft', iconText: 'RL', action: 'rotate-left', variant: 'small' },
-      //     { labelKey: 'toolbar.view.rotateRight', iconText: 'RR', action: 'rotate-right', variant: 'small' },
-      //   ],
-      // },
-      // {
-      //   labelKey: 'toolbar.view',
-      //   layout: 'horizontal',
-      //   buttons: [
-      //     { labelKey: 'toolbar.view.expandTree', iconText: 'E', action: 'expand-tree', variant: 'large' },
-      //     { labelKey: 'toolbar.view.collapseTree', iconText: 'C', action: 'collapse-tree', variant: 'large' },
-      //     { labelKey: 'toolbar.view.clearSelection', iconText: 'X', action: 'clear-selection', variant: 'large' },
-      //     {
-      //       labelKey: 'toolbar.view.darkMode',
-      //       iconText: this.visualTheme.modoOscuroActivo ? 'N' : 'D',
-      //       action: 'toggle-theme',
-      //       selected: this.visualTheme.modoOscuroActivo,
-      //       variant: 'large',
-      //     },
-      //   ],
-      // },
       {
         labelKey: 'toolbar.view.category.window',
         layout: 'vertical',

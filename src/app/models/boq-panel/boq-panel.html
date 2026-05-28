@@ -1,63 +1,256 @@
 <section class="b5d-boq-panel">
   <header class="b5d-boq-panel__header">
     <strong>Cuantificaciones del archivo B5D</strong>
-    @if (proyectoActivo) {
-      <span>Proyecto: {{ proyectoActivo.nombre }} ({{ proyectoActivo.id }})</span>
+    @if (activeProject) {
+      <span>Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})</span>
     } @else {
       <span class="b5d-boq-panel__muted">Sin proyecto activo</span>
     }
   </header>
 
-  @if (cargandoB5d) {
+  @if (b5dLoading) {
     <div class="b5d-boq-panel__loading">Cargando cuantificaciones...</div>
   }
 
-  <div class="b5d-boq-panel__layout">
+  <div class="b5d-boq-panel__layout" [style.grid-template-columns]="layoutTemplateColumns">
     <aside class="b5d-boq-panel__list">
       <table class="b5d-boq-panel__table">
         <thead>
           <tr>
             <th>Tipo</th>
             <th>Nombre</th>
-            <th>Grupo</th>
+            <th>Descripcion</th>
+            <th>Comentarios</th>
             <th>Fecha</th>
           </tr>
         </thead>
         <tbody>
-          @for (qto of cuantificacionesB5d; track qto.id) {
-            <tr
-              class="b5d-boq-panel__selectable"
-              [class.b5d-boq-panel__selectable--active]="cuantificacionSeleccionada?.id === qto.id"
-              (click)="seleccionarCuantificacion(qto.id)"
-            >
-              <td>{{ qto.tipo ?? '-' }}</td>
-              <td>{{ qto.nombre || '-' }}</td>
-              <td>{{ qto.grupo || '-' }}</td>
-              <td>{{ qto.fecha || '-' }}</td>
-            </tr>
-          } @empty {
+          @if (!groupedQuantifications.length) {
             <tr>
-              <td class="b5d-boq-panel__muted" colspan="4">No hay cuantificaciones en este proyecto.</td>
+              <td class="b5d-boq-panel__muted" colspan="5">No hay cuantificaciones en este proyecto.</td>
             </tr>
+          } @else {
+            @for (groupRow of groupedQuantifications; track groupRow.groupName) {
+              <tr class="b5d-boq-panel__group-row">
+                <td colspan="5"><strong>Project:</strong> {{ groupRow.groupName }}</td>
+              </tr>
+
+              @for (qto of groupRow.items; track qto.id) {
+                <tr
+                  class="b5d-boq-panel__selectable"
+                  [class.b5d-boq-panel__selectable--active]="cuantificacionSeleccionada?.id === qto.id"
+                  (click)="seleccionarCuantificacion(qto.id)"
+                >
+                  <td class="b5d-boq-panel__type-cell">
+                    <i [class]="'bi ' + getQuantificationTypeIcon(qto.tipo)" [title]="getQuantificationTypeLabel(qto.tipo)"></i>
+                  </td>
+                  <td>{{ qto.nombre || '-' }}</td>
+                  <td>{{ qto.descripcion || '-' }}</td>
+                  <td>{{ qto.comentarios || '-' }}</td>
+                  <td>{{ formatQuantificationDate(qto.fecha) }}</td>
+                </tr>
+              }
+            }
           }
         </tbody>
       </table>
     </aside>
 
+    <div class="b5d-boq-panel__splitter" (pointerdown)="startInternalResize($event)"></div>
+
     <section class="b5d-boq-panel__preview">
       @if (cuantificacionSeleccionada; as seleccionada) {
-        <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>
-        <p><strong>Descripcion:</strong> {{ seleccionada.descripcion || '-' }}</p>
-        <p><strong>Comentarios:</strong> {{ seleccionada.comentarios || '-' }}</p>
-        <p><strong>Calculada:</strong> {{ seleccionada.calculada ? 'Si' : 'No' }}</p>
-        <p><strong>Libro Excel asociado:</strong> {{ etiquetaTienePlantilla }}</p>
+        <header class="b5d-boq-panel__preview-header">
+          <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>
+          <div class="b5d-boq-panel__metadata">
+            <span><strong>Descripcion:</strong> {{ seleccionada.descripcion || '-' }}</span>
+            <span><strong>Comentarios:</strong> {{ seleccionada.comentarios || '-' }}</span>
+            <span><strong>Calculada:</strong> {{ seleccionada.calculada ? 'Si' : 'No' }}</span>
+            <span><strong>Libro Excel:</strong> {{ etiquetaTienePlantilla }}</span>
+          </div>
+        </header>
 
-        <div class="b5d-boq-panel__placeholder">
-          <p>Vista previa XLSX pendiente de endpoint dedicado.</p>
-          <p>
-            Ya se muestra la metadata real importada desde B5D; cuando tengas definido el formato esperado de
-            previsualizacion, se conecta aqui.
-          </p>
+        <div class="b5d-boq-panel__workbook-actions">
+          <input
+            #workbookUploadInput
+            type="file"
+            accept=".xlsx,.xlsm"
+            class="b5d-boq-panel__file-input"
+            (change)="onWorkbookFileSelected($event)"
+          />
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="workbookUploadInProgress || workbookLoading"
+            (click)="openWorkbookUploadDialog(workbookUploadInput)"
+          >
+            {{ workbookUploadInProgress ? 'Subiendo XLSX...' : 'Subir XLSX' }}
+          </button>
+          <input
+            type="text"
+            class="b5d-boq-panel__cell-address"
+            [value]="selectedWorkbookCellAddress"
+            readonly
+            placeholder="Celda"
+          />
+          <input
+            type="text"
+            class="b5d-boq-panel__cell-value"
+            [value]="selectedWorkbookCellValue"
+            (input)="selectedWorkbookCellValue = $any($event.target).value"
+            placeholder="Valor de celda"
+          />
+          <input
+            type="text"
+            class="b5d-boq-panel__cell-formula"
+            [value]="selectedWorkbookCellFormula"
+            (input)="selectedWorkbookCellFormula = $any($event.target).value"
+            placeholder="Formula (sin '=')"
+          />
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="!selectedWorkbookCellAddress || workbookLoading"
+            (click)="applySelectedCellValueChange()"
+          >
+            Aplicar celda
+          </button>
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="!selectedWorkbookCellAddress || workbookLoading"
+            (click)="applySelectedCellFormulaChange()"
+          >
+            Aplicar formula
+          </button>
+          <input
+            type="text"
+            class="b5d-boq-panel__cell-size"
+            [value]="selectedWorkbookRowHeightPx"
+            (input)="selectedWorkbookRowHeightPx = $any($event.target).value"
+            placeholder="Alto fila px"
+          />
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="!selectedWorkbookRowNumber || workbookLoading"
+            (click)="applySelectedRowHeightChange()"
+          >
+            Aplicar fila
+          </button>
+          <input
+            type="text"
+            class="b5d-boq-panel__cell-size"
+            [value]="selectedWorkbookColumnWidthPx"
+            (input)="selectedWorkbookColumnWidthPx = $any($event.target).value"
+            placeholder="Ancho col px"
+          />
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="!selectedWorkbookColumnNumber || workbookLoading"
+            (click)="applySelectedColumnWidthChange()"
+          >
+            Aplicar col
+          </button>
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            [disabled]="workbookSavingChanges || workbookLoading"
+            (click)="saveWorkbookSheetChanges()"
+          >
+            {{ workbookSavingChanges ? 'Guardando...' : 'Guardar cambios' }}
+          </button>
+          <button
+            type="button"
+            class="b5d-boq-panel__upload-button"
+            (click)="toggleWorkbookDebug()"
+          >
+            {{ workbookDebugEnabled ? 'Ocultar debug' : 'Debug endpoints' }}
+          </button>
+          @if (workbookDebugEnabled) {
+            <button
+              type="button"
+              class="b5d-boq-panel__upload-button"
+              [disabled]="workbookLoading"
+              (click)="runWorkbookEndpointDebug()"
+            >
+              Ejecutar debug
+            </button>
+          }
+        </div>
+
+        @if (workbookLoading) {
+          <div class="b5d-boq-panel__message b5d-boq-panel__message--info">Cargando libro Excel...</div>
+        }
+
+        @if (workbookInfoMessage) {
+          <div class="b5d-boq-panel__message b5d-boq-panel__message--info">{{ workbookInfoMessage }}</div>
+        }
+
+        @if (workbookError) {
+          <div class="b5d-boq-panel__message b5d-boq-panel__message--warning">{{ workbookError }}</div>
+        }
+
+        @if (workbookDebugEnabled && workbookDebugOutput) {
+          <pre class="b5d-boq-panel__debug-output">{{ workbookDebugOutput }}</pre>
+        }
+
+        @if (workbookSheets.length) {
+          <div class="b5d-boq-panel__sheet-tabs">
+            <div class="b5d-boq-panel__sheet-tab-list">
+              @for (sheetName of workbookSheets; track sheetName) {
+                <button
+                  type="button"
+                  class="b5d-boq-panel__sheet-tab"
+                  [class.b5d-boq-panel__sheet-tab--active]="sheetName === selectedSheetName"
+                  (click)="seleccionarHoja(sheetName)"
+                >
+                  {{ sheetName }}
+                </button>
+              }
+            </div>
+
+            <div class="b5d-boq-panel__zoom-controls">
+              <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseSheetZoom()">-</button>
+              <label class="b5d-boq-panel__zoom-input-wrapper" aria-label="Zoom de hoja">
+                <input
+                  type="text"
+                  class="b5d-boq-panel__zoom-input"
+                  [value]="sheetZoomInputValue"
+                  (input)="onSheetZoomInputValueChange($any($event.target).value)"
+                  (blur)="commitSheetZoomInput()"
+                  (keydown.enter)="commitSheetZoomInput()"
+                />
+                <span class="b5d-boq-panel__zoom-input-suffix">%</span>
+              </label>
+              <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseSheetZoom()">+</button>
+              <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetSheetZoom()">100%</button>
+            </div>
+          </div>
+        }
+
+        <div class="b5d-boq-panel__sheet-viewer">
+          @if (selectedSheetDocument) {
+            @if (sheetFrameMode === 'sandboxed') {
+              <iframe
+                class="b5d-boq-panel__sheet-frame"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+                [src]="sheetPreviewUrl"
+                title="Vista previa del libro Excel"
+              ></iframe>
+            } @else {
+              <iframe
+                class="b5d-boq-panel__sheet-frame"
+                referrerpolicy="no-referrer"
+                [src]="sheetPreviewUrl"
+                title="Vista previa del libro Excel"
+              ></iframe>
+            }
+          } @else if (!workbookLoading && !workbookError) {
+            <div class="b5d-boq-panel__message">Selecciona una cuantificacion con libro Excel para previsualizar.</div>
+          }
         </div>
       } @else {
         <p class="b5d-boq-panel__muted">Selecciona una cuantificacion para ver su detalle.</p>

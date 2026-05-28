@@ -40,6 +40,10 @@ type ModelTransparencyState = {
   localIds: Set<number>;
 };
 
+type ExtractedIfcQuantities = {
+  values: Record<string, string>;
+};
+
 @Injectable({ providedIn: 'root' })
 export class VisorIfc {
   readonly cargando = signal(false);
@@ -358,6 +362,41 @@ export class VisorIfc {
     }
   }
 
+  // Highlights multiple model elements from the linking panel object table.
+  async seleccionarElementosPorLocalIds(localIds: number[]): Promise<void> {
+    if (!this.modeloCargado || !this.resaltador) return;
+    const uniqueLocalIds = Array.from(new Set(localIds.filter((localId) => Number.isInteger(localId) && localId > 0)));
+
+    if (!uniqueLocalIds.length) {
+      await this.limpiarSeleccion();
+      return;
+    }
+
+    try {
+      let modelId = this.getModelId(this.modeloCargado);
+      if (!modelId && this.fragmentos?.list) {
+        for (const [fragmentModelId] of this.fragmentos.list) {
+          modelId = fragmentModelId;
+          break;
+        }
+      }
+      if (!modelId || !this.resaltador.highlightByID) return;
+
+      this.activeModelId = modelId;
+      if (this.resaltador.clear) await this.resaltador.clear();
+      await this.resaltador.highlightByID('select', {
+        [modelId]: new Set(uniqueLocalIds),
+      });
+
+      const firstLocalId = uniqueLocalIds[uniqueLocalIds.length - 1];
+      const { informacion } = await this.construirInformacionSeleccionada(this.modeloCargado, firstLocalId);
+      this.informacionSeleccionada.set(informacion);
+      await this.focusSelectedElements();
+    } catch (error) {
+      console.warn('No se pudo seleccionar elementos por IDs locales:', error);
+    }
+  }
+
   async acercar(): Promise<void> {
     await this.mundo?.camera?.controls?.dolly(-2, true);
   }
@@ -560,10 +599,9 @@ export class VisorIfc {
     try {
       const pointerPosition = this.getPointerPositionFromEvent(event);
       const interactableObjects = this.getInteractableModelObjects();
-      const intersection =
-        this.raycasterIfc?.castRayToObjects?.(interactableObjects, pointerPosition) ??
-        (await this.raycasterIfc?.castRay?.({ position: pointerPosition, items: interactableObjects }));
-      const targetPoint = intersection?.point as Vector3 | undefined;
+      if (!pointerPosition || !interactableObjects.length) return;
+
+      const targetPoint = this.obtenerPuntoInterseccion(pointerPosition, interactableObjects);
       if (!targetPoint) return;
 
       await this.moveSelectionToPoint(selectionMap, targetPoint);
@@ -596,6 +634,45 @@ export class VisorIfc {
       })
       .map((model) => model.object)
       .filter(Boolean);
+  }
+
+  // Calculates the first world-space intersection point from pointer coordinates.
+  private obtenerPuntoInterseccion(
+    pointerPosition: { x: number; y: number },
+    objects: any[],
+  ): Vector3 | null {
+    if (!this.moduloThree || !objects.length) return null;
+
+    const camera = this.mundo?.camera?.three;
+    if (!camera) return null;
+
+    const raycaster = new this.moduloThree.Raycaster();
+    const pointer = new this.moduloThree.Vector2(pointerPosition.x, pointerPosition.y);
+    raycaster.setFromCamera(pointer, camera);
+
+    let closestPoint: Vector3 | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const object of objects) {
+      try {
+        const intersections = raycaster.intersectObject(object, true);
+        const firstValidIntersection = intersections.find(
+          (intersection) =>
+            !!intersection?.point &&
+            typeof intersection.distance === 'number' &&
+            Number.isFinite(intersection.distance),
+        );
+
+        if (!firstValidIntersection || firstValidIntersection.distance >= closestDistance) continue;
+        closestDistance = firstValidIntersection.distance;
+        closestPoint = firstValidIntersection.point.clone?.() ?? firstValidIntersection.point;
+      } catch {
+        // Ignore malformed geometries and continue with the next object.
+        continue;
+      }
+    }
+
+    return closestPoint;
   }
 
   // Keeps the local selection cache aligned with the highlighter selection.
@@ -752,17 +829,16 @@ export class VisorIfc {
     return result;
   }
 
-  // Returns the local IDs known by the B5D tree, falling back to model items.
+  // Returns the local IDs known by the active B5D tree model.
   private async getKnownElementLocalIds(model: any, modelId: string): Promise<number[]> {
     const activeTreeModelId = this.getModelId(this.modeloCargado);
     const localIds =
       activeTreeModelId && activeTreeModelId === modelId ? Array.from(this.registrosArbol.keys()) : [];
     if (localIds.length) return localIds;
 
-    if (!model?.getItemsIds) return [];
-
-    const itemIds = await model.getItemsIds();
-    return Array.from(itemIds);
+    // Avoid querying stale fragment models that may still exist in the list map
+    // while the worker has already dropped their internal model reference.
+    return [];
   }
 
   // Moves the selected elements so their center reaches the clicked point.
@@ -1192,14 +1268,38 @@ export class VisorIfc {
     if (!this.resaltador || !this.fragmentos?.list) return;
 
     const selectableMap: Record<string, Set<number>> = {};
+    const staleModelIds = new Set<string>();
 
     for (const [modelId, model] of this.fragmentos.list) {
       const isVisibleModel = model?.object?.visible && !this.hiddenModelIds.has(modelId);
       if (!isVisibleModel) continue;
 
-      const visibleIds = await model.getItemsByVisibility?.(true);
+      let visibleIds: number[] = [];
+      try {
+        visibleIds = await this.getKnownElementLocalIds(model, modelId);
+      } catch (error) {
+        console.warn('Could not refresh selectable items for model visibility filtering.', {
+          modelId,
+          error,
+        });
+        staleModelIds.add(modelId);
+        continue;
+      }
+
       if (!Array.isArray(visibleIds) || !visibleIds.length) continue;
       selectableMap[modelId] = new Set(visibleIds);
+    }
+
+    for (const staleModelId of staleModelIds) {
+      delete this.selectedModelItems[staleModelId];
+      this.hiddenModelIds.delete(staleModelId);
+      if (this.activeModelId === staleModelId) this.activeModelId = null;
+    }
+
+    if (staleModelIds.size) {
+      this.modelosIfcCargados.update((models) =>
+        models.filter((model) => !staleModelIds.has(model.id)),
+      );
     }
 
     this.resaltador.selectable = {
@@ -1639,7 +1739,7 @@ export class VisorIfc {
     );
 
     const claseIfc = await this.obtenerClaseIfcRapida(modelo, localId);
-    const cantidades = this.extraerCantidadesDesdeRelaciones(datos);
+    const { values: cantidades } = this.extraerCantidadesDesdeRelaciones(datos, localId);
     const registroCacheado = this.registrosArbol.get(localId);
     const areaBruta = this.elegirNumeroCantidad(cantidades, [/gross.*area/, /bruta/]);
     const areaNeta = this.elegirNumeroCantidad(cantidades, [/net.*area/, /neta/]);
@@ -1719,26 +1819,29 @@ export class VisorIfc {
     }
   }
 
-  private extraerCantidadesDesdeRelaciones(datosElemento: any): Record<string, string> {
-    const resultado: Record<string, string> = {};
-    const visitados = new WeakSet<object>();
+  // Extracts IFC quantities from IsDefinedBy definitions for the selected element.
+  private extraerCantidadesDesdeRelaciones(
+    datosElemento: any,
+    selectedLocalId: number,
+  ): ExtractedIfcQuantities {
+    const values: Record<string, string> = {};
+    let visitedDefinitionNodes = new WeakSet<object>();
 
-    const agregarEntrada = (grupo: string, nombre: string, valor: unknown): void => {
-      if (valor === undefined || valor === null || valor === '') return;
+    const addValue = (group: string, name: string, value: unknown): void => {
+      if (value === undefined || value === null || value === '') return;
 
-      const llave = grupo ? `${grupo}.${nombre}` : nombre;
-      resultado[llave] = String(valor);
+      const key = group ? `${group}.${name}` : name;
+      if (key in values) return;
+      values[key] = String(value);
     };
 
-    const escalar = (valor: any): unknown => {
-      if (valor === undefined || valor === null) return undefined;
-      if (typeof valor === 'string' || typeof valor === 'number' || typeof valor === 'boolean') {
-        return valor;
-      }
-      if (Array.isArray(valor)) return undefined;
+    const extractScalar = (value: any): unknown => {
+      if (value === undefined || value === null) return null;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+      if (Array.isArray(value)) return null;
 
-      if (typeof valor === 'object') {
-        const llaves = [
+      if (typeof value === 'object') {
+        const keys = [
           'value',
           'wrappedValue',
           'Value',
@@ -1751,85 +1854,171 @@ export class VisorIfc {
           'TimeValue',
         ];
 
-        for (const llave of llaves) {
-          if (llave in valor && valor[llave] != null) return escalar(valor[llave]);
+        for (const key of keys) {
+          if (key in value && value[key] != null) return extractScalar(value[key]);
         }
       }
 
-      return undefined;
+      return null;
     };
 
-    const analizarEntrada = (entrada: any, grupo: string): void => {
-      if (!entrada || typeof entrada !== 'object') return;
+    const analyzeEntry = (
+      entry: any,
+      group: string,
+    ): void => {
+      if (!entry || typeof entry !== 'object') return;
 
-      const nombre =
-        obtenerValorIfc(entrada?.Name) ||
-        obtenerValorIfc(entrada?.Description) ||
-        obtenerValorIfc(entrada?.LongName) ||
+      const name =
+        obtenerValorIfc(entry?.Name) ||
+        obtenerValorIfc(entry?.Description) ||
+        obtenerValorIfc(entry?.LongName) ||
         'SinNombre';
 
-      agregarEntrada(grupo, nombre, escalar(entrada));
+      const scalar = extractScalar(entry);
+      if (scalar === null) return;
+
+      addValue(group, name, scalar);
     };
 
-    const analizarDefinicion = (definicion: any): void => {
-      if (!definicion || typeof definicion !== 'object') return;
+    const analyzeDefinition = (definition: any): void => {
+      if (!definition || typeof definition !== 'object') return;
 
-      const grupo = obtenerValorIfc(definicion?.Name) || obtenerValorIfc(definicion?.LongName) || 'IFC';
+      const group = obtenerValorIfc(definition?.Name) || obtenerValorIfc(definition?.LongName) || 'IFC';
 
-      if (Array.isArray(definicion?.HasProperties)) {
-        for (const propiedad of definicion.HasProperties) analizarEntrada(propiedad, grupo);
+      if (Array.isArray(definition?.HasProperties)) {
+        for (const property of definition.HasProperties) {
+          analyzeEntry(property, group);
+        }
       }
 
-      if (Array.isArray(definicion?.Quantities)) {
-        for (const cantidad of definicion.Quantities) analizarEntrada(cantidad, grupo);
+      if (Array.isArray(definition?.Quantities)) {
+        for (const quantity of definition.Quantities) {
+          analyzeEntry(quantity, group);
+        }
       }
     };
 
-    const analizarProfundo = (nodo: any, grupoActual = 'IFC'): void => {
-      if (!nodo || typeof nodo !== 'object') return;
-      if (visitados.has(nodo)) return;
+    // Traverses only RelatingPropertyDefinition branches to avoid pulling sibling
+    // element data from the full IfcRelDefinesByProperties relation graph.
+    const analyzeRelatingDefinitionBranch = (
+      definitionNode: any,
+    ): void => {
+      if (!definitionNode || typeof definitionNode !== 'object') return;
+      if (visitedDefinitionNodes.has(definitionNode)) return;
+      visitedDefinitionNodes.add(definitionNode);
 
-      visitados.add(nodo);
-
-      if (Array.isArray(nodo)) {
-        for (const item of nodo) analizarProfundo(item, grupoActual);
+      if (Array.isArray(definitionNode)) {
+        for (let index = 0; index < definitionNode.length; index += 1) {
+          analyzeRelatingDefinitionBranch(definitionNode[index]);
+        }
         return;
       }
 
-      const grupoPosible = obtenerValorIfc(nodo?.Name) || obtenerValorIfc(nodo?.LongName) || grupoActual;
+      analyzeDefinition(definitionNode);
 
-      if (nodo?.RelatingPropertyDefinition) {
-        analizarDefinicion(nodo.RelatingPropertyDefinition);
-        analizarProfundo(nodo.RelatingPropertyDefinition, grupoPosible);
-      }
-
-      if (Array.isArray(nodo?.HasProperties)) {
-        for (const propiedad of nodo.HasProperties) {
-          analizarEntrada(propiedad, grupoPosible);
-          analizarProfundo(propiedad, grupoPosible);
+      if (Array.isArray(definitionNode?.HasPropertySets)) {
+        for (let index = 0; index < definitionNode.HasPropertySets.length; index += 1) {
+          analyzeRelatingDefinitionBranch(definitionNode.HasPropertySets[index]);
         }
       }
 
-      if (Array.isArray(nodo?.Quantities)) {
-        for (const cantidad of nodo.Quantities) {
-          analizarEntrada(cantidad, grupoPosible);
-          analizarProfundo(cantidad, grupoPosible);
-        }
-      }
+      const candidateChildKeys = [
+        'value',
+        'Value',
+        'Properties',
+        'PropertySets',
+        'PropertySetDefinitions',
+        'Quantities',
+        'HasProperties',
+      ];
 
-      for (const valor of Object.values(nodo)) {
-        if (valor && typeof valor === 'object') analizarProfundo(valor, grupoPosible);
+      for (const childKey of candidateChildKeys) {
+        const childNode = definitionNode?.[childKey];
+        if (!childNode || typeof childNode !== 'object') continue;
+
+        analyzeRelatingDefinitionBranch(childNode);
       }
     };
 
-    const relacionados = Array.isArray(datosElemento?.IsDefinedBy) ? datosElemento.IsDefinedBy : [];
+    const selectedExpressId =
+      obtenerValorIfc(datosElemento?.ExpressID) || obtenerValorIfc(datosElemento?.expressID) || '';
+    const selectedGlobalId = obtenerValorIfc(datosElemento?.GlobalId) || '';
+    const selectedLocalIdText = String(selectedLocalId);
 
-    for (const relacion of relacionados) {
-      if (relacion?.RelatingPropertyDefinition) analizarDefinicion(relacion.RelatingPropertyDefinition);
-      analizarProfundo(relacion, 'IFC');
+    const relationMatchesSelectedElement = (
+      relation: any,
+    ): 'matched' | 'mismatch' | 'unknown' => {
+      const relatedObjects = Array.isArray(relation?.RelatedObjects) ? relation.RelatedObjects : [];
+      if (!relatedObjects.length) return 'unknown';
+
+      let comparableIdentityFound = false;
+
+      for (const relatedObject of relatedObjects) {
+        const relatedExpressId =
+          obtenerValorIfc(relatedObject?.ExpressID) ||
+          obtenerValorIfc(relatedObject?.expressID) ||
+          (typeof relatedObject === 'number' ? String(relatedObject) : '');
+        const relatedGlobalId = obtenerValorIfc(relatedObject?.GlobalId);
+        const relatedLocalId =
+          obtenerValorIfc(relatedObject?.localId) ||
+          obtenerValorIfc(relatedObject?.LocalId) ||
+          (typeof relatedObject === 'number' ? String(relatedObject) : '');
+
+        const hasComparableExpress = !!selectedExpressId && !!relatedExpressId;
+        const hasComparableGlobal = !!selectedGlobalId && !!relatedGlobalId;
+        const hasComparableLocal = !!relatedLocalId;
+        if (hasComparableExpress || hasComparableGlobal || hasComparableLocal) {
+          comparableIdentityFound = true;
+        }
+
+        const expressIdMatches =
+          hasComparableExpress && relatedExpressId === selectedExpressId;
+        const globalIdMatches = hasComparableGlobal && relatedGlobalId === selectedGlobalId;
+        const localIdMatches = hasComparableLocal && relatedLocalId === selectedLocalIdText;
+
+        if (expressIdMatches || globalIdMatches || localIdMatches) return 'matched';
+      }
+
+      if (!comparableIdentityFound) return 'unknown';
+      return 'mismatch';
+    };
+
+    const relatedDefinitions = Array.isArray(datosElemento?.IsDefinedBy) ? datosElemento.IsDefinedBy : [];
+
+    const processRelations = (skipMismatchedRelations: boolean): number => {
+      let processedRelations = 0;
+
+      for (let relationIndex = 0; relationIndex < relatedDefinitions.length; relationIndex += 1) {
+        const relation = relatedDefinitions[relationIndex];
+        const relationMatch = relationMatchesSelectedElement(relation);
+
+        const directDefinitionShape =
+          Array.isArray(relation?.HasProperties) ||
+          Array.isArray(relation?.Quantities) ||
+          Array.isArray(relation?.HasPropertySets) ||
+          Array.isArray(relation?.PropertySets) ||
+          Array.isArray(relation?.PropertySetDefinitions);
+        const hasRelatingDefinition = !!relation?.RelatingPropertyDefinition || directDefinitionShape;
+
+        if (skipMismatchedRelations && relationMatch === 'mismatch') continue;
+        if (!hasRelatingDefinition) continue;
+
+        processedRelations += 1;
+        const definitionNode = relation?.RelatingPropertyDefinition ?? relation;
+        analyzeRelatingDefinitionBranch(definitionNode);
+      }
+
+      return processedRelations;
+    };
+
+    const processedWithStrictFilter = processRelations(true);
+
+    if (!Object.keys(values).length && processedWithStrictFilter === 0) {
+      visitedDefinitionNodes = new WeakSet<object>();
+      processRelations(false);
     }
 
-    return resultado;
+    return { values };
   }
 
   private elegirNumeroCantidad(cantidades: Record<string, string>, patrones: RegExp[]): number | null {

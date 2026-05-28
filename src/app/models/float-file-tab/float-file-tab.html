@@ -1,5 +1,5 @@
 <section class="b5d-float-file-tab">
-  <header class="b5d-float-file-tab__header">Archivo</header>
+  <header class="b5d-float-file-tab__header">{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.title') }}</header>
 
   <div class="b5d-float-file-tab__content">
     <nav class="b5d-float-file-tab__menu">
@@ -7,67 +7,67 @@
         <span class="b5d-float-file-tab__icon">
           <img src="assets/images/AddFile_32x32.png" alt="" />
         </span>
-        <span>Abrir ifc</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.open') }}</span>
         <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
       </label>
 
       <button class="b5d-float-file-tab__item" type="button" (click)="abrirB5dSolicitado.emit()">
         <span class="b5d-float-file-tab__icon">B5D</span>
-        <span>Importar base B5D</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.importB5D') }}</span>
       </button>
 
-      <button class="b5d-float-file-tab__item" type="button">
+      <button class="b5d-float-file-tab__item" type="button" (click)="guardarB5dSolicitado.emit()">
         <span class="b5d-float-file-tab__icon">S</span>
-        <span>Guardar</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.exportB5D') }}</span>
       </button>
 
       <button class="b5d-float-file-tab__item" type="button" (click)="toggleLanguage.emit()">
         <span class="b5d-float-file-tab__icon">L</span>
-        <span>Idioma</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.language') }}</span>
       </button>
 
       @if (usuarioSesion) {
         <button class="b5d-float-file-tab__item" type="button" (click)="loginSolicitado.emit()">
           <span class="b5d-float-file-tab__icon">U</span>
-          <span>Cambiar usuario</span>
+          <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.changeUser') }}</span>
         </button>
         <button class="b5d-float-file-tab__item" type="button" (click)="logoutSolicitado.emit()">
           <span class="b5d-float-file-tab__icon">-</span>
-          <span>Cerrar sesion</span>
+          <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.logout') }}</span>
         </button>
       } @else {
         <button class="b5d-float-file-tab__item" type="button" (click)="loginSolicitado.emit()">
           <span class="b5d-float-file-tab__icon">+</span>
-          <span>Iniciar sesion</span>
+          <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.login') }}</span>
         </button>
       }
 
       <button class="b5d-float-file-tab__item" type="button">
         <span class="b5d-float-file-tab__icon">?</span>
-        <span>Ayuda</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.help') }}</span>
       </button>
     </nav>
 
     <section class="b5d-float-file-tab__recent">
-      <h3>Abiertos recientemente</h3>
-      @if (proyectoActivo) {
+      <h3>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.recentLabel') }}</h3>
+      @if (activeProject) {
         <div class="b5d-float-file-tab__recent-line">
-          <strong>Proyecto B5D:</strong> {{ proyectoActivo.nombre }}
+          <strong>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.b5dProyect') }}</strong> {{ activeProject.nombre }}
         </div>
         <div class="b5d-float-file-tab__recent-line">
-          <strong>Archivo B5D:</strong> {{ proyectoActivo.archivo_original }}
+          <strong>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.b5dFile') }}</strong> {{ activeProject.archivo_original }}
         </div>
         <div class="b5d-float-file-tab__recent-line">
-          <strong>IFC reciente:</strong>
-          {{ proyectoActivo.ifc_nombre_archivo || 'Sin referencia IFC todavia' }}
+          <strong>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.recentIfc') }}</strong>
+          {{ activeProject.ifc_nombre_archivo || i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.noRecentIfc') }}
         </div>
       } @else {
-        <div class="b5d-float-file-tab__recent-line">Sin proyecto B5D activo.</div>
+        <div class="b5d-float-file-tab__recent-line">{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.noActiveProject') }}</div>
       }
     </section>
   </div>
 
   <footer class="b5d-float-file-tab__footer">
-    <button type="button" (click)="closePanel.emit()">Cerrar</button>
+    <button type="button" (click)="closePanel.emit()">{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.close') }}</button>
   </footer>
 </section>

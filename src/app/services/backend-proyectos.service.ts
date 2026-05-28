@@ -4,9 +4,24 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import {
+  CatalogoB5DOrm,
   ConceptoB5DOrm,
+  SaveB5DProyectPayloadOrm,
+  GuardarProyectoB5DResponseOrm,
   CuantificacionB5DOrm,
   EliminarProyectoResponseOrm,
+  WorkbookCellsLayerOrm,
+  WorkbookCellChangeOrm,
+  WorkbookCellUpdateResponseOrm,
+  WorkbookColumnLayoutChangeOrm,
+  WorkbookImagesLayerOrm,
+  WorkbookLayoutLayerOrm,
+  WorkbookLayoutUpdateResponseOrm,
+  WorkbookLayersOrm,
+  WorkbookMergesLayerOrm,
+  WorkbookStylesLayerOrm,
+  WorkbookSummaryOrm,
+  WorkbookRowLayoutChangeOrm,
   ProyectoTrabajoOrm,
   ResultadosOrm,
   VinculoConceptoBimOrm,
@@ -90,6 +105,151 @@ export class BackendProyectosService {
     );
   }
 
+  descargarLibroExcelCuantificacion(proyectoId: number, cuantificacionId: number): Observable<ArrayBuffer> {
+    return this.http.get(this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/`), {
+      ...this.requestOptions,
+      responseType: 'arraybuffer',
+    });
+  }
+
+  subirLibroExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    archivoExcel: File,
+  ): Observable<CuantificacionB5DOrm> {
+    const formData = new FormData();
+    formData.append('archivo', archivoExcel);
+    return this.http.post<CuantificacionB5DOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/subir/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  obtenerResumenLibroExcelCuantificacion(proyectoId: number, cuantificacionId: number): Observable<WorkbookSummaryOrm> {
+    return this.http.get<WorkbookSummaryOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/resumen/`),
+      this.requestOptions,
+    );
+  }
+
+  obtenerCapasHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookLayersOrm> {
+    return this.http.get<WorkbookLayersOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/capas/`),
+      this.requestOptions,
+    );
+  }
+
+  obtenerCeldasHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookCellsLayerOrm> {
+    return this.http.get<WorkbookCellsLayerOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/celdas/`),
+      this.requestOptions,
+    );
+  }
+
+  actualizarCeldasHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+    changes: WorkbookCellChangeOrm[],
+  ): Observable<WorkbookCellUpdateResponseOrm> {
+    return this.http.patch<WorkbookCellUpdateResponseOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/celdas/`),
+      { changes },
+      this.requestOptions,
+    );
+  }
+
+  actualizarLayoutHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+    rows: WorkbookRowLayoutChangeOrm[],
+    columns: WorkbookColumnLayoutChangeOrm[],
+  ): Observable<WorkbookLayoutUpdateResponseOrm> {
+    return this.http.patch<WorkbookLayoutUpdateResponseOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/layout/`),
+      { rows, columns },
+      this.requestOptions,
+    );
+  }
+
+  obtenerLayoutHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookLayoutLayerOrm> {
+    return this.http.get<WorkbookLayoutLayerOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/layout/`),
+      this.requestOptions,
+    );
+  }
+
+  obtenerEstilosHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookStylesLayerOrm> {
+    return this.http.get<WorkbookStylesLayerOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/estilos/`),
+      this.requestOptions,
+    );
+  }
+
+  obtenerMergesHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookMergesLayerOrm> {
+    return this.http.get<WorkbookMergesLayerOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/merges/`),
+      this.requestOptions,
+    );
+  }
+
+  obtenerImagenesHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+  ): Observable<WorkbookImagesLayerOrm> {
+    return this.http.get<WorkbookImagesLayerOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/imagenes/`),
+      this.requestOptions,
+    );
+  }
+
+  descargarImagenHojaExcelCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    sheetIndex: number,
+    imageId: string,
+  ): Observable<Blob> {
+    return this.http.get(
+      this.url(
+        `/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/libro-excel/hojas/${sheetIndex}/imagenes/${imageId}/`,
+      ),
+      {
+        ...this.requestOptions,
+        responseType: 'blob',
+      },
+    );
+  }
+
+  listarCatalogos(proyectoId: number): Observable<ResultadosOrm<CatalogoB5DOrm>> {
+    return this.http.get<ResultadosOrm<CatalogoB5DOrm>>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/`),
+      this.requestOptions,
+    );
+  }
+
   actualizarIfcMetadata(
     proyectoId: number,
     payload: ActualizarIfcMetadataPayload,
@@ -108,6 +268,17 @@ export class BackendProyectosService {
   ): Observable<ConceptoB5DOrm> {
     return this.http.patch<ConceptoB5DOrm>(
       this.url(`/api/proyectos/${proyectoId}/conceptos/${conceptoId}/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
+  guardarProyecto(
+    proyectoId: number,
+    payload: SaveB5DProyectPayloadOrm,
+  ): Observable<GuardarProyectoB5DResponseOrm> {
+    return this.http.post<GuardarProyectoB5DResponseOrm>(
+      this.url(`/api/proyectos/${proyectoId}/guardar/`),
       payload,
       this.requestOptions,
     );

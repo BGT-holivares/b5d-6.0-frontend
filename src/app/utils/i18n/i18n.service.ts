@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { B5D_TRANSLATIONS, type B5DLanguage } from './translations';
+import { type B5DLanguage, type ComponentTranslations } from './translations';
 
 const LANGUAGE_KEY = 'b5d-language';
 
@@ -7,9 +7,10 @@ const LANGUAGE_KEY = 'b5d-language';
 export class I18nService {
   readonly language = signal<B5DLanguage>(this.getInitialLanguage());
 
-  translate(key: string): string {
+  // Returns a translated value for a key using the provided component dictionary.
+  translateForComponent(componentTranslations: ComponentTranslations, key: string): string {
     const actualLanguage = this.language();
-    return B5D_TRANSLATIONS[actualLanguage][key] ?? B5D_TRANSLATIONS['es-MX'][key] ?? key;
+    return componentTranslations[actualLanguage][key] ?? componentTranslations['es-MX'][key] ?? key;
   }
 
   // Changes active language and stores preference in the browser

@@ -75,6 +75,12 @@
   border-color: var(--b5d-toolbar-selected-border);
 }
 
+.b5d-toolbar-action:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .b5d-toolbar-action--selected {
   background: var(--b5d-toolbar-selected);
   border-color: var(--b5d-toolbar-selected-border);
