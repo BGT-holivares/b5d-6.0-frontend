@@ -125,9 +125,30 @@ body {
   box-shadow: none;
 }
 
-.b5d-floating-panel,
-.b5d-floating-panel * {
+.b5d-floating-panel {
   box-sizing: border-box;
+}
+
+.b5d-floating-panel *,
+.b5d-floating-panel *::before,
+.b5d-floating-panel *::after {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.b5d-floating-panel__body,
+.b5d-floating-panel__body > * {
+  width: 100%;
+}
+
+.b5d-floating-panel__titlebar,
+.b5d-floating-panel__actions,
+.b5d-floating-panel__title {
+  width: auto;
+}
+
+.b5d-floating-panel__title {
+  flex: 1 1 auto;
 }
 
 .b5d-floating-panel__titlebar {
@@ -256,6 +277,28 @@ body {
   width: 12px;
   height: 12px;
   cursor: nesw-resize;
+}
+
+.b5d-resizable-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.b5d-resizable-table__header {
+  position: relative;
+  padding-right: 14px !important;
+}
+
+.b5d-resizable-table__handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
 }
 
 .b5d-tab {

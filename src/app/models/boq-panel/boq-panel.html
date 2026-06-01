@@ -14,7 +14,7 @@
 
   <div class="b5d-boq-panel__layout" [style.grid-template-columns]="layoutTemplateColumns">
     <aside class="b5d-boq-panel__list">
-      <table class="b5d-boq-panel__table">
+      <table class="b5d-boq-panel__table" b5dResizableTable="boq-list">
         <thead>
           <tr>
             <th>Tipo</th>
@@ -231,26 +231,14 @@
         }
 
         <div class="b5d-boq-panel__sheet-viewer">
-          @if (selectedSheetDocument) {
-            @if (sheetFrameMode === 'sandboxed') {
-              <iframe
-                class="b5d-boq-panel__sheet-frame"
-                sandbox="allow-scripts"
-                referrerpolicy="no-referrer"
-                [src]="sheetPreviewUrl"
-                title="Vista previa del libro Excel"
-              ></iframe>
-            } @else {
-              <iframe
-                class="b5d-boq-panel__sheet-frame"
-                referrerpolicy="no-referrer"
-                [src]="sheetPreviewUrl"
-                title="Vista previa del libro Excel"
-              ></iframe>
-            }
-          } @else if (!workbookLoading && !workbookError) {
-            <div class="b5d-boq-panel__message">Selecciona una cuantificacion con libro Excel para previsualizar.</div>
-          }
+          <app-workbook-preview
+            [previewUrl]="selectedSheetDocument ? sheetPreviewUrl : null"
+            [frameMode]="sheetFrameMode"
+            [loading]="workbookLoading"
+            [error]="workbookError"
+            title="Vista previa del libro Excel"
+            emptyMessage="Selecciona una cuantificacion con libro Excel para previsualizar."
+          />
         </div>
       } @else {
         <p class="b5d-boq-panel__muted">Selecciona una cuantificacion para ver su detalle.</p>

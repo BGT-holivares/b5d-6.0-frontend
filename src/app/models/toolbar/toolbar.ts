@@ -24,6 +24,10 @@ export type ToolbarActionId =
   | 'home-links-view'
   | 'home-assign-property'
   | 'home-unlinked-objects'
+  | 'home-calc-info'
+  | 'home-calc-boq'
+  | 'home-calc-remove'
+  | 'home-calc-parameter'
   | 'import-b5d-project'
   | 'export-b5d-project'
   | 'refresh-b5d-project'
@@ -76,6 +80,7 @@ type ToolbarCategory = {
   labelKey?: string;
   layout: ToolbarCategoryLayout;
   buttons: ToolbarButton[];
+  visible?: boolean;
 };
 
 @Component({
@@ -118,6 +123,7 @@ export class Toolbar {
     bottom: true,
   };
   @Input() homeToolbarState: HomeToolbarState = {
+    activeBottomTab: 'links',
     activePanel: 'concepts',
     linksViewVisible: true,
     conceptsTotal: 0,
@@ -184,12 +190,13 @@ export class Toolbar {
 
   // Returns the active tab categories declared by this component.
   getActiveCategories(): ToolbarCategory[] {
-    if (this.activeTab === 'home') return this.homeCategories;
-    if (this.activeTab === 'objects') return this.objectCategories;
-    if (this.activeTab === 'measurement') return this.measurementCategories;
-    if (this.activeTab === 'tools') return this.toolCategories;
-    if (this.activeTab === 'view') return this.viewCategories;
-    return [];
+    let categories: ToolbarCategory[] = [];
+    if (this.activeTab === 'home') categories = this.homeCategories;
+    else if (this.activeTab === 'objects') categories = this.objectCategories;
+    else if (this.activeTab === 'measurement') categories = this.measurementCategories;
+    else if (this.activeTab === 'tools') categories = this.toolCategories;
+    else if (this.activeTab === 'view') categories = this.viewCategories;
+    return categories.filter((category) => category.visible !== false);
   }
 
   // Returns a translation or literal label for descriptor rendering.
@@ -211,6 +218,8 @@ export class Toolbar {
   }
 
   private get homeCategories(): ToolbarCategory[] {
+    const activeBottomTab = this.homeToolbarState.activeBottomTab;
+
     return [
       {
         labelKey: 'toolbar.home.category.edit',
@@ -263,6 +272,7 @@ export class Toolbar {
       {
         labelKey: 'toolbar.home.category.model',
         layout: 'horizontal',
+        visible: activeBottomTab === 'links',
         buttons: [
           {
             labelKey: 'toolbar.home.selectFilter',
@@ -302,17 +312,72 @@ export class Toolbar {
           },
         ],
       },
+      {
+        labelKey: 'toolbar.home.category.boq',
+        layout: 'horizontal',
+        visible: activeBottomTab === 'boq',
+        buttons: [
+          {
+            labelKey: 'toolbar.home.calcInfo',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-calc-info',
+            disabled: true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.calcBoq',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-calc-boq',
+            disabled: true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.calcRemove',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-calc-remove',
+            disabled: true,
+            variant: 'large',
+          },
+        ],
+      },
+      {
+        labelKey: 'toolbar.home.category.parameter',
+        layout: 'horizontal',
+        visible: activeBottomTab === 'parameters',
+        buttons: [
+          {
+            labelKey: 'toolbar.home.calcParameter',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-calc-parameter',
+            disabled: true,
+            variant: 'large',
+          },
+        ],
+      },
     ];
   }
 
   private isHomeActionDisabled(actionId: ToolbarActionId): boolean {
     const state = this.homeToolbarState;
+    const activeBottomTab = state.activeBottomTab;
     const hasConceptSelection = state.selectedConceptIds.length > 0;
     const hasObjectSelection = state.selectedObjectIds.length > 0;
     const hasLinkSelection = state.selectedLinkIds.length > 0;
+    const hasParameterSelection = (state.selectedParameterIds?.length ?? 0) > 0;
     const isConceptPanel = state.activePanel === 'concepts';
     const isIfcObjectsPanel = state.activePanel === 'ifc-objects';
     const isRelatedLinksPanel = state.activePanel === 'related-links';
+
+    if (activeBottomTab === 'boq') {
+      return true;
+    }
+
+    if (activeBottomTab === 'parameters') {
+      if (actionId === 'home-add-item') return !this.activeProject;
+      if (actionId === 'home-remove-item') return !hasParameterSelection;
+      if (actionId === 'home-select-all') return (state.parametersTotal ?? 0) === 0;
+      return true;
+    }
 
     if (actionId === 'home-add-item') return !isConceptPanel;
 

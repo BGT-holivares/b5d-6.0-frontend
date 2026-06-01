@@ -23,6 +23,7 @@ import {
   WorkbookSummaryOrm,
   WorkbookRowLayoutChangeOrm,
   ProyectoTrabajoOrm,
+  ParametroB5DOrm,
   ResultadosOrm,
   VinculoConceptoBimOrm,
 } from '../types/b5d-orm';
@@ -46,6 +47,21 @@ export interface ActualizarIfcMetadataPayload {
   ifc_nombre_archivo: string;
   ifc_tamano_bytes: number;
 }
+
+export interface CrearParametroPayload {
+  clave?: string | null;
+  descripcion?: string | null;
+  tipo_comparacion?: 'clave_exacta' | 'clave_parcial' | 'descripcion_parcial';
+  tipo_parametro?: 'costo' | 'cantidad';
+  tipo_edificacion?: string | null;
+  unidad?: string | null;
+  minimo?: number | null;
+  maximo?: number | null;
+  promedio?: number | null;
+  activo?: boolean;
+}
+
+export type ActualizarParametroPayload = Partial<CrearParametroPayload>;
 
 @Injectable({ providedIn: 'root' })
 export class BackendProyectosService {
@@ -101,6 +117,40 @@ export class BackendProyectosService {
   listarCuantificaciones(proyectoId: number): Observable<ResultadosOrm<CuantificacionB5DOrm>> {
     return this.http.get<ResultadosOrm<CuantificacionB5DOrm>>(
       this.url(`/api/proyectos/${proyectoId}/cuantificaciones/`),
+      this.requestOptions,
+    );
+  }
+
+  listarParametros(proyectoId: number): Observable<ResultadosOrm<ParametroB5DOrm>> {
+    return this.http.get<ResultadosOrm<ParametroB5DOrm>>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/`),
+      this.requestOptions,
+    );
+  }
+
+  crearParametro(proyectoId: number, payload: CrearParametroPayload): Observable<ParametroB5DOrm> {
+    return this.http.post<ParametroB5DOrm>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/crear/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
+  actualizarParametro(
+    proyectoId: number,
+    parametroId: number,
+    payload: ActualizarParametroPayload,
+  ): Observable<ParametroB5DOrm> {
+    return this.http.patch<ParametroB5DOrm>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/${parametroId}/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
+  eliminarParametro(proyectoId: number, parametroId: number): Observable<{ deleted: boolean }> {
+    return this.http.delete<{ deleted: boolean }>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/${parametroId}/eliminar/`),
       this.requestOptions,
     );
   }

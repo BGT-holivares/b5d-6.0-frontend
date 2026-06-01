@@ -2,6 +2,10 @@ import { ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, SimpleChange
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
+import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
+import { buildWorkbookPreviewDocument } from '../../services/workbook-preview-document.util';
+import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
+import { WorkbookPreview } from '../workbook-preview/workbook-preview';
 import type {
   CuantificacionB5DOrm,
   ProyectoTrabajoOrm,
@@ -35,7 +39,7 @@ type WorkbookVisualContext = {
 
 @Component({
   selector: 'app-boq-panel',
-  imports: [],
+  imports: [ResizableTableDirective, WorkbookPreview],
   templateUrl: './boq-panel.html',
   styleUrl: './boq-panel.scss',
 })
@@ -64,6 +68,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly backendProyectos = inject(BackendProyectosService);
+  private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly domSanitizer = inject(DomSanitizer);
   private workbookLoadToken = 0;
   private workbookVisualContext: WorkbookVisualContext | null = null;
@@ -86,6 +91,8 @@ export class BoqPanel implements OnChanges, OnDestroy {
   private lastWorkbookImageLoadSummary: Record<string, unknown> | null = null;
   private lastSelectedCellRenderSummary: Record<string, unknown> | null = null;
   private lastWorkbookStylesById: Record<string, WorkbookStyleOrm> = {};
+  private readonly workbookImageDataUriCache = new Map<string, string>();
+  private readonly workbookImageCacheStoragePrefix = 'b5d-workbook-image:';
   private readonly sheetFrameMessageHandler = (event: MessageEvent): void => {
     const messageData = event.data as Record<string, unknown> | null;
     if (!messageData) return;
@@ -204,6 +211,8 @@ export class BoqPanel implements OnChanges, OnDestroy {
         this.backendProyectos.subirLibroExcelCuantificacion(projectId, selectedQuantificationId, selectedFile),
       );
       this.replaceQuantificationRow(updatedQuantification);
+      this.clearWorkbookImageCacheForQuantification(projectId, selectedQuantificationId);
+      this.workbookPreviewCache.clearQuantification(projectId, selectedQuantificationId);
       await this.loadSelectedWorkbookPreview();
     } catch {
       this.workbookError = 'No se pudo subir el archivo Excel de esta cuantificacion.';
@@ -381,6 +390,8 @@ export class BoqPanel implements OnChanges, OnDestroy {
         );
       }
       this.replaceQuantificationRow(response.cuantificacion);
+      this.clearWorkbookImageCacheForQuantification(projectId, selectedQuantification.id);
+      this.workbookPreviewCache.clearQuantification(projectId, selectedQuantification.id);
       this.pendingWorkbookCellChanges.delete(this.selectedSheetName);
       this.pendingWorkbookRowLayoutChanges.delete(this.selectedSheetName);
       this.pendingWorkbookColumnLayoutChanges.delete(this.selectedSheetName);
@@ -660,9 +671,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
     if (!projectId) return false;
 
     try {
-      const workbookSummary = await firstValueFrom(
-        this.backendProyectos.obtenerResumenLibroExcelCuantificacion(projectId, selection.id),
-      );
+      const workbookSummary = await this.workbookPreviewCache.getWorkbookSummary(projectId, selection.id);
       if (localToken !== this.workbookLoadToken) return false;
       if (!workbookSummary.sheets.length) return false;
 
@@ -679,9 +688,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
       const targetSheetIndex = this.workbookSheetIndexByName.get(targetSheetName);
       if (targetSheetIndex == null) return false;
 
-      const sheetLayers = await firstValueFrom(
-        this.backendProyectos.obtenerCapasHojaExcelCuantificacion(projectId, selection.id, targetSheetIndex),
-      );
+      const sheetLayers = await this.workbookPreviewCache.getWorkbookSheetLayers(projectId, selection.id, targetSheetIndex);
       if (localToken !== this.workbookLoadToken) return false;
       this.lastWorkbookLayerSummary = {
         sheetName: sheetLayers.sheet.name,
@@ -824,9 +831,14 @@ export class BoqPanel implements OnChanges, OnDestroy {
       for (let columnNumber = columnRange.min; columnNumber <= columnRange.max; columnNumber += 1) {
         const columnIndex = columnNumber - 1;
         if (columnIndex < 0 || columnIndex >= columnLayout.length) continue;
+        if (columnRange.hidden) {
+          columnLayout[columnIndex]['hidden'] = true;
+        }
         const widthPixels = columnRange.widthPx ?? sheetLayers.layout.defaultColumnWidthPx ?? null;
         if (widthPixels != null) {
           columnLayout[columnIndex]['wpx'] = widthPixels;
+        } else if (columnRange.hidden) {
+          columnLayout[columnIndex]['wpx'] = 0;
         }
       }
     }
@@ -839,9 +851,14 @@ export class BoqPanel implements OnChanges, OnDestroy {
     for (const rowDefinition of sheetLayers.layout.rows) {
       const rowIndex = rowDefinition.row - 1;
       if (rowIndex < 0 || rowIndex >= rowLayout.length) continue;
+      if (rowDefinition.hidden) {
+        rowLayout[rowIndex]['hidden'] = true;
+      }
       const heightPixels = rowDefinition.heightPx ?? sheetLayers.layout.defaultRowHeightPx ?? null;
       if (heightPixels != null) {
         rowLayout[rowIndex]['hpx'] = heightPixels;
+      } else if (rowDefinition.hidden) {
+        rowLayout[rowIndex]['hpx'] = 0;
       }
     }
     worksheet['!rows'] = rowLayout;
@@ -1039,9 +1056,22 @@ export class BoqPanel implements OnChanges, OnDestroy {
     images: WorkbookImageOrm[],
   ): Promise<Map<string, string>> {
     const imageDataUriById = new Map<string, string>();
+    const cachedImages: Array<{ id: string; contentType: string; bytesApprox: number }> = [];
     const loadedImages: Array<{ id: string; contentType: string; bytesApprox: number }> = [];
     const failedImages: Array<{ id: string; error: string }> = [];
     const imageLoadTasks = images.map(async (imageData) => {
+      const cacheKey = this.buildWorkbookImageCacheKey(projectId, quantificationId, sheetIndex, imageData.id);
+      const cachedImageDataUri = this.readWorkbookImageDataUriFromCache(cacheKey);
+      if (cachedImageDataUri) {
+        imageDataUriById.set(imageData.id, cachedImageDataUri);
+        cachedImages.push({
+          id: imageData.id,
+          contentType: imageData.contentType,
+          bytesApprox: Math.round((cachedImageDataUri.length * 3) / 4),
+        });
+        return;
+      }
+
       try {
         const imageBlob = await firstValueFrom(
           this.backendProyectos.descargarImagenHojaExcelCuantificacion(
@@ -1054,6 +1084,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
         const imageDataUri = await this.convertBlobToDataUri(imageBlob);
         if (imageDataUri) {
           imageDataUriById.set(imageData.id, imageDataUri);
+          this.writeWorkbookImageDataUriToCache(cacheKey, imageDataUri);
           loadedImages.push({
             id: imageData.id,
             contentType: imageData.contentType,
@@ -1078,12 +1109,78 @@ export class BoqPanel implements OnChanges, OnDestroy {
       quantificationId,
       sheetIndex,
       requestedImagesCount: images.length,
+      cachedImagesCount: cachedImages.length,
       loadedImagesCount: loadedImages.length,
       failedImagesCount: failedImages.length,
+      cachedImages,
       loadedImages,
       failedImages,
     };
     return imageDataUriById;
+  }
+
+  private buildWorkbookImageCacheKey(
+    projectId: number,
+    quantificationId: number,
+    sheetIndex: number,
+    imageId: string,
+  ): string {
+    return `${projectId}:${quantificationId}:${sheetIndex}:${imageId}`;
+  }
+
+  private readWorkbookImageDataUriFromCache(cacheKey: string): string {
+    const memoryCachedValue = this.workbookImageDataUriCache.get(cacheKey) ?? '';
+    if (memoryCachedValue) return memoryCachedValue;
+
+    const storageKey = `${this.workbookImageCacheStoragePrefix}${cacheKey}`;
+    try {
+      const localStorageValue = localStorage.getItem(storageKey) ?? '';
+      if (localStorageValue.startsWith('data:image/')) {
+        this.workbookImageDataUriCache.set(cacheKey, localStorageValue);
+        return localStorageValue;
+      }
+    } catch {
+      // Ignores localStorage availability and quota errors.
+    }
+    return '';
+  }
+
+  private writeWorkbookImageDataUriToCache(cacheKey: string, imageDataUri: string): void {
+    this.workbookImageDataUriCache.set(cacheKey, imageDataUri);
+    if (this.workbookImageDataUriCache.size > 400) {
+      const oldestKey = this.workbookImageDataUriCache.keys().next().value;
+      if (oldestKey) {
+        this.workbookImageDataUriCache.delete(oldestKey);
+      }
+    }
+
+    const storageKey = `${this.workbookImageCacheStoragePrefix}${cacheKey}`;
+    try {
+      localStorage.setItem(storageKey, imageDataUri);
+    } catch {
+      // Ignores localStorage availability and quota errors.
+    }
+  }
+
+  private clearWorkbookImageCacheForQuantification(projectId: number, quantificationId: number): void {
+    const cachePrefix = `${projectId}:${quantificationId}:`;
+    for (const cacheKey of Array.from(this.workbookImageDataUriCache.keys())) {
+      if (cacheKey.startsWith(cachePrefix)) {
+        this.workbookImageDataUriCache.delete(cacheKey);
+      }
+    }
+
+    const localStoragePrefix = `${this.workbookImageCacheStoragePrefix}${cachePrefix}`;
+    try {
+      for (let itemIndex = localStorage.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const localStorageKey = localStorage.key(itemIndex) ?? '';
+        if (localStorageKey.startsWith(localStoragePrefix)) {
+          localStorage.removeItem(localStorageKey);
+        }
+      }
+    } catch {
+      // Ignores localStorage availability errors.
+    }
   }
 
   // Converts a blob response to an embeddable data URI string.
@@ -1163,16 +1260,33 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
     for (let columnIndex = sheetRange.startColumn; columnIndex <= sheetRange.endColumn; columnIndex += 1) {
       headerColumns.push(this.columnLabelFromIndex(columnIndex));
+      const hiddenColumn = this.isColumnHidden(worksheet, columnIndex);
       const widthPixels = this.resolveColumnWidthPixels(worksheet, columnIndex);
-      const colStyle = widthPixels ? ` style="width:${widthPixels}px;min-width:${widthPixels}px;"` : '';
+      const colStyleSegments: string[] = [];
+      if (widthPixels != null) {
+        colStyleSegments.push(`width:${widthPixels}px`);
+        colStyleSegments.push(`min-width:${widthPixels}px`);
+      }
+      if (hiddenColumn) {
+        colStyleSegments.push('display:none');
+      }
+      const colStyle = colStyleSegments.length ? ` style="${colStyleSegments.join(';')};"` : '';
       colStyles.push(`<col${colStyle} />`);
     }
 
     const rowHtml: string[] = [];
     for (let rowIndex = sheetRange.startRow; rowIndex <= sheetRange.endRow; rowIndex += 1) {
       const rowNumber = rowIndex + 1;
+      const hiddenRow = this.isRowHidden(worksheet, rowIndex);
       const rowHeightPixels = this.resolveRowHeightPixels(worksheet, rowIndex);
-      const rowStyle = rowHeightPixels ? ` style="height:${rowHeightPixels}px;"` : '';
+      const rowStyleSegments: string[] = [];
+      if (rowHeightPixels != null) {
+        rowStyleSegments.push(`height:${rowHeightPixels}px`);
+      }
+      if (hiddenRow) {
+        rowStyleSegments.push('display:none');
+      }
+      const rowStyle = rowStyleSegments.length ? ` style="${rowStyleSegments.join(';')};"` : '';
       const cellsHtml: string[] = [`<th class="row-header" scope="row" tabindex="0" data-row="${rowIndex}">${rowNumber}</th>`];
 
       for (let columnIndex = sheetRange.startColumn; columnIndex <= sheetRange.endColumn; columnIndex += 1) {
@@ -1188,7 +1302,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
           : '';
         const cellCssClass = this.resolveCellCssClass(cellData);
         const cellInlineStyle = this.resolveCellInlineStyle(cellData, rowIndex, columnIndex, cellAddress, visualContext);
-        const cellStyleAttribute = cellInlineStyle ? ` style="${this.escapeHtmlAttribute(cellInlineStyle)}"` : '';
+        const hiddenColumn = this.isColumnHidden(worksheet, columnIndex);
+        const cellStyleSegments = [cellInlineStyle];
+        if (hiddenColumn) {
+          cellStyleSegments.push('display:none');
+        }
+        const mergedCellStyle = cellStyleSegments.filter((cssRule) => cssRule && cssRule.trim()).join(';');
+        const cellStyleAttribute = mergedCellStyle ? ` style="${this.escapeHtmlAttribute(mergedCellStyle)}"` : '';
         const cellFormula = typeof cellData?.['f'] === 'string' ? (cellData['f'] as string).trim() : '';
         const cellFormulaAttribute = cellFormula ? ` data-f="${this.escapeHtmlAttribute(cellFormula)}"` : '';
         cellsHtml.push(
@@ -1202,7 +1322,9 @@ export class BoqPanel implements OnChanges, OnDestroy {
     const headerRow = headerColumns
       .map(
         (columnLabel, index) =>
-          `<th class="column-header" scope="col" tabindex="0" data-col="${sheetRange.startColumn + index}">${columnLabel}</th>`,
+          `<th class="column-header" scope="col" tabindex="0" data-col="${sheetRange.startColumn + index}"${
+            this.isColumnHidden(worksheet, sheetRange.startColumn + index) ? ' style="display:none;"' : ''
+          }>${columnLabel}</th>`,
       )
       .join('');
 
@@ -1326,9 +1448,11 @@ export class BoqPanel implements OnChanges, OnDestroy {
     const columns = worksheet['!cols'] as Array<Record<string, unknown>> | undefined;
     const columnInfo = columns?.[columnIndex];
     if (!columnInfo) return null;
-    if (typeof columnInfo['wpx'] === 'number' && columnInfo['wpx'] > 0) return Math.round(columnInfo['wpx'] as number);
-    if (typeof columnInfo['wch'] === 'number' && columnInfo['wch'] > 0) {
-      return Math.round((columnInfo['wch'] as number) * 8 + 12);
+    if (typeof columnInfo['wpx'] === 'number' && Number.isFinite(columnInfo['wpx'])) {
+      return Math.max(0, Math.round(columnInfo['wpx'] as number));
+    }
+    if (typeof columnInfo['wch'] === 'number' && Number.isFinite(columnInfo['wch'])) {
+      return Math.max(0, Math.round((columnInfo['wch'] as number) * 8 + 12));
     }
     return null;
   }
@@ -1337,9 +1461,33 @@ export class BoqPanel implements OnChanges, OnDestroy {
     const rows = worksheet['!rows'] as Array<Record<string, unknown>> | undefined;
     const rowInfo = rows?.[rowIndex];
     if (!rowInfo) return null;
-    if (typeof rowInfo['hpx'] === 'number' && rowInfo['hpx'] > 0) return Math.round(rowInfo['hpx'] as number);
-    if (typeof rowInfo['hpt'] === 'number' && rowInfo['hpt'] > 0) return Math.round((rowInfo['hpt'] as number) * (96 / 72));
+    if (typeof rowInfo['hpx'] === 'number' && Number.isFinite(rowInfo['hpx'])) {
+      return Math.max(0, Math.round(rowInfo['hpx'] as number));
+    }
+    if (typeof rowInfo['hpt'] === 'number' && Number.isFinite(rowInfo['hpt'])) {
+      return Math.max(0, Math.round((rowInfo['hpt'] as number) * (96 / 72)));
+    }
     return null;
+  }
+
+  private isColumnHidden(worksheet: Record<string, unknown>, columnIndex: number): boolean {
+    const columns = worksheet['!cols'] as Array<Record<string, unknown>> | undefined;
+    const columnInfo = columns?.[columnIndex];
+    if (!columnInfo) return false;
+    if (columnInfo['hidden'] === true) return true;
+    if (typeof columnInfo['wpx'] === 'number' && Number.isFinite(columnInfo['wpx']) && columnInfo['wpx'] <= 0) return true;
+    if (typeof columnInfo['wch'] === 'number' && Number.isFinite(columnInfo['wch']) && columnInfo['wch'] <= 0) return true;
+    return false;
+  }
+
+  private isRowHidden(worksheet: Record<string, unknown>, rowIndex: number): boolean {
+    const rows = worksheet['!rows'] as Array<Record<string, unknown>> | undefined;
+    const rowInfo = rows?.[rowIndex];
+    if (!rowInfo) return false;
+    if (rowInfo['hidden'] === true) return true;
+    if (typeof rowInfo['hpx'] === 'number' && Number.isFinite(rowInfo['hpx']) && rowInfo['hpx'] <= 0) return true;
+    if (typeof rowInfo['hpt'] === 'number' && Number.isFinite(rowInfo['hpt']) && rowInfo['hpt'] <= 0) return true;
+    return false;
   }
 
   // Returns safe cell HTML using rich text when available.
@@ -1382,15 +1530,20 @@ export class BoqPanel implements OnChanges, OnDestroy {
     if (!styleInfo) return styleFromXmlIndex;
 
     const cssRules: string[] = [];
+    let resolvedFillColor = '';
 
     const fillInfo = this.asRecord(styleInfo['fill']);
     const patternType = typeof fillInfo?.['patternType'] === 'string' ? fillInfo['patternType'].toLowerCase() : '';
     if (patternType && patternType !== 'none') {
       const fillColor = this.resolveExcelColor(fillInfo?.['fgColor']) ?? this.resolveExcelColor(fillInfo?.['bgColor']);
-      if (fillColor) cssRules.push(`background-color:${fillColor}`);
+      if (fillColor) {
+        resolvedFillColor = fillColor;
+        cssRules.push(`background-color:${fillColor}`);
+      }
     }
 
     const fontInfo = this.asRecord(styleInfo['font']);
+    let hasExplicitFontColor = /(?:^|;)color\s*:/i.test(styleFromXmlIndex);
     if (fontInfo) {
       if (fontInfo['bold'] === true) cssRules.push('font-weight:700');
       if (fontInfo['italic'] === true) cssRules.push('font-style:italic');
@@ -1406,7 +1559,10 @@ export class BoqPanel implements OnChanges, OnDestroy {
       }
 
       const fontColor = this.resolveExcelColor(fontInfo['color']);
-      if (fontColor) cssRules.push(`color:${fontColor}`);
+      if (fontColor) {
+        hasExplicitFontColor = true;
+        cssRules.push(`color:${fontColor}`);
+      }
 
       const textDecorations: string[] = [];
       if (fontInfo['underline'] === true || typeof fontInfo['underline'] === 'string') {
@@ -1417,6 +1573,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
       }
       if (textDecorations.length) {
         cssRules.push(`text-decoration:${textDecorations.join(' ')}`);
+      }
+    }
+
+    if (!hasExplicitFontColor && resolvedFillColor) {
+      const fallbackFontColor = this.resolveReadableTextColorForBackground(resolvedFillColor);
+      if (fallbackFontColor) {
+        cssRules.push(`color:${fallbackFontColor}`);
       }
     }
 
@@ -1455,6 +1618,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
       return `${styleFromXmlIndex};${styleFromCellObject}`;
     }
     return styleFromCellObject || styleFromXmlIndex;
+  }
+
+  private resolveReadableTextColorForBackground(backgroundColor: string): string {
+    const rgb = this.hexToRgb(backgroundColor);
+    if (!rgb) return '';
+    const luminance = 0.2126 * rgb.red + 0.7152 * rgb.green + 0.0722 * rgb.blue;
+    return luminance < 140 ? '#FFFFFF' : '#111827';
   }
 
   // Resolves style CSS using style indexes parsed from workbook XML parts.
@@ -2241,156 +2411,12 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   // Builds a full HTML document with a restricted CSP for sandboxed iframe rendering.
   private buildSheetPreviewDocument(sheetHtml: string, interactionToken: string): string {
-    const sanitizedSheetHtml = this.sanitizeSheetHtml(sheetHtml);
-    const zoomFactor = this.sheetZoomPercent / 100;
     const interactionScript = this.buildSheetInteractionScript(interactionToken);
-    return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src data:;" />
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #f1f5f9;
-      }
-      body {
-        font-family: Calibri, "Segoe UI", Arial, sans-serif;
-        font-size: 11px;
-        color: #111827;
-      }
-      .b5d-workbook-surface {
-        height: 100vh;
-        box-sizing: border-box;
-        overflow: auto;
-      }
-      .excel-grid-shell {
-        width: max-content;
-        min-width: 100%;
-        zoom: ${zoomFactor.toFixed(2)};
-      }
-      .excel-zoom-layer {
-        width: 100%;
-        min-height: 100%;
-      }
-      .excel-grid-table {
-        border-collapse: separate;
-        border-spacing: 0;
-        background: #ffffff;
-        border: 1px solid #cbd5e1;
-        position: relative;
-        z-index: 2;
-      }
-      .excel-grid-canvas {
-        position: relative;
-        width: max-content;
-        min-width: 100%;
-        padding-bottom: 4px;
-      }
-      .excel-grid-table .row-head-col {
-        width: 48px;
-        min-width: 48px;
-      }
-      .excel-grid-table td,
-      .excel-grid-table th {
-        border: 1px solid #d1d5db;
-        min-width: 80px;
-        height: 22px;
-        padding: 2px 6px;
-        line-height: 1.25;
-        vertical-align: middle;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        box-sizing: border-box;
-      }
-      .excel-grid-table td {
-        background: #ffffff;
-        color: #111827;
-      }
-      .excel-grid-table td:not([style]):hover {
-        background: #f0f9ff;
-      }
-      .excel-grid-table td:focus,
-      .excel-grid-table th:focus {
-        outline: 2px solid #2563eb;
-        outline-offset: -2px;
-      }
-      .excel-grid-table .excel-cell--numeric {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-      .excel-grid-table .excel-cell--boolean {
-        text-align: center;
-      }
-      .excel-grid-table .column-header,
-      .excel-grid-table .corner-header {
-        position: sticky;
-        top: 0;
-        z-index: 6;
-        background: #e2e8f0;
-        font-weight: 700;
-        text-align: center;
-      }
-      .excel-grid-table .row-header,
-      .excel-grid-table .corner-header {
-        position: sticky;
-        left: 0;
-        z-index: 5;
-        background: #e2e8f0;
-        font-weight: 700;
-        text-align: center;
-        min-width: 48px;
-        width: 48px;
-        max-width: 48px;
-      }
-      .excel-grid-table .corner-header {
-        z-index: 10;
-        position: sticky;
-        top: 0;
-        left: 0;
-      }
-      .excel-grid-table .row-header {
-        padding: 2px 4px;
-      }
-      .excel-grid-table .corner-header--select-all {
-        position: sticky;
-        padding: 0;
-      }
-      .excel-grid-table .corner-header--select-all::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(135deg, #94a3b8 0 50%, transparent 50% 100%);
-      }
-      .excel-grid-table td.excel-selection,
-      .excel-grid-table th.excel-selection {
-        box-shadow: inset 0 0 0 1px #2563eb;
-      }
-      .excel-grid-table td.excel-selection:not([style]),
-      .excel-grid-table th.excel-selection {
-        background: #dbeafe;
-      }
-      .excel-grid-table a {
-        color: #1d4ed8;
-        text-decoration: underline;
-      }
-      .excel-grid-table tr:nth-child(even) td:not([style]) {
-        background: #fcfcfd;
-      }
-      .excel-floating-image {
-        position: absolute;
-        z-index: 4;
-        object-fit: contain;
-        pointer-events: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="b5d-workbook-surface"><div class="excel-zoom-layer">${sanitizedSheetHtml}</div></div>
-    <script>${interactionScript}</script>
-  </body>
-</html>`;
+    return buildWorkbookPreviewDocument({
+      sheetHtml,
+      zoomPercent: this.sheetZoomPercent,
+      interactionScript,
+    });
   }
 
   // Creates workbook interactions: multi-select and Ctrl+wheel zoom messaging.

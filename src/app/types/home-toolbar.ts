@@ -1,4 +1,5 @@
 export type LinkingWorkspacePanel = 'concepts' | 'ifc-objects' | 'related-links';
+export type HomeBottomPanelTab = 'links' | 'boq' | 'parameters';
 
 export type SelectFilterMode =
   | 'linked-concepts-all'
@@ -13,6 +14,7 @@ export type UnlinkedObjectsMode =
   | 'materials-without-object-links';
 
 export interface HomeToolbarState {
+  activeBottomTab: HomeBottomPanelTab;
   activePanel: LinkingWorkspacePanel;
   linksViewVisible: boolean;
   conceptsTotal: number;
@@ -23,4 +25,6 @@ export interface HomeToolbarState {
   selectedObjectIds: string[];
   selectedLinkIds: string[];
   canPasteConcept: boolean;
+  parametersTotal?: number;
+  selectedParameterIds?: number[];
 }

@@ -1,9 +1,10 @@
 import { Component, Input } from '@angular/core';
+import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import type { NodoCuantificacion } from '../../types/quantity-take-off';
 
 @Component({
   selector: 'app-quantification-panel',
-  imports: [],
+  imports: [ResizableTableDirective],
   templateUrl: './quantification-panel.html',
   styleUrl: './quantification-panel.scss',
 })

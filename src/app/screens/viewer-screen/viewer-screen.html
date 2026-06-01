@@ -202,7 +202,15 @@
               />
             }
             @case ('parameters') {
-              <app-parameters-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />
+              <app-parameters-panel
+                [activeProject]="proyectoB5dActivo()"
+                [parameters]="parametrosB5d()"
+                [b5dLoading]="b5dCargando()"
+                [quantifications]="cuantificacionesB5d()"
+                [informacionSeleccionada]="visorIfc.informacionSeleccionada()"
+                (toolbarStateChange)="onParametersToolbarStateChange($event)"
+                (rowsChange)="onParametersRowsChange($event)"
+              />
             }
           }
         </div>

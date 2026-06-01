@@ -93,6 +93,26 @@ export interface CuantificacionB5DOrm {
   Libro_Excel?: string | null;
 }
 
+export type TipoComparacionParametroOrm = 'clave_exacta' | 'clave_parcial' | 'descripcion_parcial';
+export type TipoParametroOrm = 'costo' | 'cantidad';
+
+export interface ParametroB5DOrm {
+  id: number;
+  identificador_original: number | null;
+  clave: string | null;
+  descripcion: string | null;
+  tipo_comparacion: TipoComparacionParametroOrm;
+  tipo_parametro: TipoParametroOrm;
+  tipo_edificacion: string | null;
+  unidad: string | null;
+  minimo: number | null;
+  maximo: number | null;
+  promedio: number | null;
+  activo: boolean;
+  optimistic_lock_field?: number | null;
+  gc_record?: number | null;
+}
+
 export interface ConceptoB5DDraftOrm {
   id: number | null;
   catalogo_id: number | null;

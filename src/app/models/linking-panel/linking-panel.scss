@@ -108,6 +108,7 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .b5d-linking-panel__table th,
@@ -121,6 +122,13 @@
 .b5d-linking-panel__table th {
   background: #f1f5f9;
   white-space: nowrap;
+  min-width: 90px;
+}
+
+.b5d-linking-panel__section-row td {
+  background: #e8eef7;
+  color: #1e3a5f;
+  font-weight: 700;
 }
 
 .b5d-linking-panel__selectable {
@@ -144,6 +152,32 @@
 .b5d-linking-panel__select {
   width: 100%;
   padding: 4px;
+}
+
+.b5d-linking-panel__input {
+  width: 100%;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid #c4cbd4;
+}
+
+.b5d-linking-panel__concept-editor-row td {
+  background: #f8fbff;
+}
+
+.b5d-linking-panel__concept-editor-actions {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.b5d-linking-panel__checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .b5d-linking-panel__empty {

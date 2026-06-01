@@ -33,7 +33,7 @@
         <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</div>
 
         <div class="b5d-linking-panel__box-content">
-          <table class="b5d-linking-panel__table">
+          <table class="b5d-linking-panel__table" b5dResizableTable="linking-concepts">
             <thead>
               <tr>
                 <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.id') }}</th>
@@ -57,10 +57,84 @@
                   <td [class.b5d-linking-panel__linked]="concepto.linked">{{ concepto.descripcion || '-' }}</td>
                   <td>{{ concepto.unidad || '-' }}</td>
                 </tr>
+
+                @if (isConceptEditorAnchoredAfter(concepto.id)) {
+                  <tr class="b5d-linking-panel__concept-editor-row">
+                    <td>
+                      <input
+                        type="text"
+                        class="b5d-linking-panel__input"
+                        [(ngModel)]="creatingConceptDraft.clave"
+                        placeholder="Clave"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        class="b5d-linking-panel__input"
+                        [(ngModel)]="creatingConceptDraft.descripcion"
+                        placeholder="Descripcion"
+                      />
+                    </td>
+                    <td>
+                      <div class="b5d-linking-panel__concept-editor-actions">
+                        <input
+                          type="text"
+                          class="b5d-linking-panel__input"
+                          [(ngModel)]="creatingConceptDraft.unidad"
+                          placeholder="Unidad"
+                        />
+                        <label class="b5d-linking-panel__checkbox-label">
+                          <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
+                          Agrupador
+                        </label>
+                        <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                        <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                      </div>
+                    </td>
+                  </tr>
+                }
               } @empty {
-                <tr>
-                  <td class="b5d-linking-panel__muted" colspan="3">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.none') }}</td>
-                </tr>
+                @if (creatingConceptInline) {
+                  <tr class="b5d-linking-panel__concept-editor-row">
+                    <td>
+                      <input
+                        type="text"
+                        class="b5d-linking-panel__input"
+                        [(ngModel)]="creatingConceptDraft.clave"
+                        placeholder="Clave"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        class="b5d-linking-panel__input"
+                        [(ngModel)]="creatingConceptDraft.descripcion"
+                        placeholder="Descripcion"
+                      />
+                    </td>
+                    <td>
+                      <div class="b5d-linking-panel__concept-editor-actions">
+                        <input
+                          type="text"
+                          class="b5d-linking-panel__input"
+                          [(ngModel)]="creatingConceptDraft.unidad"
+                          placeholder="Unidad"
+                        />
+                        <label class="b5d-linking-panel__checkbox-label">
+                          <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
+                          Agrupador
+                        </label>
+                        <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                        <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                      </div>
+                    </td>
+                  </tr>
+                } @else {
+                  <tr>
+                    <td class="b5d-linking-panel__muted" colspan="3">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.none') }}</td>
+                  </tr>
+                }
               }
             </tbody>
           </table>
@@ -76,7 +150,7 @@
         <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</div>
 
         <div class="b5d-linking-panel__box-content">
-          <table class="b5d-linking-panel__table">
+          <table class="b5d-linking-panel__table" b5dResizableTable="linking-ifc-objects">
             <thead>
               <tr>
                 <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.type') }}</th>
@@ -143,7 +217,7 @@
         <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.title') }}</div>
 
         <div class="b5d-linking-panel__box-content">
-          <table class="b5d-linking-panel__table">
+          <table class="b5d-linking-panel__table" b5dResizableTable="linking-related-links">
             <thead>
               <tr>
                 <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptId') }}</th>
@@ -156,23 +230,30 @@
               </tr>
             </thead>
             <tbody>
-              @for (vinculo of relatedLinksFiltrados; track vinculo.id) {
-                <tr
-                  class="b5d-linking-panel__selectable"
-                  [class.b5d-linking-panel__selectable--active]="isSelectedLink(vinculo.id)"
-                  (click)="selectLink(vinculo.id, $event)"
-                >
-                  <td [class.b5d-linking-panel__linked]="!!vinculo.conceptCode">{{ vinculo.conceptCode || '-' }}</td>
-                  <td>{{ vinculo.conceptDescription || '-' }}</td>
-                  <td [class.b5d-linking-panel__linked]="!!vinculo.objectType">{{ vinculo.objectType || '-' }}</td>
-                  <td>{{ vinculo.material || '-' }}</td>
-                  <td [class.b5d-linking-panel__linked]="!!vinculo.propertyLabel">{{ vinculo.propertyLabel || '-' }}</td>
-                  <td>{{ vinculo.conversionFactor.toFixed(3) }}</td>
-                  <td>{{ vinculo.description || '-' }}</td>
-                </tr>
-              } @empty {
+              @if (relatedLinkSections.length) {
+                @for (section of relatedLinkSections; track section.id) {
+                  <tr class="b5d-linking-panel__section-row">
+                    <td colspan="7">{{ section.label }}</td>
+                  </tr>
+                  @for (vinculo of section.links; track vinculo.id) {
+                    <tr
+                      class="b5d-linking-panel__selectable"
+                      [class.b5d-linking-panel__selectable--active]="isSelectedLink(vinculo.id)"
+                      (click)="selectLink(vinculo.id, $event)"
+                    >
+                      <td [class.b5d-linking-panel__linked]="!!vinculo.conceptCode">{{ vinculo.conceptCode || '-' }}</td>
+                      <td>{{ vinculo.conceptDescription || '-' }}</td>
+                      <td [class.b5d-linking-panel__linked]="!!vinculo.objectType">{{ vinculo.objectType || '-' }}</td>
+                      <td>{{ vinculo.material || '-' }}</td>
+                      <td [class.b5d-linking-panel__linked]="!!vinculo.propertyLabel">{{ vinculo.propertyLabel || '-' }}</td>
+                      <td>{{ vinculo.conversionFactor.toFixed(3) }}</td>
+                      <td>{{ vinculo.description || '-' }}</td>
+                    </tr>
+                  }
+                }
+              } @else {
                 <tr>
-                  <td class="b5d-linking-panel__muted" colspan="10">
+                  <td class="b5d-linking-panel__muted" colspan="7">
                     {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.none') }}
                   </td>
                 </tr>

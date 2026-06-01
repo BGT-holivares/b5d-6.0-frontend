@@ -27,6 +27,7 @@ import type {
   CatalogoB5DOrm,
   ConceptoB5DOrm,
   CuantificacionB5DOrm,
+  ParametroB5DOrm,
   SaveB5DProyectPayloadOrm,
   ProyectoTrabajoOrm,
   UsuarioSesionOrm,
@@ -78,6 +79,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   @ViewChild('contenedorVisor', { static: true }) private readonly contenedorVisor?: ElementRef<HTMLElement>;
   @ViewChild('inputB5d') private readonly inputB5d?: ElementRef<HTMLInputElement>;
   @ViewChild(LinkingPanel) private readonly linkingPanel?: LinkingPanel;
+  @ViewChild(ParametersPanel) private readonly parametersPanel?: ParametersPanel;
   private readonly defaultDockedTopWithToolbar = 114;
   private readonly defaultDockedTopWithoutToolbar = 34;
   private readonly defaultTreeDockedWidth = 360;
@@ -93,10 +95,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   readonly b5dLinks = signal<VinculoConceptoBimOrm[]>([]);
   readonly b5dCatalogs = signal<CatalogoB5DOrm[]>([]);
   readonly cuantificacionesB5d = signal<CuantificacionB5DOrm[]>([]);
+  readonly parametrosB5d = signal<ParametroB5DOrm[]>([]);
   readonly b5dCargando = signal(false);
   readonly b5dMensaje = signal('');
   readonly usuarioSesion = signal<UsuarioSesionOrm | null>(null);
   readonly homeToolbarState = signal<HomeToolbarState>({
+    activeBottomTab: 'links',
     activePanel: 'concepts',
     linksViewVisible: true,
     conceptsTotal: 0,
@@ -107,6 +111,8 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     selectedObjectIds: [],
     selectedLinkIds: [],
     canPasteConcept: false,
+    parametersTotal: 0,
+    selectedParameterIds: [],
   });
   readonly floatingPanels = signal<Record<FloatingPanelId, FloatingPanelState>>({
     tree: {
@@ -234,6 +240,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       this.b5dLinks.set([]);
       this.b5dCatalogs.set([]);
       this.cuantificacionesB5d.set([]);
+      this.parametrosB5d.set([]);
       this.b5dMensaje.set('Sesion cerrada.');
       await this.router.navigate(['/login']);
     }
@@ -288,6 +295,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         this.b5dLinks.set([]);
         this.b5dCatalogs.set([]);
         this.cuantificacionesB5d.set([]);
+        this.parametrosB5d.set([]);
         this.b5dMensaje.set('No hay proyectos importados. Usa "Importar de base de datos B5D".');
         return;
       }
@@ -470,12 +478,13 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   private async cargarDatosProyectoB5d(proyectoId: number): Promise<void> {
-    const [estado, conceptos, vinculos, catalogos, cuantificaciones] = await Promise.all([
+    const [estado, conceptos, vinculos, catalogos, cuantificaciones, parametros] = await Promise.all([
       firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId)),
       firstValueFrom(this.backendProyectos.listarConceptos(proyectoId)),
       firstValueFrom(this.backendProyectos.listarVinculosBim(proyectoId)),
       firstValueFrom(this.backendProyectos.listarCatalogos(proyectoId)),
       firstValueFrom(this.backendProyectos.listarCuantificaciones(proyectoId)),
+      firstValueFrom(this.backendProyectos.listarParametros(proyectoId)),
     ]);
 
     this.proyectoB5dActivo.set(estado);
@@ -483,6 +492,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.b5dLinks.set(vinculos.resultados);
     this.b5dCatalogs.set(catalogos.resultados);
     this.cuantificacionesB5d.set(cuantificaciones.resultados);
+    this.parametrosB5d.set(parametros.resultados);
   }
 
   private async actualizarReferenciaIfc(archivo: File): Promise<void> {
@@ -680,7 +690,25 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Stores linking panel state used to toggle Home toolbar actions.
   onLinkingToolbarStateChange(state: HomeToolbarState): void {
-    this.homeToolbarState.set(state);
+    this.homeToolbarState.set({
+      ...this.homeToolbarState(),
+      ...state,
+      activeBottomTab: 'links',
+    });
+  }
+
+  // Stores parameters panel state to toggle Home toolbar actions in parameter mode.
+  onParametersToolbarStateChange(state: HomeToolbarState): void {
+    this.homeToolbarState.set({
+      ...this.homeToolbarState(),
+      ...state,
+      activeBottomTab: 'parameters',
+    });
+  }
+
+  // Syncs parameter rows returned from CRUD operations in the parameter panel.
+  onParametersRowsChange(rows: ParametroB5DOrm[]): void {
+    this.parametrosB5d.set(rows);
   }
 
   // Mirrors IFC object-table selection into the 3D model selection.
@@ -776,6 +804,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   // Changes the active tab shown inside the bottom docked panel.
   setBottomPanelTab(tab: BottomPanelTab): void {
     this.bottomPanelTab.set(tab);
+    this.homeToolbarState.update((state) => ({
+      ...state,
+      activeBottomTab: tab,
+    }));
   }
 
   // Returns a readable pin action title for the current panel mode.
@@ -1027,30 +1059,36 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Routes Home actions to the linking workspace and option prompts.
   private handleHomeToolbarAction(action: ToolbarActionId): void {
-    if (this.bottomPanelTab() !== 'links') {
-      this.setBottomPanelTab('links');
-      setTimeout(() => this.handleHomeToolbarAction(action));
+    const activeTab = this.bottomPanelTab();
+
+    if (activeTab === 'links') {
+      const linkingWorkspace = this.linkingPanel;
+      if (!linkingWorkspace) return;
+
+      if (action === 'home-select-filter') {
+        const mode = this.promptSelectFilterMode();
+        if (!mode) return;
+        linkingWorkspace.aplicarFiltroSeleccion(mode);
+        return;
+      }
+
+      if (action === 'home-unlinked-objects') {
+        const mode = this.promptUnlinkedObjectsMode();
+        if (!mode) return;
+        linkingWorkspace.aplicarFiltroObjetosSinVinculo(mode);
+        return;
+      }
+
+      linkingWorkspace.triggerHomeAction(action);
       return;
     }
 
-    const linkingWorkspace = this.linkingPanel;
-    if (!linkingWorkspace) return;
-
-    if (action === 'home-select-filter') {
-      const mode = this.promptSelectFilterMode();
-      if (!mode) return;
-      linkingWorkspace.aplicarFiltroSeleccion(mode);
+    if (activeTab === 'parameters') {
+      this.parametersPanel?.triggerHomeAction(action);
       return;
     }
 
-    if (action === 'home-unlinked-objects') {
-      const mode = this.promptUnlinkedObjectsMode();
-      if (!mode) return;
-      linkingWorkspace.aplicarFiltroObjetosSinVinculo(mode);
-      return;
-    }
-
-    linkingWorkspace.triggerHomeAction(action);
+    // BOQ actions will be implemented later.
   }
 
   // Requests filter mode to select IFC object rows and their model elements.

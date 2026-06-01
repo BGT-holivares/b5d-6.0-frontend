@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { FormsModule } from '@angular/forms';
+import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import type { ElementoIfcB5D, NodoCuantificacion } from '../../types/quantity-take-off';
 import type {
   CatalogoB5DOrm,
@@ -67,9 +68,22 @@ type ConceptoFila = {
   linked: boolean;
 };
 
+type ConceptDraft = {
+  clave: string;
+  descripcion: string;
+  unidad: string;
+  esAgrupador: boolean;
+};
+
+type RelatedLinksSection = {
+  id: string;
+  label: string;
+  links: VinculoPanel[];
+};
+
 @Component({
   selector: 'app-linking-panel',
-  imports: [FormsModule],
+  imports: [FormsModule, ResizableTableDirective],
   templateUrl: './linking-panel.html',
   styleUrl: './linking-panel.scss',
 })
@@ -107,6 +121,9 @@ export class LinkingPanel implements OnChanges {
   conceptClipboardSourceId: number | null = null;
   selectedCatalogId: number | null = null;
   hiddenBackendLinkIds = new Set<number>();
+  creatingConceptInline = false;
+  creatingConceptAnchorId: number | null = null;
+  creatingConceptDraft: ConceptDraft = this.getEmptyConceptDraft();
   private temporalConceptId = -1;
   private lastSelectedConceptId: number | null = null;
   private lastSelectedObjectId = '';
@@ -324,7 +341,7 @@ export class LinkingPanel implements OnChanges {
 
   get relatedLinks(): VinculoPanel[] {
     const conceptosPorId = new Map<number, ConceptoB5DOrm>();
-    for (const concepto of this.conceptosActivos) {
+    for (const concepto of this.workConcepts) {
       conceptosPorId.set(concepto.id, concepto);
     }
 
@@ -350,6 +367,45 @@ export class LinkingPanel implements OnChanges {
       });
 
     return [...desdeBackend, ...this.localLinks];
+  }
+
+  get relatedLinkSections(): RelatedLinksSection[] {
+    const conceptLinks = this.relatedLinksFromSelectedConcepts;
+    const objectLinks = this.relatedLinksFromSelectedObjects;
+
+    if (!conceptLinks.length && !objectLinks.length) {
+      if (!this.relatedLinks.length) return [];
+      return [
+        {
+          id: 'all',
+          label: this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.links.forAll'),
+          links: this.relatedLinks,
+        },
+      ];
+    }
+
+    const sections: RelatedLinksSection[] = [];
+    if (conceptLinks.length) {
+      sections.push({
+        id: 'concept',
+        label: `${this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.links.forConcept')}: ${this.selectedConceptSummaryLabel}`,
+        links: conceptLinks,
+      });
+    }
+
+    if (objectLinks.length) {
+      const conceptLinkIds = new Set(conceptLinks.map((linkItem) => linkItem.id));
+      const objectOnlyLinks = objectLinks.filter((linkItem) => !conceptLinkIds.has(linkItem.id));
+      if (objectOnlyLinks.length) {
+        sections.push({
+          id: 'object',
+          label: `${this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.links.forObject')}: ${this.selectedObjectSummaryLabel}`,
+          links: objectOnlyLinks,
+        });
+      }
+    }
+
+    return sections;
   }
 
   get relatedLinksFiltrados(): VinculoPanel[] {
@@ -687,6 +743,7 @@ export class LinkingPanel implements OnChanges {
   // Marks the active working panel to drive toolbar action availability.
   selectActivePanel(panel: LinkingWorkspacePanel): void {
     this.activeWorkspacePanel = panel;
+    this.emitToolbarState();
   }
 
   // Emits the current linking workspace state to the Home toolbar.
@@ -696,6 +753,7 @@ export class LinkingPanel implements OnChanges {
       .map((conceptItem) => conceptItem.id);
 
     this.toolbarStateChange.emit({
+      activeBottomTab: 'links',
       activePanel: this.activeWorkspacePanel,
       linksViewVisible: this.relatedLinksVisible,
       conceptsTotal: this.conceptosEstructurados.length,
@@ -804,21 +862,34 @@ export class LinkingPanel implements OnChanges {
   // Creates a new concept or grouping concept in the current concept structure panel.
   private addConceptFromToolbar(): void {
     if (this.activeWorkspacePanel !== 'concepts') return;
+    this.startInlineConceptCreate();
+  }
 
-    const conceptType = window.prompt(
-      'Tipo de elemento: escribe "concepto" o "agrupador".',
-      'concepto',
-    );
-    if (conceptType === null) return;
+  startInlineConceptCreate(): void {
+    const selectedConcept = this.getPrimarySelectedConcept();
+    this.creatingConceptAnchorId = selectedConcept?.id ?? this.conceptosEstructurados[0]?.id ?? null;
+    this.creatingConceptDraft = this.getPrefilledConceptDraft(selectedConcept);
+    this.creatingConceptInline = true;
+    this.emitToolbarState();
+  }
 
-    const isGroupingConcept = conceptType.trim().toLowerCase().startsWith('agrup');
-    const selectedConcept = this.conceptosActivos.find((conceptItem) => conceptItem.id === this.idSelectedConcept);
+  isConceptEditorAnchoredAfter(conceptId: number): boolean {
+    return this.creatingConceptInline && this.creatingConceptAnchorId === conceptId;
+  }
+
+  cancelInlineConceptCreate(): void {
+    this.creatingConceptInline = false;
+    this.creatingConceptAnchorId = null;
+    this.creatingConceptDraft = this.getEmptyConceptDraft();
+    this.emitToolbarState();
+  }
+
+  saveInlineConceptCreate(): void {
+    if (!this.creatingConceptInline) return;
+    const selectedConcept = this.conceptosActivos.find((conceptItem) => conceptItem.id === this.creatingConceptAnchorId) ?? null;
     const parentConceptId = selectedConcept ? selectedConcept.id : null;
+    const isGroupingConcept = this.creatingConceptDraft.esAgrupador;
     const defaultDescription = isGroupingConcept ? 'Nuevo agrupador' : 'Nuevo concepto';
-    const description = window.prompt('Descripcion:', defaultDescription);
-    if (description === null) return;
-    const code = window.prompt('Clave:', `NEW-${Math.abs(this.temporalConceptId)}`);
-    if (code === null) return;
 
     const newConceptId = this.temporalConceptId--;
     const suggestedOrder = this.obtenerOrdenSugeridoNuevoConcepto(parentConceptId, selectedConcept?.id ?? null);
@@ -826,21 +897,23 @@ export class LinkingPanel implements OnChanges {
       id: newConceptId,
       identificador_original: null,
       catalogo_id: this.selectedCatalogId,
-      clave: code.trim() || `NEW-${Math.abs(newConceptId)}`,
+      clave: this.creatingConceptDraft.clave.trim() || `NEW-${Math.abs(newConceptId)}`,
       clave_secundaria: null,
-      descripcion: description.trim() || defaultDescription,
+      descripcion: this.creatingConceptDraft.descripcion.trim() || defaultDescription,
       es_agrupador: isGroupingConcept,
       agrupador_padre_id: parentConceptId,
-      unidad: isGroupingConcept ? null : selectedConcept?.unidad ?? null,
+      unidad: isGroupingConcept ? null : this.creatingConceptDraft.unidad.trim() || null,
       orden: suggestedOrder,
       optimistic_lock_field: 1,
       gc_record: null,
     };
 
-    this.workConcepts = [...this.conceptosActivos, newConcept];
-    this.selectActivePanel('concepts');
+    this.workConcepts = [...this.workConcepts, newConcept];
     this.selectedConceptIds = new Set([newConcept.id]);
     this.idSelectedConcept = newConcept.id;
+    this.creatingConceptInline = false;
+    this.creatingConceptAnchorId = null;
+    this.creatingConceptDraft = this.getEmptyConceptDraft();
     this.emitToolbarState();
     this.emitDraftChanged();
   }
@@ -851,7 +924,7 @@ export class LinkingPanel implements OnChanges {
       if (!this.selectedConceptIds.size) return;
 
       const conceptIdsToDelete = this.collectConceptBranchIds(this.selectedConceptIds);
-      this.workConcepts = this.conceptosActivos.filter((conceptItem) => !conceptIdsToDelete.has(conceptItem.id));
+      this.workConcepts = this.workConcepts.filter((conceptItem) => !conceptIdsToDelete.has(conceptItem.id));
       this.localLinks = this.localLinks.filter((linkItem) => !conceptIdsToDelete.has(linkItem.conceptoId ?? -1));
 
       for (const backendLink of this.b5dLinks) {
@@ -925,7 +998,7 @@ export class LinkingPanel implements OnChanges {
     const targetParentId = selectedConcept ? selectedConcept.id : null;
 
     if (this.conceptClipboardFromCut && this.conceptClipboardSourceId != null) {
-      this.workConcepts = this.conceptosActivos.map((conceptItem) => {
+      this.workConcepts = this.workConcepts.map((conceptItem) => {
         if (conceptItem.id !== this.conceptClipboardSourceId) return conceptItem;
         return {
           ...conceptItem,
@@ -957,7 +1030,7 @@ export class LinkingPanel implements OnChanges {
       gc_record: null,
     };
 
-    this.workConcepts = [...this.conceptosActivos, copyConcept];
+    this.workConcepts = [...this.workConcepts, copyConcept];
     this.selectedConceptIds = new Set([copyConcept.id]);
     this.idSelectedConcept = copyConcept.id;
     this.emitToolbarState();
@@ -1065,7 +1138,7 @@ export class LinkingPanel implements OnChanges {
 
     while (hasChanges) {
       hasChanges = false;
-      for (const conceptItem of this.conceptosActivos) {
+      for (const conceptItem of this.workConcepts) {
         if (conceptItem.agrupador_padre_id == null) continue;
         if (!conceptIdsToDelete.has(conceptItem.agrupador_padre_id)) continue;
         if (conceptIdsToDelete.has(conceptItem.id)) continue;
@@ -1325,6 +1398,62 @@ export class LinkingPanel implements OnChanges {
 
   private clamp(value: number, minValue: number, maxValue: number): number {
     return Math.min(Math.max(value, minValue), maxValue);
+  }
+
+  private get relatedLinksFromSelectedConcepts(): VinculoPanel[] {
+    if (!this.selectedConceptIds.size) return [];
+    return this.relatedLinks.filter((linkItem) => this.selectedConceptIds.has(linkItem.conceptoId ?? -1));
+  }
+
+  private get relatedLinksFromSelectedObjects(): VinculoPanel[] {
+    const selectedObjectLinkKeys = this.selectedObjectLinkKeys;
+    if (!selectedObjectLinkKeys.size) return [];
+    return this.relatedLinks.filter((linkItem) =>
+      selectedObjectLinkKeys.has(this.buildLinkKey(linkItem.objectType, linkItem.propertyLabel)),
+    );
+  }
+
+  private get selectedObjectLinkKeys(): Set<string> {
+    return new Set(
+      this.objetosIfc
+        .filter((objectItem) => this.selectedObjectIds.has(objectItem.id))
+        .map((objectItem) => this.buildLinkKey(objectItem.objectType, objectItem.propertyLabel)),
+    );
+  }
+
+  private get selectedConceptSummaryLabel(): string {
+    const selectedConcepts = this.workConcepts.filter((conceptItem) => this.selectedConceptIds.has(conceptItem.id));
+    if (!selectedConcepts.length) return '-';
+    const labels = selectedConcepts.map((conceptItem) => conceptItem.clave || conceptItem.descripcion || String(conceptItem.id));
+    if (labels.length <= 3) return labels.join(', ');
+    return `${labels.slice(0, 3).join(', ')} (+${labels.length - 3})`;
+  }
+
+  private get selectedObjectSummaryLabel(): string {
+    const selectedObjects = this.objetosIfc.filter((objectItem) => this.selectedObjectIds.has(objectItem.id));
+    if (!selectedObjects.length) return '-';
+    const labels = selectedObjects.map((objectItem) => `${objectItem.objectType}/${objectItem.propertyLabel}`);
+    if (labels.length <= 3) return labels.join(', ');
+    return `${labels.slice(0, 3).join(', ')} (+${labels.length - 3})`;
+  }
+
+  private getEmptyConceptDraft(): ConceptDraft {
+    return {
+      clave: '',
+      descripcion: '',
+      unidad: '',
+      esAgrupador: false,
+    };
+  }
+
+  private getPrefilledConceptDraft(selectedConcept: ConceptoB5DOrm | null): ConceptDraft {
+    if (!selectedConcept) return this.getEmptyConceptDraft();
+    return {
+      clave: selectedConcept.clave ?? '',
+      descripcion: selectedConcept.descripcion ?? '',
+      unidad: selectedConcept.unidad ?? '',
+      esAgrupador: !!selectedConcept.es_agrupador,
+    };
   }
 
   // Notifies container components that concepts or links were modified.
