@@ -161,23 +161,6 @@
           >
             {{ workbookSavingChanges ? 'Guardando...' : 'Guardar cambios' }}
           </button>
-          <button
-            type="button"
-            class="b5d-boq-panel__upload-button"
-            (click)="toggleWorkbookDebug()"
-          >
-            {{ workbookDebugEnabled ? 'Ocultar debug' : 'Debug endpoints' }}
-          </button>
-          @if (workbookDebugEnabled) {
-            <button
-              type="button"
-              class="b5d-boq-panel__upload-button"
-              [disabled]="workbookLoading"
-              (click)="runWorkbookEndpointDebug()"
-            >
-              Ejecutar debug
-            </button>
-          }
         </div>
 
         @if (workbookLoading) {
@@ -190,10 +173,6 @@
 
         @if (workbookError) {
           <div class="b5d-boq-panel__message b5d-boq-panel__message--warning">{{ workbookError }}</div>
-        }
-
-        @if (workbookDebugEnabled && workbookDebugOutput) {
-          <pre class="b5d-boq-panel__debug-output">{{ workbookDebugOutput }}</pre>
         }
 
         @if (workbookSheets.length) {
@@ -231,13 +210,18 @@
         }
 
         <div class="b5d-boq-panel__sheet-viewer">
-          <app-workbook-preview
-            [previewUrl]="selectedSheetDocument ? sheetPreviewUrl : null"
-            [frameMode]="sheetFrameMode"
-            [loading]="workbookLoading"
+          <app-xlsx-preview
+            [loadFromLayers]="true"
+            [projectId]="activeProject?.id ?? null"
+            [quantificationId]="cuantificacionSeleccionada ? cuantificacionSeleccionada.id : null"
+            [sheetIndex]="selectedSheetIndex"
+            [interactive]="true"
+            [zoomPercent]="sheetZoomPercent"
             [error]="workbookError"
             title="Vista previa del libro Excel"
             emptyMessage="Selecciona una cuantificacion con libro Excel para previsualizar."
+            (cellSelected)="onWorkbookCellSelected($event)"
+            (zoomRequested)="onWorkbookZoomRequested($event)"
           />
         </div>
       } @else {

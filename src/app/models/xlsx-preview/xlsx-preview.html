@@ -1,0 +1,78 @@
+<div class="b5d-xlsx-preview">
+  @if (effectiveLoading) {
+    <div class="b5d-xlsx-preview__message">Cargando libro Excel...</div>
+  } @else if (effectiveError) {
+    <div class="b5d-xlsx-preview__message b5d-xlsx-preview__message--error">{{ effectiveError }}</div>
+  } @else if (renderedSheet) {
+    <div class="b5d-xlsx-preview__viewport" (wheel)="onSurfaceWheel($event)">
+      <div
+        class="b5d-xlsx-preview__canvas"
+        [style.width.px]="renderedSheet.canvasWidthPx"
+        [style.minHeight.px]="renderedSheet.canvasHeightPx"
+        [style.zoom]="zoomFactor"
+      >
+        <table class="b5d-xlsx-preview__grid">
+          <colgroup>
+            <col class="b5d-xlsx-preview__row-head-col" />
+            @for (column of renderedSheet.columns; track column.columnNumber) {
+              <col
+                [style.width.px]="column.widthPx"
+                [style.minWidth.px]="column.widthPx"
+              />
+            }
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="b5d-xlsx-preview__corner-header b5d-xlsx-preview__corner-header--select-all"></th>
+              @for (column of renderedSheet.columns; track column.columnNumber) {
+                <th class="b5d-xlsx-preview__column-header">
+                  {{ column.label }}
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of renderedSheet.rows; track row.rowNumber) {
+              <tr [style.display]="row.hidden ? 'none' : null" [style.height.px]="row.heightPx">
+                <th class="b5d-xlsx-preview__row-header">{{ row.rowNumber }}</th>
+                @for (cell of row.cells; track cell.address) {
+                  @if (!cell.skip) {
+                    <td
+                      class="b5d-xlsx-preview__cell"
+                      [class.b5d-xlsx-preview__cell--selected]="isCellSelected(cell.address)"
+                      [class.b5d-xlsx-preview__cell--numeric]="cell.className.includes('--numeric')"
+                      [class.b5d-xlsx-preview__cell--boolean]="cell.className.includes('--boolean')"
+                      [attr.rowspan]="cell.rowSpan > 1 ? cell.rowSpan : null"
+                      [attr.colspan]="cell.colSpan > 1 ? cell.colSpan : null"
+                      [style.display]="row.hidden ? 'none' : null"
+                      [style]="cell.inlineStyle"
+                      (click)="onCellClick(cell, $event)"
+                    >
+                      {{ cell.text }}
+                    </td>
+                  }
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        @for (image of renderedSheet.images; track image.id) {
+          <img
+            class="b5d-xlsx-preview__image"
+            [src]="image.src"
+            [style.left.px]="image.leftPx"
+            [style.top.px]="image.topPx"
+            [style.width.px]="image.widthPx"
+            [style.height.px]="image.heightPx"
+            alt=""
+            loading="eager"
+            decoding="async"
+          />
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="b5d-xlsx-preview__message">{{ emptyMessage }}</div>
+  }
+</div>

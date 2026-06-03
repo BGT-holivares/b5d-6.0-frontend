@@ -113,6 +113,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     canPasteConcept: false,
     parametersTotal: 0,
     selectedParameterIds: [],
+    parameterListVisible: true,
+    parameterBoqVisible: true,
+    parameterDescriptionMatchesVisible: true,
+    parameterAnalysisVisible: true,
   });
   readonly floatingPanels = signal<Record<FloatingPanelId, FloatingPanelState>>({
     tree: {

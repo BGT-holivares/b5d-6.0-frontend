@@ -16,7 +16,7 @@ import type {
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import type { ToolbarActionId } from '../toolbar/toolbar';
-import { WorkbookPreview } from '../workbook-preview/workbook-preview';
+import { XlsxPreview } from '../xlsx-preview/xlsx-preview';
 
 type ParameterDraftRow = {
   clave: string;
@@ -44,13 +44,21 @@ type BoqAnalysisRow = BoqExtractedRow & {
   matchedParameterDescription: string;
   matchedParameterUnit: string;
   rangeText: string;
+  deltaText: string;
   resultText: string;
   resultKind: 'ok' | 'warning' | 'error' | 'none';
 };
 
+type DescriptionMatchCandidateGroup = {
+  parameterId: number;
+  parameterCode: string;
+  parameterDescription: string;
+  candidates: BoqExtractedRow[];
+};
+
 @Component({
   selector: 'app-parameters-panel',
-  imports: [FormsModule, ResizableTableDirective, WorkbookPreview],
+  imports: [FormsModule, ResizableTableDirective, XlsxPreview],
   templateUrl: './parameters-panel.html',
   styleUrl: './parameters-panel.scss',
 })
@@ -80,8 +88,15 @@ export class ParametersPanel implements OnChanges {
   boqRows: BoqExtractedRow[] = [];
   boqLoading = false;
   boqError = '';
-
-  leftPanelWidth = 720;
+  savingParameterActiveById = new Set<number>();
+  descriptionSelectionByParameterId = new Map<number, Set<string>>();
+  parameterListVisible = true;
+  boqPreviewVisible = true;
+  descriptionMatchesVisible = true;
+  analysisVisible = true;
+  topLeftPaneWidth = 540;
+  bottomLeftPaneWidth = 420;
+  topWorkspaceHeight = 390;
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
@@ -92,6 +107,7 @@ export class ParametersPanel implements OnChanges {
       this.selectedParameterIds = new Set(
         [...this.selectedParameterIds].filter((parameterId) => this.workParameters.some((row) => row.id === parameterId)),
       );
+      this.synchronizeDescriptionSelections();
       this.emitToolbarState();
     }
 
@@ -112,8 +128,50 @@ export class ParametersPanel implements OnChanges {
     }
   }
 
-  get layoutTemplateColumns(): string {
-    return `${this.leftPanelWidth}px 8px minmax(340px, 1fr)`;
+  get workspaceTemplateRows(): string {
+    const topVisible = this.topWorkspaceVisible;
+    const bottomVisible = this.bottomWorkspaceVisible;
+    if (topVisible && bottomVisible) {
+      return `${this.topWorkspaceHeight}px 8px minmax(0, 1fr)`;
+    }
+    if (topVisible || bottomVisible) {
+      return 'minmax(0, 1fr)';
+    }
+    return '0px';
+  }
+
+  get topRowTemplateColumns(): string {
+    if (this.parameterListVisible && this.boqPreviewVisible) {
+      return `${this.topLeftPaneWidth}px 8px minmax(0, 1fr)`;
+    }
+    return 'minmax(0, 1fr)';
+  }
+
+  get bottomRowTemplateColumns(): string {
+    if (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0 && this.analysisVisible) {
+      return `${this.bottomLeftPaneWidth}px 8px minmax(0, 1fr)`;
+    }
+    return 'minmax(0, 1fr)';
+  }
+
+  get topWorkspaceVisible(): boolean {
+    return this.parameterListVisible || this.boqPreviewVisible;
+  }
+
+  get bottomWorkspaceVisible(): boolean {
+    return (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) || this.analysisVisible;
+  }
+
+  get showTopVerticalSplitter(): boolean {
+    return this.parameterListVisible && this.boqPreviewVisible;
+  }
+
+  get showBottomVerticalSplitter(): boolean {
+    return this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0 && this.analysisVisible;
+  }
+
+  get showHorizontalSplitter(): boolean {
+    return this.topWorkspaceVisible && this.bottomWorkspaceVisible;
   }
 
   get buildingTypeOptions(): string[] {
@@ -139,6 +197,27 @@ export class ParametersPanel implements OnChanges {
 
   get boqAnalysisRows(): BoqAnalysisRow[] {
     return this.boqRows.slice(0, 500).map((boqRow) => this.buildBoqAnalysisRow(boqRow));
+  }
+
+  get descriptionMatchCandidateGroups(): DescriptionMatchCandidateGroup[] {
+    const groups: DescriptionMatchCandidateGroup[] = [];
+    for (const parameterRow of this.activeParametersForAnalysis) {
+      if (parameterRow.tipo_parametro !== 'cantidad') continue;
+      if (parameterRow.tipo_comparacion !== 'descripcion_parcial') continue;
+      const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
+      if (!normalizedDescription) continue;
+      const candidates = this.boqRows.filter((boqRow) =>
+        this.normalizeText(boqRow.descripcion).includes(normalizedDescription),
+      );
+      if (!candidates.length) continue;
+      groups.push({
+        parameterId: parameterRow.id,
+        parameterCode: parameterRow.clave ?? '-',
+        parameterDescription: parameterRow.descripcion ?? '-',
+        candidates,
+      });
+    }
+    return groups;
   }
 
   get comparisonLabel(): string {
@@ -174,19 +253,76 @@ export class ParametersPanel implements OnChanges {
     }
     if (action === 'home-select-all') {
       this.selectAllVisibleRows();
+      return;
+    }
+    if (action === 'home-calc-parameter') {
+      void this.runParameterTest();
+      return;
+    }
+    if (action === 'parameter-toggle-list') {
+      this.toggleParameterListVisible();
+      return;
+    }
+    if (action === 'parameter-toggle-boq') {
+      this.toggleBoqPreviewVisible();
+      return;
+    }
+    if (action === 'parameter-toggle-matches') {
+      this.toggleDescriptionMatchesVisible();
+      return;
+    }
+    if (action === 'parameter-toggle-analysis') {
+      this.toggleAnalysisVisible();
     }
   }
 
-  startInternalResize(event: PointerEvent): void {
+  async runParameterTest(): Promise<void> {
+    await this.loadBoqExtractedRows();
+  }
+
+  toggleParameterListVisible(): void {
+    this.parameterListVisible = !this.parameterListVisible;
+    this.emitToolbarState();
+  }
+
+  toggleBoqPreviewVisible(): void {
+    this.boqPreviewVisible = !this.boqPreviewVisible;
+    this.emitToolbarState();
+  }
+
+  toggleDescriptionMatchesVisible(): void {
+    this.descriptionMatchesVisible = !this.descriptionMatchesVisible;
+    this.emitToolbarState();
+  }
+
+  toggleAnalysisVisible(): void {
+    this.analysisVisible = !this.analysisVisible;
+    this.emitToolbarState();
+  }
+
+  startInternalResize(
+    event: PointerEvent,
+    target: 'top-vertical' | 'bottom-vertical' | 'horizontal',
+  ): void {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
 
     const startX = event.clientX;
-    const initialWidth = this.leftPanelWidth;
+    const startY = event.clientY;
+    const initialTopWidth = this.topLeftPaneWidth;
+    const initialBottomWidth = this.bottomLeftPaneWidth;
+    const initialHeight = this.topWorkspaceHeight;
     const onPointerMove = (moveEvent: PointerEvent): void => {
       const widthDelta = moveEvent.clientX - startX;
-      this.leftPanelWidth = this.clamp(initialWidth + widthDelta, 420, 1600);
+      const heightDelta = moveEvent.clientY - startY;
+      if (target === 'top-vertical') {
+        this.topLeftPaneWidth = this.clamp(initialTopWidth + widthDelta, 320, 1200);
+      } else if (target === 'bottom-vertical') {
+        this.bottomLeftPaneWidth = this.clamp(initialBottomWidth + widthDelta, 260, 1200);
+      } else {
+        this.topWorkspaceHeight = this.clamp(initialHeight + heightDelta, 260, 900);
+      }
       this.changeDetectorRef.detectChanges();
     };
 
@@ -219,6 +355,56 @@ export class ParametersPanel implements OnChanges {
 
   onFilterChange(): void {
     this.emitToolbarState();
+  }
+
+  async onParameterActiveToggle(parameterRow: ParametroB5DOrm, nextValue: boolean): Promise<void> {
+    if (!this.activeProject) return;
+    if (this.savingParameterActiveById.has(parameterRow.id)) return;
+    this.actionError = '';
+    this.savingParameterActiveById.add(parameterRow.id);
+
+    const previousValue = parameterRow.activo;
+    parameterRow.activo = nextValue;
+    this.synchronizeDescriptionSelections();
+    this.emitToolbarState();
+
+    try {
+      const updated = await firstValueFrom(
+        this.backendProyectos.actualizarParametro(this.activeProject.id, parameterRow.id, { activo: nextValue }),
+      );
+      this.workParameters = this.workParameters.map((row) => (row.id === updated.id ? { ...updated } : row));
+      this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
+      this.synchronizeDescriptionSelections();
+      this.emitToolbarState();
+    } catch (error) {
+      parameterRow.activo = previousValue;
+      this.synchronizeDescriptionSelections();
+      this.emitToolbarState();
+      this.actionError = this.resolveErrorMessage(error, 'No fue posible actualizar el estado del parametro.');
+    } finally {
+      this.savingParameterActiveById.delete(parameterRow.id);
+    }
+  }
+
+  isSavingParameterActive(parameterId: number): boolean {
+    return this.savingParameterActiveById.has(parameterId);
+  }
+
+  isDescriptionCandidateSelected(parameterId: number, boqRow: BoqExtractedRow): boolean {
+    const selectedRows = this.descriptionSelectionByParameterId.get(parameterId);
+    if (!selectedRows) return false;
+    return selectedRows.has(this.buildBoqRowKey(boqRow));
+  }
+
+  onDescriptionCandidateToggle(parameterId: number, boqRow: BoqExtractedRow, checked: boolean): void {
+    const rowKey = this.buildBoqRowKey(boqRow);
+    const selectedRows = new Set(this.descriptionSelectionByParameterId.get(parameterId) ?? []);
+    if (checked) {
+      selectedRows.add(rowKey);
+    } else {
+      selectedRows.delete(rowKey);
+    }
+    this.descriptionSelectionByParameterId.set(parameterId, selectedRows);
   }
 
   startInlineCreate(): void {
@@ -355,6 +541,10 @@ export class ParametersPanel implements OnChanges {
       canPasteConcept: false,
       parametersTotal: this.visibleRows.length,
       selectedParameterIds: [...this.selectedParameterIds],
+      parameterListVisible: this.parameterListVisible,
+      parameterBoqVisible: this.boqPreviewVisible,
+      parameterDescriptionMatchesVisible: this.descriptionMatchesVisible,
+      parameterAnalysisVisible: this.analysisVisible,
     });
   }
 
@@ -433,6 +623,7 @@ export class ParametersPanel implements OnChanges {
 
       const layers = await this.workbookPreviewCache.getWorkbookSheetLayers(projectId, quantificationId, this.selectedSheetIndex);
       this.boqRows = this.extractBoqRows(layers.cells);
+      this.synchronizeDescriptionSelections();
     } catch (error) {
       this.boqRows = [];
       this.boqError = this.resolveErrorMessage(error, 'No fue posible extraer los datos BOQ.');
@@ -532,6 +723,7 @@ export class ParametersPanel implements OnChanges {
         matchedParameterDescription: '-',
         matchedParameterUnit: '-',
         rangeText: '-',
+        deltaText: '-',
         resultText: 'Sin parametro',
         resultKind: 'none',
       };
@@ -548,6 +740,7 @@ export class ParametersPanel implements OnChanges {
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
         rangeText,
+        deltaText: '-',
         resultText: 'Sin cantidad',
         resultKind: 'warning',
       };
@@ -561,21 +754,24 @@ export class ParametersPanel implements OnChanges {
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
         rangeText,
+        deltaText: '-',
         resultText: 'Unidad no compatible',
         resultKind: 'warning',
       };
     }
 
-    const isBelow = rangeMin != null && convertedValue < rangeMin;
-    const isAbove = rangeMax != null && convertedValue > rangeMax;
-    if (isBelow || isAbove) {
+    const delta = this.computeRangeDelta(convertedValue, rangeMin, rangeMax);
+    const unitLabel = matchedParameter.unidad?.trim() || boqRow.unidad?.trim() || 'u';
+    const deltaText = `${delta >= 0 ? '+' : ''}${this.formatValue(delta)} ${unitLabel}`;
+    if (delta !== 0) {
       return {
         ...boqRow,
         matchedParameterCode: matchedParameter.clave ?? '-',
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
         rangeText,
-        resultText: `Fuera de rango (${this.formatValue(convertedValue)})`,
+        deltaText,
+        resultText: 'Fuera de rango',
         resultKind: 'error',
       };
     }
@@ -586,7 +782,8 @@ export class ParametersPanel implements OnChanges {
       matchedParameterDescription: matchedParameter.descripcion ?? '-',
       matchedParameterUnit: matchedParameter.unidad ?? '-',
       rangeText,
-      resultText: `En rango (${this.formatValue(convertedValue)})`,
+      deltaText: '+0',
+      resultText: 'En rango',
       resultKind: 'ok',
     };
   }
@@ -594,21 +791,43 @@ export class ParametersPanel implements OnChanges {
   private findMatchingParameter(boqRow: BoqExtractedRow): ParametroB5DOrm | null {
     const boqCode = this.normalizeText(boqRow.clave);
     const boqDescription = this.normalizeText(boqRow.descripcion);
+
+    const exactMatches: ParametroB5DOrm[] = [];
+    const partialCodeMatches: ParametroB5DOrm[] = [];
+    const partialDescriptionMatches: ParametroB5DOrm[] = [];
+
     for (const parameterRow of this.activeParametersForAnalysis) {
       if (parameterRow.tipo_parametro !== 'cantidad') continue;
       const code = this.normalizeText(parameterRow.clave ?? '');
       const description = this.normalizeText(parameterRow.descripcion ?? '');
-      if (parameterRow.tipo_comparacion === 'clave_exacta' && code && boqCode === code) return parameterRow;
-      if (parameterRow.tipo_comparacion === 'clave_parcial' && code && boqCode.includes(code)) return parameterRow;
+      if (parameterRow.tipo_comparacion === 'clave_exacta' && code && boqCode === code) {
+        exactMatches.push(parameterRow);
+        continue;
+      }
+      if (parameterRow.tipo_comparacion === 'clave_parcial' && code && boqCode.includes(code)) {
+        partialCodeMatches.push(parameterRow);
+        continue;
+      }
       if (
         parameterRow.tipo_comparacion === 'descripcion_parcial' &&
         description &&
-        boqDescription.includes(description)
+        boqDescription.includes(description) &&
+        this.isDescriptionCandidateSelected(parameterRow.id, boqRow)
       ) {
-        return parameterRow;
+        partialDescriptionMatches.push(parameterRow);
       }
     }
+
+    if (exactMatches.length) return exactMatches[0];
+    if (partialCodeMatches.length) return partialCodeMatches[0];
+    if (partialDescriptionMatches.length) return partialDescriptionMatches[0];
     return null;
+  }
+
+  private computeRangeDelta(value: number, minimum: number | null, maximum: number | null): number {
+    if (minimum != null && value < minimum) return value - minimum;
+    if (maximum != null && value > maximum) return value - maximum;
+    return 0;
   }
 
   private convertQuantityToUnit(value: number, fromUnit: string, toUnit: string): number | null {
@@ -658,6 +877,43 @@ export class ParametersPanel implements OnChanges {
   private stringValue(value: unknown): string {
     if (value == null) return '';
     return String(value).trim();
+  }
+
+  private buildBoqRowKey(boqRow: BoqExtractedRow): string {
+    return `${boqRow.row}|${this.normalizeText(boqRow.clave)}|${this.normalizeText(boqRow.descripcion)}`;
+  }
+
+  private synchronizeDescriptionSelections(): void {
+    const nextSelectionMap = new Map<number, Set<string>>();
+    for (const parameterRow of this.activeParametersForAnalysis) {
+      if (parameterRow.tipo_parametro !== 'cantidad') continue;
+      if (parameterRow.tipo_comparacion !== 'descripcion_parcial') continue;
+      const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
+      if (!normalizedDescription) continue;
+
+      const candidateKeys = new Set<string>();
+      for (const boqRow of this.boqRows) {
+        const boqDescription = this.normalizeText(boqRow.descripcion);
+        if (!boqDescription.includes(normalizedDescription)) continue;
+        candidateKeys.add(this.buildBoqRowKey(boqRow));
+      }
+      if (!candidateKeys.size) continue;
+
+      const previousSelection = this.descriptionSelectionByParameterId.get(parameterRow.id);
+      const selectedKeys = new Set<string>();
+      if (!previousSelection || !previousSelection.size) {
+        for (const candidateKey of candidateKeys) selectedKeys.add(candidateKey);
+      } else {
+        for (const candidateKey of candidateKeys) {
+          if (previousSelection.has(candidateKey)) selectedKeys.add(candidateKey);
+        }
+        if (!selectedKeys.size) {
+          for (const candidateKey of candidateKeys) selectedKeys.add(candidateKey);
+        }
+      }
+      nextSelectionMap.set(parameterRow.id, selectedKeys);
+    }
+    this.descriptionSelectionByParameterId = nextSelectionMap;
   }
 
   private clamp(value: number, minValue: number, maxValue: number): number {

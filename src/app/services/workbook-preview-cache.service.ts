@@ -3,9 +3,10 @@ import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from './backend-proyectos.service';
 import type { WorkbookLayersOrm, WorkbookSummaryOrm } from '../types/b5d-orm';
 
-type WorkbookCacheEntry = {
+export type WorkbookCacheEntry = {
   workbook: any;
   sheetNames: string[];
+  bytes: Uint8Array;
 };
 
 @Injectable({ providedIn: 'root' })
@@ -36,9 +37,16 @@ export class WorkbookPreviewCacheService {
         this.backendProyectos.descargarLibroExcelCuantificacion(projectId, quantificationId),
       );
       const xlsxModule = await import('xlsx');
-      const workbook = xlsxModule.read(workbookArrayBuffer, { type: 'array' });
+      const workbook = xlsxModule.read(workbookArrayBuffer, {
+        type: 'array',
+        bookFiles: true,
+        cellStyles: true,
+        cellFormula: true,
+        cellText: true,
+      });
       const sheetNames = [...(workbook.SheetNames ?? [])];
-      const cacheEntry = { workbook, sheetNames };
+      const bytes = new Uint8Array(workbookArrayBuffer);
+      const cacheEntry = { workbook, sheetNames, bytes };
       this.workbookByQuantification.set(key, cacheEntry);
       return cacheEntry;
     })();

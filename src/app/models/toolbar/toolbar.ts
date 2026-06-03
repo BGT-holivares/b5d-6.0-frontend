@@ -28,6 +28,10 @@ export type ToolbarActionId =
   | 'home-calc-boq'
   | 'home-calc-remove'
   | 'home-calc-parameter'
+  | 'parameter-toggle-list'
+  | 'parameter-toggle-boq'
+  | 'parameter-toggle-matches'
+  | 'parameter-toggle-analysis'
   | 'import-b5d-project'
   | 'export-b5d-project'
   | 'refresh-b5d-project'
@@ -134,6 +138,10 @@ export class Toolbar {
     selectedObjectIds: [],
     selectedLinkIds: [],
     canPasteConcept: false,
+    parameterListVisible: true,
+    parameterBoqVisible: true,
+    parameterDescriptionMatchesVisible: true,
+    parameterAnalysisVisible: true,
   };
 
   @Output() archivoSeleccionado = new EventEmitter<File>();
@@ -346,11 +354,50 @@ export class Toolbar {
         visible: activeBottomTab === 'parameters',
         buttons: [
           {
-            labelKey: 'toolbar.home.calcParameter',
+            labelKey: 'toolbar.home.testParameters',
             iconSrc: 'assets/images/Add_32x32.png',
             action: 'home-calc-parameter',
-            disabled: true,
+            disabled: this.isHomeActionDisabled('home-calc-parameter'),
             variant: 'large',
+          },
+        ],
+      },
+      {
+        labelKey: 'toolbar.home.category.parameterPanels',
+        layout: 'vertical',
+        visible: activeBottomTab === 'parameters',
+        buttons: [
+          {
+            labelKey: 'toolbar.home.parameter.list',
+            iconText: 'L',
+            action: 'parameter-toggle-list',
+            disabled: this.isHomeActionDisabled('parameter-toggle-list'),
+            selected: this.homeToolbarState.parameterListVisible !== false,
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.parameter.boq',
+            iconText: 'B',
+            action: 'parameter-toggle-boq',
+            disabled: this.isHomeActionDisabled('parameter-toggle-boq'),
+            selected: this.homeToolbarState.parameterBoqVisible !== false,
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.parameter.matches',
+            iconText: 'M',
+            action: 'parameter-toggle-matches',
+            disabled: this.isHomeActionDisabled('parameter-toggle-matches'),
+            selected: this.homeToolbarState.parameterDescriptionMatchesVisible !== false,
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.home.parameter.analysis',
+            iconText: 'A',
+            action: 'parameter-toggle-analysis',
+            disabled: this.isHomeActionDisabled('parameter-toggle-analysis'),
+            selected: this.homeToolbarState.parameterAnalysisVisible !== false,
+            variant: 'small',
           },
         ],
       },
@@ -376,6 +423,15 @@ export class Toolbar {
       if (actionId === 'home-add-item') return !this.activeProject;
       if (actionId === 'home-remove-item') return !hasParameterSelection;
       if (actionId === 'home-select-all') return (state.parametersTotal ?? 0) === 0;
+      if (actionId === 'home-calc-parameter') return false;
+      if (
+        actionId === 'parameter-toggle-list' ||
+        actionId === 'parameter-toggle-boq' ||
+        actionId === 'parameter-toggle-matches' ||
+        actionId === 'parameter-toggle-analysis'
+      ) {
+        return false;
+      }
       return true;
     }
 

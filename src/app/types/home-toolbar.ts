@@ -27,4 +27,8 @@ export interface HomeToolbarState {
   canPasteConcept: boolean;
   parametersTotal?: number;
   selectedParameterIds?: number[];
+  parameterListVisible?: boolean;
+  parameterBoqVisible?: boolean;
+  parameterDescriptionMatchesVisible?: boolean;
+  parameterAnalysisVisible?: boolean;
 }

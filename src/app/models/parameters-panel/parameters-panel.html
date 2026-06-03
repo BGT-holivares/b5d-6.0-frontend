@@ -37,206 +37,284 @@
     <div class="b5d-parameters-panel__error">{{ actionError }}</div>
   }
 
-  <div class="b5d-parameters-panel__layout" [style.grid-template-columns]="layoutTemplateColumns">
-    <section class="b5d-parameters-panel__table-wrap">
-      <table class="b5d-parameters-panel__table" b5dResizableTable="parameters-main">
-        <thead>
-          <tr>
-            <th>Activo</th>
-            <th>Clave</th>
-            <th>Descripcion</th>
-            <th>Comparacion</th>
-            <th>Tipo</th>
-            <th>Edificacion</th>
-            <th>Unidad</th>
-            <th>Minimo</th>
-            <th>Maximo</th>
-            <th>Promedio</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of visibleRows; track row.id) {
-            <tr
-              class="b5d-parameters-panel__selectable"
-              [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
-              (click)="onRowClick(row.id, $event)"
-            >
-              <td><input type="checkbox" [checked]="row.activo" disabled /></td>
-              <td>{{ row.clave || '-' }}</td>
-              <td>{{ row.descripcion || '-' }}</td>
-              <td>{{ resolveComparisonLabel(row.tipo_comparacion) }}</td>
-              <td>{{ row.tipo_parametro === 'costo' ? 'Costo' : 'Cantidad' }}</td>
-              <td>{{ row.tipo_edificacion || '-' }}</td>
-              <td>{{ row.unidad || '-' }}</td>
-              <td>{{ formatValue(row.minimo) }}</td>
-              <td>{{ formatValue(row.maximo) }}</td>
-              <td>{{ formatValue(resolveAverage(row)) }}</td>
-            </tr>
+  <div class="b5d-parameters-panel__workspace" [style.grid-template-rows]="workspaceTemplateRows">
+    @if (topWorkspaceVisible) {
+      <div class="b5d-parameters-panel__workspace-row" [style.grid-template-columns]="topRowTemplateColumns">
+        @if (parameterListVisible) {
+          <section class="b5d-parameters-panel__pane">
+            <div class="b5d-parameters-panel__pane-title">Parametros disponibles</div>
+            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
+              <table class="b5d-parameters-panel__table" b5dResizableTable="parameters-main">
+                <thead>
+                  <tr>
+                    <th>Activo</th>
+                    <th>Clave</th>
+                    <th>Descripcion</th>
+                    <th>Comparacion</th>
+                    <th>Tipo</th>
+                    <th>Edificacion</th>
+                    <th>Unidad</th>
+                    <th>Minimo</th>
+                    <th>Maximo</th>
+                    <th>Promedio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of visibleRows; track row.id) {
+                    <tr
+                      class="b5d-parameters-panel__selectable"
+                      [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
+                      (click)="onRowClick(row.id, $event)"
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          [checked]="row.activo"
+                          [disabled]="isSavingParameterActive(row.id)"
+                          (click)="$event.stopPropagation()"
+                          (change)="onParameterActiveToggle(row, $any($event.target).checked)"
+                        />
+                      </td>
+                      <td>{{ row.clave || '-' }}</td>
+                      <td>{{ row.descripcion || '-' }}</td>
+                      <td>{{ resolveComparisonLabel(row.tipo_comparacion) }}</td>
+                      <td>{{ row.tipo_parametro === 'costo' ? 'Costo' : 'Cantidad' }}</td>
+                      <td>{{ row.tipo_edificacion || '-' }}</td>
+                      <td>{{ row.unidad || '-' }}</td>
+                      <td>{{ formatValue(row.minimo) }}</td>
+                      <td>{{ formatValue(row.maximo) }}</td>
+                      <td>{{ formatValue(resolveAverage(row)) }}</td>
+                    </tr>
 
-            @if (isInlineEditorAnchoredAfter(row.id)) {
-              <tr class="b5d-parameters-panel__editor-row">
-                <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
-                <td>
-                  <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                    <option value="clave_exacta">Clave exacta</option>
-                    <option value="clave_parcial">Clave parcial</option>
-                    <option value="descripcion_parcial">Descripcion parcial</option>
+                    @if (isInlineEditorAnchoredAfter(row.id)) {
+                      <tr class="b5d-parameters-panel__editor-row">
+                        <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
+                        <td>
+                          <select [(ngModel)]="creatingDraft.tipo_comparacion">
+                            <option value="clave_exacta">Clave exacta</option>
+                            <option value="clave_parcial">Clave parcial</option>
+                            <option value="descripcion_parcial">Descripcion parcial</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select [(ngModel)]="creatingDraft.tipo_parametro">
+                            <option value="cantidad">Cantidad</option>
+                            <option value="costo">Costo</option>
+                          </select>
+                        </td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
+                        <td>
+                          <div class="b5d-parameters-panel__editor-actions">
+                            <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                            <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                              {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                            </button>
+                            <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                              Cancelar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  } @empty {
+                    @if (creatingParameterInline) {
+                      <tr class="b5d-parameters-panel__editor-row">
+                        <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
+                        <td>
+                          <select [(ngModel)]="creatingDraft.tipo_comparacion">
+                            <option value="clave_exacta">Clave exacta</option>
+                            <option value="clave_parcial">Clave parcial</option>
+                            <option value="descripcion_parcial">Descripcion parcial</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select [(ngModel)]="creatingDraft.tipo_parametro">
+                            <option value="cantidad">Cantidad</option>
+                            <option value="costo">Costo</option>
+                          </select>
+                        </td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
+                        <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
+                        <td>
+                          <div class="b5d-parameters-panel__editor-actions">
+                            <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                            <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                              {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                            </button>
+                            <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                              Cancelar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    } @else {
+                      <tr>
+                        <td colspan="10" class="b5d-parameters-panel__muted">
+                          No hay parametros para los filtros seleccionados.
+                        </td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
+        @if (showTopVerticalSplitter) {
+          <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical" (pointerdown)="startInternalResize($event, 'top-vertical')"></div>
+        }
+
+        @if (boqPreviewVisible) {
+          <section class="b5d-parameters-panel__pane">
+            <div class="b5d-parameters-panel__pane-title">Vista BOQ</div>
+            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--stacked">
+              <div class="b5d-parameters-panel__boq-controls">
+                <label>
+                  <span>Cuantificacion</span>
+                  <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectBoqQuantification($event)">
+                    @if (!quantificationsWithWorkbook.length) {
+                      <option [ngValue]="null">Sin libro Excel</option>
+                    }
+                    @for (quantification of quantificationsWithWorkbook; track quantification.id) {
+                      <option [ngValue]="quantification.id">{{ quantification.nombre || ('Cuantificacion ' + quantification.id) }}</option>
+                    }
                   </select>
-                </td>
-                <td>
-                  <select [(ngModel)]="creatingDraft.tipo_parametro">
-                    <option value="cantidad">Cantidad</option>
-                    <option value="costo">Costo</option>
+                </label>
+                <label>
+                  <span>Esquema</span>
+                  <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectBoqSheet($event)" [disabled]="!boqSheets.length">
+                    @for (sheet of boqSheets; track sheet.index) {
+                      <option [ngValue]="sheet.index">{{ sheet.name }}</option>
+                    }
                   </select>
-                </td>
-                <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
-                <td>
-                  <div class="b5d-parameters-panel__editor-actions">
-                    <input type="text" [(ngModel)]="creatingDraft.promedio" />
-                    <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                      {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
-                    </button>
-                    <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                      Cancelar
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            }
-          } @empty {
-            @if (creatingParameterInline) {
-              <tr class="b5d-parameters-panel__editor-row">
-                <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
-                <td>
-                  <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                    <option value="clave_exacta">Clave exacta</option>
-                    <option value="clave_parcial">Clave parcial</option>
-                    <option value="descripcion_parcial">Descripcion parcial</option>
-                  </select>
-                </td>
-                <td>
-                  <select [(ngModel)]="creatingDraft.tipo_parametro">
-                    <option value="cantidad">Cantidad</option>
-                    <option value="costo">Costo</option>
-                  </select>
-                </td>
-                <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
-                <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
-                <td>
-                  <div class="b5d-parameters-panel__editor-actions">
-                    <input type="text" [(ngModel)]="creatingDraft.promedio" />
-                    <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                      {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
-                    </button>
-                    <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                      Cancelar
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            } @else {
-              <tr>
-                <td colspan="10" class="b5d-parameters-panel__muted">
-                  No hay parametros para los filtros seleccionados.
-                </td>
-              </tr>
-            }
-          }
-        </tbody>
-      </table>
-    </section>
+                </label>
+              </div>
 
-    <div class="b5d-parameters-panel__splitter" (pointerdown)="startInternalResize($event)"></div>
-
-    <section class="b5d-parameters-panel__preview">
-      <div class="b5d-parameters-panel__preview-title">Vista BOQ y analisis</div>
-      <div class="b5d-parameters-panel__preview-content">
-        <div class="b5d-parameters-panel__boq-controls">
-          <label>
-            <span>Cuantificacion</span>
-            <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectBoqQuantification($event)">
-              @if (!quantificationsWithWorkbook.length) {
-                <option [ngValue]="null">Sin libro Excel</option>
-              }
-              @for (quantification of quantificationsWithWorkbook; track quantification.id) {
-                <option [ngValue]="quantification.id">{{ quantification.nombre || ('Cuantificacion ' + quantification.id) }}</option>
-              }
-            </select>
-          </label>
-          <label>
-            <span>Esquema</span>
-            <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectBoqSheet($event)" [disabled]="!boqSheets.length">
-              @for (sheet of boqSheets; track sheet.index) {
-                <option [ngValue]="sheet.index">{{ sheet.name }}</option>
-              }
-            </select>
-          </label>
-        </div>
-
-        <div class="b5d-parameters-panel__preview-frame">
-          <app-workbook-preview
-            [loadFromLayers]="true"
-            [projectId]="activeProject?.id ?? null"
-            [quantificationId]="selectedQuantificationId"
-            [sheetIndex]="selectedSheetIndex"
-            frameMode="unsandboxed"
-            title="Vista previa BOQ"
-            emptyMessage="Selecciona una cuantificacion y esquema para previsualizar."
-          />
-        </div>
-
-        @if (boqLoading) {
-          <div class="b5d-parameters-panel__muted">Extrayendo datos BOQ para analisis...</div>
-        } @else if (boqError) {
-          <div class="b5d-parameters-panel__error">{{ boqError }}</div>
-        } @else {
-          <table class="b5d-parameters-panel__boq-table" b5dResizableTable="parameters-boq-analysis">
-            <thead>
-              <tr>
-                <th>Fila</th>
-                <th>Clave</th>
-                <th>Descripcion</th>
-                <th>Cantidad</th>
-                <th>Unidad</th>
-                <th>Parametro</th>
-                <th>Unidad parametro</th>
-                <th>Rango</th>
-                <th>Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (analysisRow of boqAnalysisRows; track analysisRow.row + '-' + analysisRow.clave + '-' + analysisRow.descripcion) {
-                <tr>
-                  <td>{{ analysisRow.row }}</td>
-                  <td>{{ analysisRow.clave || '-' }}</td>
-                  <td>{{ analysisRow.descripcion || '-' }}</td>
-                  <td>{{ formatValue(analysisRow.cantidad) }}</td>
-                  <td>{{ analysisRow.unidad || '-' }}</td>
-                  <td>{{ analysisRow.matchedParameterCode }}</td>
-                  <td>{{ analysisRow.matchedParameterUnit }}</td>
-                  <td>{{ analysisRow.rangeText }}</td>
-                  <td [class]="getAnalysisResultClass(analysisRow.resultKind)">{{ analysisRow.resultText }}</td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="9" class="b5d-parameters-panel__muted">
-                    No se encontraron filas BOQ legibles en la hoja seleccionada.
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
+              <div class="b5d-parameters-panel__preview-frame">
+                <app-xlsx-preview
+                  [loadFromLayers]="true"
+                  [projectId]="activeProject?.id ?? null"
+                  [quantificationId]="selectedQuantificationId"
+                  [sheetIndex]="selectedSheetIndex"
+                  title="Vista previa BOQ"
+                  emptyMessage="Selecciona una cuantificacion y esquema para previsualizar."
+                />
+              </div>
+            </div>
+          </section>
         }
       </div>
-    </section>
+    }
+
+    @if (showHorizontalSplitter) {
+      <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--horizontal" (pointerdown)="startInternalResize($event, 'horizontal')"></div>
+    }
+
+    @if (bottomWorkspaceVisible) {
+      <div class="b5d-parameters-panel__workspace-row" [style.grid-template-columns]="bottomRowTemplateColumns">
+        @if (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) {
+          <section class="b5d-parameters-panel__pane">
+            <div class="b5d-parameters-panel__pane-title">Coincidencias por descripcion parcial</div>
+            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
+              <div class="b5d-parameters-panel__description-matches">
+                @for (group of descriptionMatchCandidateGroups; track group.parameterId) {
+                  <div class="b5d-parameters-panel__description-group">
+                    <div class="b5d-parameters-panel__description-group-title">
+                      {{ group.parameterCode }} - {{ group.parameterDescription }}
+                    </div>
+                    <div class="b5d-parameters-panel__description-group-list">
+                      @for (candidate of group.candidates; track candidate.row + '-' + candidate.clave + '-' + candidate.descripcion) {
+                        <label class="b5d-parameters-panel__description-option">
+                          <input
+                            type="checkbox"
+                            [checked]="isDescriptionCandidateSelected(group.parameterId, candidate)"
+                            (change)="onDescriptionCandidateToggle(group.parameterId, candidate, $any($event.target).checked)"
+                          />
+                          <span>
+                            Fila {{ candidate.row }} | {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }}
+                          </span>
+                        </label>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          </section>
+        }
+
+        @if (showBottomVerticalSplitter) {
+          <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical" (pointerdown)="startInternalResize($event, 'bottom-vertical')"></div>
+        }
+
+        @if (analysisVisible) {
+          <section class="b5d-parameters-panel__pane">
+            <div class="b5d-parameters-panel__pane-title">Resultados de analisis</div>
+            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
+              @if (boqLoading) {
+                <div class="b5d-parameters-panel__muted">Extrayendo datos BOQ para analisis...</div>
+              } @else if (boqError) {
+                <div class="b5d-parameters-panel__error">{{ boqError }}</div>
+              } @else {
+                <table class="b5d-parameters-panel__boq-table" b5dResizableTable="parameters-boq-analysis">
+                  <thead>
+                    <tr>
+                      <th>Fila</th>
+                      <th>Clave</th>
+                      <th>Descripcion</th>
+                      <th>Cantidad</th>
+                      <th>Unidad</th>
+                      <th>Parametro</th>
+                      <th>Unidad parametro</th>
+                      <th>Rango</th>
+                      <th>Diferencia</th>
+                      <th>Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (analysisRow of boqAnalysisRows; track analysisRow.row + '-' + analysisRow.clave + '-' + analysisRow.descripcion) {
+                      <tr>
+                        <td>{{ analysisRow.row }}</td>
+                        <td>{{ analysisRow.clave || '-' }}</td>
+                        <td>{{ analysisRow.descripcion || '-' }}</td>
+                        <td>{{ formatValue(analysisRow.cantidad) }}</td>
+                        <td>{{ analysisRow.unidad || '-' }}</td>
+                        <td>{{ analysisRow.matchedParameterCode }}</td>
+                        <td>{{ analysisRow.matchedParameterUnit }}</td>
+                        <td>{{ analysisRow.rangeText }}</td>
+                        <td [class]="getAnalysisResultClass(analysisRow.resultKind)">{{ analysisRow.deltaText }}</td>
+                        <td [class]="getAnalysisResultClass(analysisRow.resultKind)">{{ analysisRow.resultText }}</td>
+                      </tr>
+                    } @empty {
+                      <tr>
+                        <td colspan="10" class="b5d-parameters-panel__muted">
+                          No se encontraron filas BOQ legibles en la hoja seleccionada.
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+
+    @if (!topWorkspaceVisible && !bottomWorkspaceVisible) {
+      <div class="b5d-parameters-panel__empty-state">
+        <div class="b5d-parameters-panel__muted">Activa alguna vista de parametros desde la barra superior.</div>
+      </div>
+    }
   </div>
 </section>
