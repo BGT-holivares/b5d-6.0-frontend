@@ -7,6 +7,16 @@ import type {
   NodoArbolIfc,
   ValorCacheSeleccion,
 } from '../types/ifc';
+import type {
+  MeasurementAreaSummary,
+  MeasurementLengthAnchor,
+  MeasurementLengthEdge,
+  MeasurementLengthEdgeSummary,
+  MeasurementLengthSummary,
+  MeasurementMode,
+  MeasurementLengthMode,
+  MeasurementVolumeSummary,
+} from '../types/measurement';
 import type { ElementoIfcB5D } from '../types/quantity-take-off';
 import {
   construirIndiceRutaEspacial,
@@ -44,6 +54,62 @@ type ExtractedIfcQuantities = {
   values: Record<string, string>;
 };
 
+type MeasurementFaceSelection = {
+  key: string;
+  modelId: string;
+  localId: number;
+  itemId: number;
+  label: string;
+  area: number;
+  triangles: Vector3[][];
+  overlay: any;
+};
+
+type MeasurementFaceHit = {
+  modelId: string;
+  localId: number;
+  itemId: number;
+  facePoints: Vector3[];
+  faceIndices?: number[];
+  distance: number;
+};
+
+type MeasurementAreaTriangle = {
+  index: number;
+  points: [Vector3, Vector3, Vector3];
+  normal: Vector3;
+  planeConstant: number;
+  area: number;
+  vertexKeys: [string, string, string];
+};
+
+type MeasurementAreaSelectionBuild = {
+  key: string;
+  modelId: string;
+  localId: number;
+  itemId: number;
+  label: string;
+  area: number;
+  triangles: Vector3[][];
+};
+
+type MeasurementLengthHit = {
+  modelId: string;
+  localId: number;
+  itemId: number;
+  point: Vector3;
+  distance: number;
+};
+
+type MeasurementLengthEdgeHit = {
+  modelId: string;
+  localId: number;
+  itemId: number;
+  start: Vector3;
+  end: Vector3;
+  distance: number;
+};
+
 @Injectable({ providedIn: 'root' })
 export class VisorIfc {
   readonly cargando = signal(false);
@@ -52,6 +118,8 @@ export class VisorIfc {
   readonly nodosExpandidos = signal<Record<string, boolean>>({});
   readonly arbolVisible = signal(false);
   readonly modelosIfcCargados = signal<ModeloIfcCargado[]>([]);
+  readonly seleccionActual = signal<Record<string, Set<number>>>({});
+  readonly areaMeasurementSummary = signal<MeasurementAreaSummary | null>(null);
 
   private componentes: any = null;
   private mundo: any = null;
@@ -66,6 +134,7 @@ export class VisorIfc {
   private nombreArchivoPendiente = '';
   private urlTrabajador = '';
   private moduloThree: typeof import('three') | null = null;
+  private fragsModule: typeof import('@thatopen/fragments') | null = null;
   private mapaTiposIfc: Record<number, string> = {};
   private registrosArbol = new Map<number, RegistroElemento>();
   private cacheSeleccion = new Map<string, ValorCacheSeleccion>();
@@ -77,6 +146,20 @@ export class VisorIfc {
   private orbitPivot: Vector3 | null = null;
   private hiddenModelIds = new Set<string>();
   private modelTransparencyState = new Map<string, ModelTransparencyState>();
+  private measurementMode: MeasurementMode | null = null;
+  private measurementLengthMode: MeasurementLengthMode = 'edge';
+  private readonly measurementFaceSelections = new Map<string, MeasurementFaceSelection>();
+  private readonly measurementLengthAnchors = new Map<string, MeasurementLengthAnchor>();
+  private lengthEdgeSelection: MeasurementLengthEdge | null = null;
+  private lengthEdgePreview: MeasurementLengthEdge | null = null;
+  private lengthMeasurementOverlay: any = null;
+  private lengthEdgeMeasurementOverlay: any = null;
+  readonly lengthMeasurementSummary = signal<MeasurementLengthSummary | null>(null);
+  readonly lengthEdgeMeasurementSummary = signal<MeasurementLengthEdgeSummary | null>(null);
+  private measurementOverlayGroup: any = null;
+  private readonly measurementSelectionColor = '#f472b6';
+  private readonly defaultSelectionColor = '#f7f31c';
+  private readonly measurementDebugEnabled = true;
 
   constructor(@Inject(PLATFORM_ID) private readonly plataformaId: object) {}
 
@@ -93,14 +176,16 @@ export class VisorIfc {
     if (!isPlatformBrowser(this.plataformaId) || this.componentes) return;
     this.contenedorVisor = contenedor;
 
-    const [THREE, WEBIFC, OBC, OBCF] = await Promise.all([
+    const [THREE, WEBIFC, FRAGS, OBC, OBCF] = await Promise.all([
       import('three'),
       import('web-ifc'),
+      import('@thatopen/fragments'),
       import('@thatopen/components'),
       import('@thatopen/components-front'),
     ]);
 
     this.moduloThree = THREE;
+    this.fragsModule = FRAGS;
     this.mapaTiposIfc = this.construirMapaTiposIfc(WEBIFC);
 
     const componentes: any = new OBC.Components();
@@ -188,6 +273,14 @@ export class VisorIfc {
       this.updateSelectionFromMap(this.resaltador?.selection?.select ?? {});
     });
 
+    this.measurementOverlayGroup = new THREE.Group();
+    this.measurementOverlayGroup.name = 'measurement-overlays';
+    this.measurementOverlayGroup.renderOrder = 10000;
+    mundo.scene.three.add(this.measurementOverlayGroup);
+
+    contenedor.addEventListener('pointerdown', this.handleMeasurementPointerDown, true);
+    contenedor.addEventListener('pointermove', this.handleMeasurementPointerMove, true);
+    contenedor.addEventListener('pointerleave', this.handleMeasurementPointerLeave, true);
     contenedor.addEventListener('pointerdown', this.handleAltPointerDown, true);
 
     const cargadorIfc = componentes.get(OBC.IfcLoader);
@@ -203,7 +296,12 @@ export class VisorIfc {
   }
 
   destruirVisor(): void {
+    this.contenedorVisor?.removeEventListener('pointerdown', this.handleMeasurementPointerDown, true);
+    this.contenedorVisor?.removeEventListener('pointermove', this.handleMeasurementPointerMove, true);
+    this.contenedorVisor?.removeEventListener('pointerleave', this.handleMeasurementPointerLeave, true);
     this.contenedorVisor?.removeEventListener('pointerdown', this.handleAltPointerDown, true);
+    this.clearAreaMeasurementSelections();
+    this.clearLengthMeasurementSelections();
     this.removeModelVisualGuides();
 
     if (this.urlTrabajador) URL.revokeObjectURL(this.urlTrabajador);
@@ -214,6 +312,7 @@ export class VisorIfc {
     this.cargadorIfc = null;
     this.fragmentos = null;
     this.resaltador = null;
+    this.fragsModule = null;
     this.raycasterIfc = null;
     this.modeloCargado = null;
     this.contenedorVisor = null;
@@ -228,6 +327,15 @@ export class VisorIfc {
     this.cacheSeleccion.clear();
     this.cacheElevacionElementos.clear();
     this.registrosArbol.clear();
+    this.seleccionActual.set({});
+    this.measurementMode = null;
+    this.lengthMeasurementSummary.set(null);
+    this.lengthEdgeMeasurementSummary.set(null);
+    this.measurementOverlayGroup = null;
+    this.lengthMeasurementOverlay = null;
+    this.lengthEdgeMeasurementOverlay = null;
+    this.lengthEdgeSelection = null;
+    this.lengthEdgePreview = null;
   }
 
   async cargarArchivoIfc(archivo: File): Promise<void> {
@@ -248,6 +356,9 @@ export class VisorIfc {
     this.datosArbol.set([]);
     this.nodosExpandidos.set({});
     this.arbolVisible.set(false);
+    this.seleccionActual.set({});
+    this.clearAreaMeasurementSelections();
+    this.clearLengthMeasurementSelections();
 
     try {
       const datos = await archivo.arrayBuffer();
@@ -304,12 +415,64 @@ export class VisorIfc {
 
   async limpiarSeleccion(): Promise<void> {
     this.informacionSeleccionada.set(null);
+    this.seleccionActual.set({});
+    this.clearAreaMeasurementSelections();
+    this.clearLengthMeasurementSelections();
 
     try {
       if (this.resaltador?.clear) await this.resaltador.clear();
     } catch (error) {
       console.warn('No se pudo limpiar selección:', error);
     }
+  }
+
+  // Updates the active measurement mode and prepares the model interaction state.
+  async setMeasurementMode(mode: MeasurementMode | null): Promise<void> {
+    if (this.measurementMode === mode) return;
+
+    this.measurementMode = mode;
+    await this.applyMeasurementSelectionStyle(mode !== null);
+
+    if (mode === 'area') {
+      await this.limpiarSeleccion();
+      return;
+    }
+
+    if (mode === 'length') {
+      await this.limpiarSeleccion();
+      return;
+    }
+
+    if (mode === 'volume') {
+      this.clearAreaMeasurementSelections();
+      this.clearLengthMeasurementSelections();
+      this.clearLengthEdgeMeasurement();
+      return;
+    }
+
+    this.clearAreaMeasurementSelections();
+    this.clearLengthMeasurementSelections();
+    this.clearLengthEdgeMeasurement();
+  }
+
+  // Switches the active length sub-mode used while length measurement is enabled.
+  setMeasurementLengthMode(mode: MeasurementLengthMode): void {
+    if (this.measurementLengthMode === mode) return;
+
+    this.measurementLengthMode = mode;
+    this.clearLengthMeasurementSelections();
+    this.clearLengthEdgeMeasurement();
+  }
+
+  async clearAllMeasurements(): Promise<void> {
+    await this.limpiarSeleccion();
+    this.clearLengthEdgeMeasurement();
+  }
+
+  // Temporary trace output for measurement debugging; remove once area selection is stable.
+  private debugMeasurement(stage: string, payload: unknown): void {
+    if (!this.measurementDebugEnabled) return;
+    console.log('[measurement-debug]', stage, payload);
   }
 
   alternarVisibilidadIfc(modeloId: string): void {
@@ -583,6 +746,39 @@ export class VisorIfc {
     };
   }
 
+  // Sums the volume of the current selected IFC items across every loaded model.
+  async obtenerResumenVolumenSeleccionado(
+    selectionMap: Record<string, Set<number>> = this.seleccionActual(),
+  ): Promise<MeasurementVolumeSummary> {
+    const selectedCount = Object.values(selectionMap).reduce((count, localIdSet) => count + localIdSet.size, 0);
+    if (!selectedCount) return { totalVolume: null, selectedCount: 0 };
+
+    let totalVolume = 0;
+    let hasVolume = false;
+
+    for (const [modelId, localIdSet] of Object.entries(selectionMap)) {
+      const model = this.getModelById(modelId);
+      const localIds = Array.from(localIdSet);
+      if (!model || !localIds.length || typeof model.getItemsVolume !== 'function') continue;
+
+      try {
+        const rawVolume = await model.getItemsVolume(localIds);
+        const numericVolume = this.normalizarVolumenPosible(rawVolume);
+        if (numericVolume === null) continue;
+
+        totalVolume += numericVolume;
+        hasVolume = true;
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      totalVolume: hasVolume ? totalVolume : null,
+      selectedCount,
+    };
+  }
+
   private readonly handleAltPointerDown = async (event: PointerEvent): Promise<void> => {
     if (!event.shiftKey || event.button !== 0) return;
 
@@ -612,6 +808,74 @@ export class VisorIfc {
     }
   };
 
+  private readonly handleMeasurementPointerDown = async (event: PointerEvent): Promise<void> => {
+    if (!this.measurementMode || event.button !== 0) return;
+
+    // Volume mode should keep the normal fragments selection flow intact.
+    if (this.measurementMode === 'volume') return;
+
+    const pointerPosition = this.getPointerPixelPositionFromEvent(event);
+    const canvas = this.getRendererCanvas();
+    const camera = this.mundo?.camera?.three;
+    if (!pointerPosition || !canvas || !camera) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    try {
+      if (this.measurementMode === 'area') {
+        this.debugMeasurement('area pointerdown', { pointerPosition, hasCanvas: !!canvas, hasCamera: !!camera });
+        const hit = await this.findClosestAreaMeasurementHit(pointerPosition, camera, canvas);
+        if (!hit) return;
+
+        await this.toggleAreaMeasurementFace(hit);
+        return;
+      }
+
+      if (this.measurementMode === 'length') {
+        if (this.measurementLengthMode === 'edge') {
+        const edgeHit = await this.findClosestLengthEdgeHit(pointerPosition, camera, canvas);
+        if (edgeHit) {
+          this.pinLengthEdgeMeasurement(edgeHit);
+          return;
+        }
+          return;
+        }
+
+        const hit = await this.findClosestLengthMeasurementHit(pointerPosition, camera, canvas);
+        if (!hit) return;
+
+        this.clearLengthEdgeMeasurement();
+        this.toggleLengthMeasurementAnchor(hit);
+      }
+    } catch (error) {
+      console.warn('Could not resolve measurement interaction:', error);
+    }
+  };
+
+  private readonly handleMeasurementPointerMove = async (event: PointerEvent): Promise<void> => {
+    if (this.measurementMode !== 'length' || this.measurementLengthMode !== 'edge' || event.buttons !== 0) return;
+    if (this.lengthEdgeSelection || this.measurementLengthAnchors.size > 0) return;
+
+    const pointerPosition = this.getPointerPixelPositionFromEvent(event);
+    const canvas = this.getRendererCanvas();
+    const camera = this.mundo?.camera?.three;
+    if (!pointerPosition || !canvas || !camera) return;
+
+    try {
+      const hit = await this.findClosestLengthEdgeHit(pointerPosition, camera, canvas);
+      this.setLengthEdgePreview(hit);
+    } catch {
+      this.setLengthEdgePreview(null);
+    }
+  };
+
+  private readonly handleMeasurementPointerLeave = (): void => {
+    if (this.measurementMode !== 'length' || this.measurementLengthMode !== 'edge' || this.lengthEdgeSelection || this.measurementLengthAnchors.size > 0) return;
+    this.setLengthEdgePreview(null);
+  };
+
   // Converts pointer coordinates to normalized raycast coordinates.
   private getPointerPositionFromEvent(event: PointerEvent): { x: number; y: number } | undefined {
     if (!this.contenedorVisor) return undefined;
@@ -623,6 +887,1092 @@ export class VisorIfc {
       x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
       y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
     };
+  }
+
+  // Converts pointer coordinates to raw canvas-relative pixels for fragments raycasts.
+  private getPointerPixelPositionFromEvent(event: PointerEvent): { x: number; y: number } | undefined {
+    if (!this.contenedorVisor) return undefined;
+
+    const bounds = this.contenedorVisor.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return undefined;
+
+    return {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    };
+  }
+
+  // Returns the canvas element used by the active renderer, if present.
+  private getRendererCanvas(): HTMLCanvasElement | null {
+    return (this.contenedorVisor?.querySelector('canvas') as HTMLCanvasElement | null) ?? null;
+  }
+
+  // Finds the closest face hit under the pointer for area measurements.
+  private async findClosestAreaMeasurementHit(
+    pointerPosition: { x: number; y: number },
+    camera: any,
+    canvas: HTMLCanvasElement,
+  ): Promise<MeasurementFaceHit | null> {
+    if (!this.moduloThree) return null;
+
+    const mouse = new this.moduloThree.Vector2(pointerPosition.x, pointerPosition.y);
+    const raycastData = { camera, mouse, dom: canvas };
+    const candidates: MeasurementFaceHit[] = [];
+
+    for (const model of this.getSelectableMeasurementModels()) {
+      try {
+        if (typeof model?.raycastAll !== 'function') continue;
+
+        const modelId = this.getModelId(model);
+        if (!modelId) continue;
+
+        const hits = await model.raycastAll(raycastData);
+        this.debugMeasurement('area raycastAll', {
+          modelId,
+          hitCount: Array.isArray(hits) ? hits.length : null,
+        });
+        if (!Array.isArray(hits) || !hits.length) continue;
+
+        const validHit = this.pickClosestFaceHit(modelId, hits);
+        if (validHit) candidates.push(validHit);
+      } catch {
+        continue;
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    const hit = candidates[0] ?? null;
+    this.debugMeasurement('area hit', {
+      hitCount: candidates.length,
+      hit: !!hit,
+    });
+    return hit;
+  }
+
+  // Finds the closest vertex snap under the pointer for length measurements.
+  private async findClosestLengthMeasurementHit(
+    pointerPosition: { x: number; y: number },
+    camera: any,
+    canvas: HTMLCanvasElement,
+  ): Promise<MeasurementLengthHit | null> {
+    if (!this.moduloThree || !this.fragsModule) return null;
+
+    const mouse = new this.moduloThree.Vector2(pointerPosition.x, pointerPosition.y);
+    const snappingClass = this.fragsModule.SnappingClass.POINT;
+    const raycastData = { camera, mouse, dom: canvas, snappingClasses: [snappingClass] };
+    const candidates: MeasurementLengthHit[] = [];
+
+    for (const model of this.getSelectableMeasurementModels()) {
+      try {
+        if (typeof model?.raycastWithSnapping !== 'function') continue;
+
+        const modelId = this.getModelId(model);
+        if (!modelId) continue;
+
+        const hits = await model.raycastWithSnapping(raycastData);
+        if (!Array.isArray(hits) || !hits.length) continue;
+
+        const validHit = this.pickClosestLengthHit(modelId, hits);
+        if (validHit) candidates.push(validHit);
+      } catch {
+        continue;
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates[0] ?? null;
+  }
+
+  // Finds the closest snapped edge under the pointer for hover-based length measurements.
+  private async findClosestLengthEdgeHit(
+    pointerPosition: { x: number; y: number },
+    camera: any,
+    canvas: HTMLCanvasElement,
+  ): Promise<MeasurementLengthEdgeHit | null> {
+    if (!this.moduloThree || !this.fragsModule) return null;
+
+    const mouse = new this.moduloThree.Vector2(pointerPosition.x, pointerPosition.y);
+    const snappingClass = this.fragsModule.SnappingClass.LINE;
+    const raycastData = { camera, mouse, dom: canvas, snappingClasses: [snappingClass] };
+    const candidates: MeasurementLengthEdgeHit[] = [];
+
+    for (const model of this.getSelectableMeasurementModels()) {
+      try {
+        if (typeof model?.raycastWithSnapping !== 'function') continue;
+
+        const modelId = this.getModelId(model);
+        if (!modelId) continue;
+
+        const hits = await model.raycastWithSnapping(raycastData);
+        if (!Array.isArray(hits) || !hits.length) continue;
+
+        const validHit = this.pickClosestLengthEdgeHit(modelId, hits);
+        if (validHit) candidates.push(validHit);
+      } catch {
+        continue;
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates[0] ?? null;
+  }
+
+  // Filters loaded models to only the visible ones that can be measured.
+  private getSelectableMeasurementModels(): any[] {
+    return this.getLoadedModels().filter((model) => {
+      const modelId = this.getModelId(model);
+      return model?.object?.visible && (!modelId || !this.hiddenModelIds.has(modelId));
+    });
+  }
+
+  // Picks the closest valid face hit from a model raycast result set.
+  private pickClosestFaceHit(modelId: string, hits: any[]): MeasurementFaceHit | null {
+    const sortedHits = [...hits]
+      .filter((hit) => this.isValidFaceHit(hit))
+      .sort((a, b) => (Number(a.distance) || Number.POSITIVE_INFINITY) - (Number(b.distance) || Number.POSITIVE_INFINITY));
+
+    const hit = sortedHits[0];
+    if (!hit) return null;
+
+    return {
+      modelId,
+      localId: Number(hit.localId),
+      itemId: Number(hit.itemId ?? hit.localId),
+      facePoints: this.convertFacePoints(hit.facePoints),
+      faceIndices: Array.isArray(hit.faceIndices) ? [...hit.faceIndices] : Array.from(hit.faceIndices ?? []),
+      distance: Number(hit.distance ?? Number.POSITIVE_INFINITY),
+    };
+  }
+
+  // Picks the closest valid point hit from a model raycast result set.
+  private pickClosestLengthHit(modelId: string, hits: any[]): MeasurementLengthHit | null {
+    const sortedHits = [...hits]
+      .filter((hit) => this.isValidLengthHit(hit))
+      .sort((a, b) => (Number(a.distance) || Number.POSITIVE_INFINITY) - (Number(b.distance) || Number.POSITIVE_INFINITY));
+
+    const hit = sortedHits[0];
+    if (!hit) return null;
+
+    return {
+      modelId,
+      localId: Number(hit.localId),
+      itemId: Number(hit.itemId ?? hit.localId),
+      point: this.clonePoint(hit.point),
+      distance: Number(hit.distance ?? Number.POSITIVE_INFINITY),
+    };
+  }
+
+  // Picks the closest valid snapped edge from a model raycast result set.
+  private pickClosestLengthEdgeHit(modelId: string, hits: any[]): MeasurementLengthEdgeHit | null {
+    const sortedHits = [...hits]
+      .filter((hit) => this.isValidLengthEdgeHit(hit))
+      .sort((a, b) => (Number(a.distance) || Number.POSITIVE_INFINITY) - (Number(b.distance) || Number.POSITIVE_INFINITY));
+
+    const hit = sortedHits[0];
+    if (!hit) return null;
+
+    return {
+      modelId,
+      localId: Number(hit.localId),
+      itemId: Number(hit.itemId ?? hit.localId),
+      start: this.clonePoint(hit.snappedEdgeP1 ?? hit.point),
+      end: this.clonePoint(hit.snappedEdgeP2 ?? hit.point),
+      distance: Number(hit.distance ?? Number.POSITIVE_INFINITY),
+    };
+  }
+
+  // Verifies that a raycast result contains a face we can measure.
+  private isValidFaceHit(hit: any): boolean {
+    return !!hit && Number.isFinite(Number(hit.distance)) && !!hit.facePoints && hit.facePoints.length >= 9;
+  }
+
+  // Verifies that a raycast result contains a snapped point we can measure.
+  private isValidLengthHit(hit: any): boolean {
+    const pointClass = this.fragsModule?.SnappingClass.POINT;
+    return !!hit && Number.isFinite(Number(hit.distance)) && !!hit.point && hit.snappingClass === pointClass;
+  }
+
+  // Verifies that a raycast result contains a snapped edge we can measure.
+  private isValidLengthEdgeHit(hit: any): boolean {
+    const lineClass = this.fragsModule?.SnappingClass.LINE;
+    return (
+      !!hit &&
+      Number.isFinite(Number(hit.distance)) &&
+      !!hit.snappedEdgeP1 &&
+      !!hit.snappedEdgeP2 &&
+      hit.snappingClass === lineClass
+    );
+  }
+
+  // Converts raw face points into Three.js vectors.
+  private convertFacePoints(facePoints: Float32Array | number[] | undefined): Vector3[] {
+    if (!this.moduloThree || !facePoints || facePoints.length < 9) return [];
+
+    const points: Vector3[] = [];
+    for (let index = 0; index < facePoints.length; index += 3) {
+      points.push(new this.moduloThree.Vector3(facePoints[index], facePoints[index + 1], facePoints[index + 2]));
+    }
+
+    return points;
+  }
+
+  // Adds or replaces the current length measurement anchor pair.
+  private toggleLengthMeasurementAnchor(hit: MeasurementLengthHit): void {
+    if (!this.moduloThree) return;
+
+    const key = this.getMeasurementLengthAnchorKey(hit);
+    const existingAnchor = this.measurementLengthAnchors.get(key);
+    if (existingAnchor) return;
+
+    if (this.measurementLengthAnchors.size >= 2) {
+      this.measurementLengthAnchors.clear();
+    }
+
+    if (this.measurementLengthAnchors.size === 1) {
+      const [firstAnchor] = Array.from(this.measurementLengthAnchors.values());
+      if (this.isSameMeasurementObject(firstAnchor, hit)) return;
+    }
+
+    this.measurementLengthAnchors.set(key, {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+      x: hit.point.x,
+      y: hit.point.y,
+      z: hit.point.z,
+    });
+
+    this.updateLengthMeasurementSummary();
+  }
+
+  // Pins a hovered edge as the active length measurement and clears the point workflow.
+  private pinLengthEdgeMeasurement(hit: MeasurementLengthEdgeHit): void {
+    this.lengthEdgeSelection = {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+      start: {
+        x: hit.start.x,
+        y: hit.start.y,
+        z: hit.start.z,
+      },
+      end: {
+        x: hit.end.x,
+        y: hit.end.y,
+        z: hit.end.z,
+      },
+    };
+    this.lengthEdgePreview = null;
+    this.measurementLengthAnchors.clear();
+    this.removeLengthMeasurementOverlay();
+    this.updateLengthEdgeMeasurementSummary();
+    this.lengthMeasurementSummary.set(null);
+  }
+
+  // Updates the hover preview used by the edge-based length mode.
+  private setLengthEdgePreview(hit: MeasurementLengthEdgeHit | null): void {
+    if (this.lengthEdgeSelection) return;
+
+    this.lengthEdgePreview = hit
+      ? {
+          modelId: hit.modelId,
+          localId: hit.localId,
+          itemId: hit.itemId,
+          label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+          start: {
+            x: hit.start.x,
+            y: hit.start.y,
+            z: hit.start.z,
+          },
+          end: {
+            x: hit.end.x,
+            y: hit.end.y,
+            z: hit.end.z,
+          },
+        }
+      : null;
+
+    this.updateLengthEdgeMeasurementSummary();
+  }
+
+  // Clears the edge-based length measurement state and overlay.
+  private clearLengthEdgeMeasurement(): void {
+    this.lengthEdgeSelection = null;
+    this.lengthEdgePreview = null;
+    this.removeLengthEdgeMeasurementOverlay();
+    this.lengthEdgeMeasurementSummary.set(null);
+  }
+
+  // Adds or removes a measurement face and updates the summary state.
+  private async toggleAreaMeasurementFace(hit: MeasurementFaceHit): Promise<void> {
+    const builtSelection = await this.buildAreaMeasurementSelection(hit);
+    if (!builtSelection) return;
+
+    const key = builtSelection.key;
+    const existingSelection = this.measurementFaceSelections.get(key);
+
+    if (existingSelection) {
+      this.removeAreaMeasurementFace(existingSelection);
+      this.measurementFaceSelections.delete(key);
+      this.updateAreaMeasurementSummary();
+      return;
+    }
+
+    const area = builtSelection.area;
+    const overlay = this.createAreaMeasurementOverlay(builtSelection.triangles);
+    if (!overlay || !this.measurementOverlayGroup) return;
+
+    overlay.userData = {
+      ...overlay.userData,
+      measurementFaceKey: key,
+    };
+
+    this.measurementOverlayGroup.add(overlay);
+    this.measurementFaceSelections.set(key, {
+      key,
+      modelId: builtSelection.modelId,
+      localId: builtSelection.localId,
+      itemId: builtSelection.itemId,
+      label: builtSelection.label,
+      area,
+      triangles: builtSelection.triangles,
+      overlay,
+    });
+
+    this.updateAreaMeasurementSummary();
+  }
+
+  // Removes a selected measurement face from the list and overlay group.
+  removeAreaMeasurementSelection(key: string): void {
+    const selection = this.measurementFaceSelections.get(key);
+    if (!selection) return;
+
+    this.removeAreaMeasurementFace(selection);
+    this.measurementFaceSelections.delete(key);
+    this.updateAreaMeasurementSummary();
+  }
+
+  // Builds a merged face selection from the clicked triangle and its coplanar neighbors.
+  private async buildAreaMeasurementSelection(hit: MeasurementFaceHit): Promise<MeasurementAreaSelectionBuild | null> {
+    const model = this.getModelById(hit.modelId);
+    if (!model?.getItemsGeometry || !this.moduloThree) return null;
+
+    try {
+      const geometries = await model.getItemsGeometry([hit.localId]);
+      const geometryGroups = Array.isArray(geometries) ? geometries : geometries ? [geometries] : [];
+      this.debugMeasurement('area geometry chunks', {
+        modelId: hit.modelId,
+        localId: hit.localId,
+        chunkCount: geometryGroups.length,
+        facePoints: hit.facePoints.length,
+      });
+
+      for (let groupIndex = 0; groupIndex < geometryGroups.length; groupIndex += 1) {
+        const geometryGroup = geometryGroups[groupIndex];
+        const chunks = Array.isArray(geometryGroup) ? geometryGroup : [geometryGroup];
+
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+          const chunk = chunks[chunkIndex];
+          const triangles = this.extractMeasurementTriangles(chunk);
+          this.debugMeasurement('area triangles', {
+            modelId: hit.modelId,
+            localId: hit.localId,
+            groupIndex,
+            chunkIndex,
+            triangleCount: triangles.length,
+            chunkKeys: chunk ? Object.keys(chunk) : [],
+          });
+          if (!triangles.length) continue;
+
+          const seedTriangleIndex = this.findMatchingTriangleIndex(triangles, hit.facePoints);
+          this.debugMeasurement('area seed triangle', {
+            modelId: hit.modelId,
+            localId: hit.localId,
+            groupIndex,
+            chunkIndex,
+            seedTriangleIndex,
+          });
+          if (seedTriangleIndex === null) continue;
+
+          const selectedTriangleIndices = this.collectCoplanarTriangleRegion(triangles, seedTriangleIndex);
+          this.debugMeasurement('area selected triangles', {
+            modelId: hit.modelId,
+            localId: hit.localId,
+            groupIndex,
+            chunkIndex,
+            selectedTriangleCount: selectedTriangleIndices.length,
+          });
+          if (!selectedTriangleIndices.length) continue;
+
+          const selectedTriangles = selectedTriangleIndices.map((triangleIndex) =>
+            triangles[triangleIndex].points.map((point) => point.clone()) as Vector3[],
+          );
+          const area = selectedTriangleIndices.reduce((sum, triangleIndex) => sum + triangles[triangleIndex].area, 0);
+
+          if (!Number.isFinite(area) || area <= 0) continue;
+
+          const sortedIndices = [...selectedTriangleIndices].sort((a, b) => a - b);
+          const key = `${hit.modelId}:${hit.localId}:${hit.itemId}:${groupIndex}:${chunkIndex}:${sortedIndices.join('-')}`;
+
+          return {
+            key,
+            modelId: hit.modelId,
+            localId: hit.localId,
+            itemId: hit.itemId,
+            label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+            area,
+            triangles: selectedTriangles,
+          };
+        }
+      }
+    } catch (error) {
+      console.warn('Could not build area measurement selection:', error);
+    }
+
+    return null;
+  }
+
+  // Builds a stable identifier for a face selection.
+  private getMeasurementFaceKey(hit: MeasurementFaceHit): string {
+    const faceIndicesKey = hit.faceIndices?.length
+      ? hit.faceIndices.join('-')
+      : hit.facePoints.map((point) => `${point.x.toFixed(4)},${point.y.toFixed(4)},${point.z.toFixed(4)}`).join('|');
+
+    return `${hit.modelId}:${hit.localId}:${hit.itemId}:${faceIndicesKey}`;
+  }
+
+  // Extracts world-space triangles for a local item geometry chunk.
+  private extractMeasurementTriangles(geometryChunk: any): MeasurementAreaTriangle[] {
+    if (!this.moduloThree || !geometryChunk?.positions || !geometryChunk?.indices || !geometryChunk?.transform) return [];
+
+    const positions = geometryChunk.positions instanceof Float32Array ? geometryChunk.positions : new Float32Array(geometryChunk.positions);
+    const indices = geometryChunk.indices instanceof Uint32Array || geometryChunk.indices instanceof Uint16Array
+      ? Array.from(geometryChunk.indices)
+      : Array.isArray(geometryChunk.indices)
+        ? geometryChunk.indices
+        : [];
+    const transform = geometryChunk.transform;
+    const sourceIndices = indices.length ? indices : Array.from({ length: Math.floor(positions.length / 3) }, (_, index) => index);
+    const triangles: MeasurementAreaTriangle[] = [];
+    const v0 = new this.moduloThree.Vector3();
+    const v1 = new this.moduloThree.Vector3();
+    const v2 = new this.moduloThree.Vector3();
+    const edgeA = new this.moduloThree.Vector3();
+    const edgeB = new this.moduloThree.Vector3();
+    const normal = new this.moduloThree.Vector3();
+
+    for (let index = 0; index + 2 < sourceIndices.length; index += 3) {
+      const i0 = sourceIndices[index];
+      const i1 = sourceIndices[index + 1];
+      const i2 = sourceIndices[index + 2];
+      if ([i0, i1, i2].some((value) => !Number.isInteger(value))) continue;
+
+      v0.fromArray(positions, i0 * 3).applyMatrix4(transform);
+      v1.fromArray(positions, i1 * 3).applyMatrix4(transform);
+      v2.fromArray(positions, i2 * 3).applyMatrix4(transform);
+
+      edgeA.copy(v1).sub(v0);
+      edgeB.copy(v2).sub(v0);
+      normal.crossVectors(edgeA, edgeB);
+      const area = 0.5 * normal.length();
+      if (!Number.isFinite(area) || area <= 0) continue;
+
+      normal.normalize();
+
+      triangles.push({
+        index: Math.floor(index / 3),
+        points: [v0.clone(), v1.clone(), v2.clone()],
+        normal: normal.clone(),
+        planeConstant: -normal.dot(v0),
+        area,
+        vertexKeys: [v0, v1, v2].map((point) => this.getPointKey(point)) as [string, string, string],
+      });
+    }
+
+    return triangles;
+  }
+
+  // Finds the triangle in a geometry chunk that matches the clicked face points.
+  private findMatchingTriangleIndex(triangles: MeasurementAreaTriangle[], facePoints: Vector3[]): number | null {
+    if (!facePoints.length) return null;
+    const targetKeys = facePoints.map((point) => this.getPointKey(point)).sort();
+
+    for (const triangle of triangles) {
+      const triangleKeys = [...triangle.vertexKeys].sort();
+      if (triangleKeys.length !== targetKeys.length) continue;
+      if (triangleKeys.every((key, index) => key === targetKeys[index])) return triangle.index;
+    }
+
+    return null;
+  }
+
+  // Flood-fills the coplanar, edge-adjacent triangle region around the clicked triangle.
+  private collectCoplanarTriangleRegion(triangles: MeasurementAreaTriangle[], seedTriangleIndex: number): number[] {
+    const region = new Set<number>([seedTriangleIndex]);
+    const queue: number[] = [seedTriangleIndex];
+    const triangleByIndex = new Map(triangles.map((triangle) => [triangle.index, triangle] as const));
+    const trianglesByVertex = new Map<string, number[]>();
+
+    for (const triangle of triangles) {
+      for (const vertexKey of triangle.vertexKeys) {
+        const list = trianglesByVertex.get(vertexKey) ?? [];
+        list.push(triangle.index);
+        trianglesByVertex.set(vertexKey, list);
+      }
+    }
+
+    const seedTriangle = triangleByIndex.get(seedTriangleIndex);
+    if (!seedTriangle) return [];
+
+    while (queue.length) {
+      const currentIndex = queue.shift() ?? -1;
+      const currentTriangle = triangleByIndex.get(currentIndex);
+      if (!currentTriangle) continue;
+
+      const candidateIndices = new Set<number>();
+      for (const vertexKey of currentTriangle.vertexKeys) {
+        for (const neighborIndex of trianglesByVertex.get(vertexKey) ?? []) {
+          if (neighborIndex !== currentIndex) candidateIndices.add(neighborIndex);
+        }
+      }
+
+      for (const candidateIndex of candidateIndices) {
+        if (region.has(candidateIndex)) continue;
+        const candidateTriangle = triangleByIndex.get(candidateIndex);
+        if (!candidateTriangle) continue;
+        if (!this.areTrianglesCoplanar(seedTriangle, candidateTriangle)) continue;
+        if (!this.shareEdge(currentTriangle, candidateTriangle)) continue;
+
+        region.add(candidateIndex);
+        queue.push(candidateIndex);
+      }
+    }
+
+    return Array.from(region);
+  }
+
+  // Serializes a 3D point into a stable key for triangle comparisons.
+  private getPointKey(point: Vector3): string {
+    return `${point.x.toFixed(4)},${point.y.toFixed(4)},${point.z.toFixed(4)}`;
+  }
+
+  // Checks whether two triangles share at least one edge.
+  private shareEdge(first: MeasurementAreaTriangle, second: MeasurementAreaTriangle): boolean {
+    let sharedVertices = 0;
+    for (const key of first.vertexKeys) {
+      if (second.vertexKeys.includes(key)) sharedVertices += 1;
+    }
+
+    return sharedVertices >= 2;
+  }
+
+  // Checks whether two triangles lie on the same plane.
+  private areTrianglesCoplanar(seed: MeasurementAreaTriangle, candidate: MeasurementAreaTriangle): boolean {
+    const normalDot = Math.abs(seed.normal.dot(candidate.normal));
+    if (normalDot < 0.999) return false;
+
+    const point = candidate.points[0];
+    const distance = Math.abs(seed.normal.dot(point) + seed.planeConstant);
+    return distance <= 0.001;
+  }
+
+  // Creates a translucent overlay mesh for the selected face region.
+  private createAreaMeasurementOverlay(triangles: Vector3[][]): any | null {
+    if (!this.moduloThree || !triangles.length) return null;
+
+    const group = new this.moduloThree.Group();
+    group.name = 'measurement-area-overlay';
+    group.renderOrder = 10001;
+    group.frustumCulled = false;
+
+    const geometry = new this.moduloThree.BufferGeometry();
+    const positions: number[] = [];
+    for (const triangle of triangles) {
+      if (triangle.length < 3) continue;
+      for (const point of triangle) {
+        positions.push(point.x, point.y, point.z);
+      }
+    }
+
+    const indices: number[] = [];
+    for (let index = 0; index < positions.length / 3; index += 3) {
+      indices.push(index, index + 1, index + 2);
+    }
+
+    geometry.setAttribute('position', new this.moduloThree.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+
+    const fillMaterial = new this.moduloThree.MeshBasicMaterial({
+      color: new this.moduloThree.Color(this.measurementSelectionColor),
+      transparent: true,
+      opacity: 0.42,
+      depthTest: false,
+      depthWrite: false,
+      side: this.moduloThree.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+
+    const fillMesh = new this.moduloThree.Mesh(geometry, fillMaterial);
+    fillMesh.renderOrder = 10001;
+    fillMesh.frustumCulled = false;
+    group.add(fillMesh);
+
+    const outline = this.createAreaMeasurementOutline(triangles);
+    if (outline) group.add(outline);
+
+    return group;
+  }
+
+  // Creates an outline for the selected face region so the selection remains visible.
+  private createAreaMeasurementOutline(triangles: Vector3[][]): any | null {
+    if (!this.moduloThree || !triangles.length) return null;
+
+    type AreaEdgeInfo = {
+      count: number;
+      start: Vector3;
+      end: Vector3;
+    };
+
+    const edges = new Map<string, AreaEdgeInfo>();
+
+    for (const triangle of triangles) {
+      if (triangle.length < 3) continue;
+
+      const triangleEdges: Array<[Vector3, Vector3]> = [
+        [triangle[0], triangle[1]],
+        [triangle[1], triangle[2]],
+        [triangle[2], triangle[0]],
+      ];
+
+      for (const [start, end] of triangleEdges) {
+        const key = this.getOrderedEdgeKey(start, end);
+        const existing = edges.get(key);
+        if (existing) {
+          existing.count += 1;
+          continue;
+        }
+
+        edges.set(key, {
+          count: 1,
+          start: start.clone(),
+          end: end.clone(),
+        });
+      }
+    }
+
+    const positions: number[] = [];
+    for (const edge of edges.values()) {
+      if (edge.count !== 1) continue;
+      positions.push(edge.start.x, edge.start.y, edge.start.z, edge.end.x, edge.end.y, edge.end.z);
+    }
+
+    if (!positions.length) return null;
+
+    const geometry = new this.moduloThree.BufferGeometry();
+    geometry.setAttribute('position', new this.moduloThree.Float32BufferAttribute(positions, 3));
+    geometry.computeBoundingSphere();
+
+    const material = new this.moduloThree.LineBasicMaterial({
+      color: new this.moduloThree.Color(this.measurementSelectionColor),
+      transparent: true,
+      opacity: 0.98,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    const lines = new this.moduloThree.LineSegments(geometry, material);
+    lines.renderOrder = 10002;
+    lines.frustumCulled = false;
+    return lines;
+  }
+
+  // Builds a stable key for an edge regardless of its direction.
+  private getOrderedEdgeKey(first: Vector3, second: Vector3): string {
+    const firstKey = this.getPointKey(first);
+    const secondKey = this.getPointKey(second);
+    return firstKey <= secondKey ? `${firstKey}|${secondKey}` : `${secondKey}|${firstKey}`;
+  }
+
+  // Removes a face overlay and disposes its resources.
+  private removeAreaMeasurementFace(selection: MeasurementFaceSelection): void {
+    this.measurementOverlayGroup?.remove(selection.overlay);
+    this.disposeMeasurementOverlay(selection.overlay);
+  }
+
+  // Clears all face selections and their overlays.
+  private clearAreaMeasurementSelections(): void {
+    for (const selection of this.measurementFaceSelections.values()) {
+      this.removeAreaMeasurementFace(selection);
+    }
+
+    this.measurementFaceSelections.clear();
+    this.areaMeasurementSummary.set(null);
+  }
+
+  // Clears the active length selection anchors and their overlay.
+  private clearLengthMeasurementSelections(): void {
+    this.measurementLengthAnchors.clear();
+    this.removeLengthMeasurementOverlay();
+    this.lengthMeasurementSummary.set(null);
+    this.clearLengthEdgeMeasurement();
+  }
+
+  // Updates the aggregate area summary from the current face selections.
+  private updateAreaMeasurementSummary(): void {
+    if (!this.measurementFaceSelections.size) {
+      this.areaMeasurementSummary.set(null);
+      return;
+    }
+
+    let totalArea = 0;
+    const objectKeys = new Set<string>();
+    const selections = Array.from(this.measurementFaceSelections.values())
+      .map((selection) => ({
+        key: selection.key,
+        modelId: selection.modelId,
+        localId: selection.localId,
+        itemId: selection.itemId,
+        label: selection.label,
+        area: selection.area,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    for (const selection of this.measurementFaceSelections.values()) {
+      totalArea += selection.area;
+      objectKeys.add(`${selection.modelId}:${selection.localId}`);
+    }
+
+    this.areaMeasurementSummary.set({
+      totalArea,
+      selectedFaceCount: this.measurementFaceSelections.size,
+      selectedObjectCount: objectKeys.size,
+      selections,
+    });
+
+  }
+
+  // Updates the active length summary and rebuilds the overlay line.
+  private updateLengthMeasurementSummary(): void {
+    const anchors = Array.from(this.measurementLengthAnchors.values());
+    if (!anchors.length) {
+      this.lengthMeasurementSummary.set(null);
+      this.removeLengthMeasurementOverlay();
+      return;
+    }
+
+    const normalizedAnchors = anchors.map((anchor) => ({ ...anchor }));
+    const distance =
+      normalizedAnchors.length >= 2
+        ? this.getDistanceBetweenAnchors(normalizedAnchors[0], normalizedAnchors[1])
+        : null;
+
+    this.lengthMeasurementSummary.set({
+      distance,
+      anchorCount: normalizedAnchors.length,
+      anchors: normalizedAnchors,
+    });
+
+    this.updateLengthMeasurementOverlay(normalizedAnchors);
+  }
+
+  // Updates the edge-based length summary and rebuilds its overlay.
+  private updateLengthEdgeMeasurementSummary(): void {
+    if (this.lengthEdgeSelection) {
+      const distance = this.getDistanceBetweenEdgePoints(this.lengthEdgeSelection);
+      if (!Number.isFinite(distance)) {
+        this.lengthEdgeMeasurementSummary.set(null);
+        this.removeLengthEdgeMeasurementOverlay();
+        return;
+      }
+      this.lengthEdgeMeasurementSummary.set({
+        distance,
+        edge: { ...this.lengthEdgeSelection },
+        isPinned: true,
+      });
+      this.updateLengthEdgeMeasurementOverlay(this.lengthEdgeSelection);
+      return;
+    }
+
+    if (this.lengthEdgePreview) {
+      const distance = this.getDistanceBetweenEdgePoints(this.lengthEdgePreview);
+      if (!Number.isFinite(distance)) {
+        this.lengthEdgeMeasurementSummary.set(null);
+        this.removeLengthEdgeMeasurementOverlay();
+        return;
+      }
+      this.lengthEdgeMeasurementSummary.set({
+        distance,
+        edge: { ...this.lengthEdgePreview },
+        isPinned: false,
+      });
+      this.updateLengthEdgeMeasurementOverlay(this.lengthEdgePreview);
+      return;
+    }
+
+    this.lengthEdgeMeasurementSummary.set(null);
+    this.removeLengthEdgeMeasurementOverlay();
+  }
+
+  // Rebuilds the overlay line and markers for the current length measurement.
+  private updateLengthMeasurementOverlay(anchors: MeasurementLengthAnchor[]): void {
+    if (!this.moduloThree || !this.measurementOverlayGroup) return;
+
+    this.removeLengthMeasurementOverlay();
+
+    if (!anchors.length) return;
+
+    const group = new this.moduloThree.Group();
+    group.name = 'measurement-length-overlay';
+    group.renderOrder = 10002;
+    group.frustumCulled = false;
+
+    const sphereRadius = this.getMeasurementMarkerRadius(anchors);
+
+    for (const anchor of anchors) {
+      const marker = this.createLengthMeasurementMarker(anchor, sphereRadius);
+      if (marker) group.add(marker);
+    }
+
+    if (anchors.length >= 2) {
+      const line = this.createLengthMeasurementLine(anchors[0], anchors[1]);
+      if (line) group.add(line);
+    }
+
+    this.measurementOverlayGroup.add(group);
+    this.lengthMeasurementOverlay = group;
+  }
+
+  // Rebuilds the overlay line and markers for an edge-based length measurement.
+  private updateLengthEdgeMeasurementOverlay(edge: MeasurementLengthEdge): void {
+    if (!this.moduloThree || !this.measurementOverlayGroup) return;
+
+    this.removeLengthEdgeMeasurementOverlay();
+
+    const group = new this.moduloThree.Group();
+    group.name = 'measurement-length-edge-overlay';
+    group.renderOrder = 10002;
+    group.frustumCulled = false;
+
+    const startAnchor = {
+      ...edge.start,
+      label: edge.label,
+      localId: edge.localId,
+      itemId: edge.itemId,
+      modelId: edge.modelId,
+    } as MeasurementLengthAnchor;
+    const endAnchor = {
+      ...edge.end,
+      label: edge.label,
+      localId: edge.localId,
+      itemId: edge.itemId,
+      modelId: edge.modelId,
+    } as MeasurementLengthAnchor;
+    const sphereRadius = Math.max(this.getDistanceBetweenEdgePoints(edge) * 0.015, 0.035);
+
+    const startMarker = this.createLengthMeasurementMarker(startAnchor, sphereRadius);
+    if (startMarker) group.add(startMarker);
+
+    const endMarker = this.createLengthMeasurementMarker(endAnchor, sphereRadius);
+    if (endMarker) group.add(endMarker);
+
+    const line = this.createLengthMeasurementLine(startAnchor, endAnchor);
+    if (line) group.add(line);
+
+    this.measurementOverlayGroup.add(group);
+    this.lengthEdgeMeasurementOverlay = group;
+  }
+
+  // Removes the active length overlay group from the scene.
+  private removeLengthMeasurementOverlay(): void {
+    if (!this.lengthMeasurementOverlay) return;
+
+    this.measurementOverlayGroup?.remove(this.lengthMeasurementOverlay);
+    this.disposeMeasurementOverlay(this.lengthMeasurementOverlay);
+    this.lengthMeasurementOverlay = null;
+  }
+
+  // Removes the active edge overlay group from the scene.
+  private removeLengthEdgeMeasurementOverlay(): void {
+    if (!this.lengthEdgeMeasurementOverlay) return;
+
+    this.measurementOverlayGroup?.remove(this.lengthEdgeMeasurementOverlay);
+    this.disposeMeasurementOverlay(this.lengthEdgeMeasurementOverlay);
+    this.lengthEdgeMeasurementOverlay = null;
+  }
+
+  // Disposes geometry and material associated with a measurement overlay.
+  private disposeMeasurementOverlay(overlay: any): void {
+    if (!overlay) return;
+
+    if (typeof overlay.traverse === 'function') {
+      overlay.traverse((child: any) => {
+        child.geometry?.dispose?.();
+        if (Array.isArray(child.material)) {
+          for (const material of child.material) material?.dispose?.();
+          return;
+        }
+        child.material?.dispose?.();
+      });
+    }
+
+    overlay.geometry?.dispose?.();
+    overlay.material?.dispose?.();
+  }
+
+  // Builds a readable label for a measured object.
+  private getMeasurementEntityLabel(modelId: string, localId: number): string {
+    const registro = this.registrosArbol.get(localId);
+    const baseLabel = [registro?.ifcClass, registro?.name].filter((value) => !!value && value !== '-').join(' ');
+    if (baseLabel.trim()) return baseLabel.trim();
+
+    const fallbackModel = this.getModelById(modelId);
+    const modelLabel = fallbackModel?.name ?? fallbackModel?.userData?.name ?? '';
+    if (modelLabel) return `${modelLabel} #${localId}`;
+
+    return `Elemento ${localId}`;
+  }
+
+  // Builds a stable key for a length measurement anchor.
+  private getMeasurementLengthAnchorKey(hit: MeasurementLengthHit): string {
+    return `${hit.modelId}:${hit.localId}:${hit.itemId}:${hit.point.x.toFixed(4)},${hit.point.y.toFixed(4)},${hit.point.z.toFixed(4)}`;
+  }
+
+  // Returns true when two length anchors belong to the same object.
+  private isSameMeasurementObject(anchor: MeasurementLengthAnchor, hit: MeasurementLengthHit): boolean {
+    return anchor.modelId === hit.modelId && anchor.localId === hit.localId;
+  }
+
+  // Creates a cloned point to avoid sharing mutable raycast vectors.
+  private clonePoint(point: Vector3 | undefined): Vector3 {
+    if (!this.moduloThree || !point) return point as Vector3;
+    return point.clone?.() ?? new this.moduloThree.Vector3(point.x, point.y, point.z);
+  }
+
+  // Returns the distance between two measurement anchors.
+  private getDistanceBetweenAnchors(first: MeasurementLengthAnchor, second: MeasurementLengthAnchor): number {
+    if (!this.moduloThree) return Number.NaN;
+
+    const start = new this.moduloThree.Vector3(first.x, first.y, first.z);
+    const end = new this.moduloThree.Vector3(second.x, second.y, second.z);
+    return start.distanceTo(end);
+  }
+
+  // Returns the distance between the endpoints of an edge-based measurement.
+  private getDistanceBetweenEdgePoints(edge: MeasurementLengthEdge): number {
+    if (!this.moduloThree) return Number.NaN;
+
+    const start = new this.moduloThree.Vector3(edge.start.x, edge.start.y, edge.start.z);
+    const end = new this.moduloThree.Vector3(edge.end.x, edge.end.y, edge.end.z);
+    return start.distanceTo(end);
+  }
+
+  // Creates a marker mesh for a length measurement anchor.
+  private createLengthMeasurementMarker(anchor: MeasurementLengthAnchor, radius: number): any | null {
+    if (!this.moduloThree) return null;
+
+    const geometry = new this.moduloThree.SphereGeometry(radius, 16, 16);
+    const material = new this.moduloThree.MeshBasicMaterial({
+      color: new this.moduloThree.Color(this.measurementSelectionColor),
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    const marker = new this.moduloThree.Mesh(geometry, material);
+    marker.position.set(anchor.x, anchor.y, anchor.z);
+    marker.renderOrder = 10003;
+    marker.frustumCulled = false;
+    return marker;
+  }
+
+  // Creates the line connecting the current pair of length anchors.
+  private createLengthMeasurementLine(first: MeasurementLengthAnchor, second: MeasurementLengthAnchor): any | null {
+    if (!this.moduloThree) return null;
+
+    const start = new this.moduloThree.Vector3(first.x, first.y, first.z);
+    const end = new this.moduloThree.Vector3(second.x, second.y, second.z);
+    const geometry = new this.moduloThree.BufferGeometry().setFromPoints([
+      start,
+      end,
+    ]);
+    const distance = start.distanceTo(end);
+    const dashSize = Math.max(distance * 0.08, 0.15);
+    const gapSize = Math.max(dashSize * 0.6, 0.08);
+    const material = new this.moduloThree.LineDashedMaterial({
+      color: new this.moduloThree.Color(this.measurementSelectionColor),
+      transparent: true,
+      opacity: 0.98,
+      depthTest: false,
+      dashSize,
+      gapSize,
+    });
+    const line = new this.moduloThree.Line(geometry, material);
+    line.computeLineDistances();
+    line.renderOrder = 10002;
+    line.frustumCulled = false;
+    return line;
+  }
+
+  // Chooses a radius that keeps the length markers readable in different model scales.
+  private getMeasurementMarkerRadius(anchors: MeasurementLengthAnchor[]): number {
+    if (!anchors.length) return 0.04;
+
+    const firstAnchor = anchors[0];
+    const secondAnchor = anchors[1];
+    if (!firstAnchor || !secondAnchor) return 0.04;
+
+    const distance = this.getDistanceBetweenAnchors(firstAnchor, secondAnchor);
+    if (!Number.isFinite(distance) || distance <= 0) return 0.04;
+
+    return Math.max(distance * 0.015, 0.035);
+  }
+
+  // Switches the highlighter tint used while measurement mode is active.
+  private async applyMeasurementSelectionStyle(enabled: boolean): Promise<void> {
+    if (!this.resaltador || !this.moduloThree) return;
+
+    const currentDefinition = this.resaltador.config?.selectMaterialDefinition;
+    const nextColor = new this.moduloThree.Color(enabled ? this.measurementSelectionColor : this.defaultSelectionColor);
+    const nextDefinition = {
+      ...(currentDefinition ?? {
+        opacity: 1,
+        transparent: false,
+        renderedFaces: 0,
+      }),
+      color: nextColor,
+    };
+
+    this.resaltador.config.selectMaterialDefinition = nextDefinition;
+    this.resaltador.styles.set(this.resaltador.config.selectName, nextDefinition);
+
+    if (typeof this.resaltador.updateColors === 'function') {
+      await this.resaltador.updateColors();
+    }
+  }
+
+  // Computes the area of a polygon by triangulating it from the first point.
+  private computePolygonArea(facePoints: Vector3[]): number {
+    if (!this.moduloThree || facePoints.length < 3) return 0;
+
+    const origin = facePoints[0];
+    const edgeA = new this.moduloThree.Vector3();
+    const edgeB = new this.moduloThree.Vector3();
+    const cross = new this.moduloThree.Vector3();
+    let area = 0;
+
+    for (let index = 1; index < facePoints.length - 1; index += 1) {
+      edgeA.copy(facePoints[index]).sub(origin);
+      edgeB.copy(facePoints[index + 1]).sub(origin);
+      cross.crossVectors(edgeA, edgeB);
+      area += 0.5 * cross.length();
+    }
+
+    return area;
   }
 
   // Returns visible model objects that can be used as raycast targets.
@@ -678,6 +2028,7 @@ export class VisorIfc {
   // Keeps the local selection cache aligned with the highlighter selection.
   private updateSelectionFromMap(selectionMap: Record<string, Set<number>>): void {
     this.selectedModelItems = this.cloneSelectionMap(selectionMap);
+    this.seleccionActual.set(this.cloneSelectionMap(selectionMap));
     this.activeModelId = this.resolveActiveModelIdFromSelection(selectionMap) ?? this.activeModelId;
     this.syncModelVisualGuides();
     void this.refreshSelectionFilter();
@@ -2046,6 +3397,13 @@ export class VisorIfc {
 
     const numero = Number(coincidencia[0]);
     return Number.isFinite(numero) ? numero : null;
+  }
+
+  private normalizarVolumenPosible(valor: unknown): number | null {
+    if (typeof valor === 'number' && Number.isFinite(valor)) return valor;
+    if (Array.isArray(valor) && valor.length > 0) return this.normalizarVolumenPosible(valor[0]);
+
+    return this.convertirNumeroPosible(valor);
   }
 
   private formatearValorConUnidad(valor: unknown, unidad: string): string {

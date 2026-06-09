@@ -4,6 +4,7 @@ import { I18nService } from '../../utils/i18n/i18n.service';
 import { ThemeService } from '../../utils/theme.service';
 import { FloatFileTab } from '../float-file-tab/float-file-tab';
 import type { FloatingPanelId } from '../../types/floating-panel';
+import type { MeasurementLengthMode, MeasurementMode } from '../../types/measurement';
 import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import { TOOLBAR_TRANSLATIONS } from './toolbar.translations';
@@ -28,6 +29,15 @@ export type ToolbarActionId =
   | 'home-calc-boq'
   | 'home-calc-remove'
   | 'home-calc-parameter'
+  | 'measurement-volume'
+  | 'measurement-area'
+  | 'measurement-length'
+  | 'measurement-length-edge'
+  | 'measurement-length-points'
+  | 'clear-measurements'
+  | 'measurement-weight'
+  | 'measurement-angle'
+  | 'measurement-count'
   | 'parameter-toggle-list'
   | 'parameter-toggle-boq'
   | 'parameter-toggle-matches'
@@ -77,6 +87,7 @@ type ToolbarButton = {
   variant: ToolbarButtonVariant;
   selected?: boolean;
   disabled?: boolean;
+  dropdownItems?: ToolbarButton[];
 };
 
 type ToolbarCategory = {
@@ -120,6 +131,8 @@ export class Toolbar {
   @Input() toolbarContentVisible = true;
   @Input() usuarioSesion: UsuarioSesionOrm | null = null;
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
+  @Input() activeMeasurementMode: MeasurementMode | null = null;
+  @Input() activeLengthMeasurementMode: MeasurementLengthMode = 'edge';
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
@@ -153,6 +166,8 @@ export class Toolbar {
   @Output() toggleFloatingPanel = new EventEmitter<FloatingPanelId>();
   @Output() toolbarContentVisibleChange = new EventEmitter<boolean>();
 
+  private openDropdownAction: ToolbarActionId | null = null;
+
   // Shows or hides the floating File panel.
   toggleFileTab(): void {
     this.fileTabVisible = !this.fileTabVisible;
@@ -175,12 +190,45 @@ export class Toolbar {
 
     if (!button.action) return;
 
+    if (button.dropdownItems?.length) {
+      this.openDropdownAction = this.openDropdownAction === button.action ? null : button.action;
+    } else {
+      this.openDropdownAction = null;
+    }
+
     if (button.action === 'toggle-theme') {
       this.visualTheme.alternarTema();
       return;
     }
 
     this.toolbarAction.emit(button.action);
+  }
+
+  // Emits a toolbar action from a dropdown option and closes the active menu.
+  runDropdownAction(_parent: ToolbarButton, option: ToolbarButton, event: MouseEvent): void {
+    event.stopPropagation();
+    if (option.disabled) return;
+    if (!option.action) return;
+
+    this.openDropdownAction = null;
+    this.toolbarAction.emit(option.action);
+  }
+
+  // Returns true when the provided button dropdown is open.
+  isDropdownOpen(button: ToolbarButton): boolean {
+    return !!button.action && this.openDropdownAction === button.action;
+  }
+
+  // Builds the current measurement length label for dropdown buttons.
+  getMeasurementLengthButtonLabel(): string {
+    const mode = this.activeLengthMeasurementMode === 'points' ? 'toolbar.measurement.length.points' : 'toolbar.measurement.length.edge';
+    return `${this.i18n.translateForComponent(this.toolbarTranslations, 'toolbar.measurement.length')}: ${this.i18n.translateForComponent(this.toolbarTranslations, mode)}`;
+  }
+
+  // Returns the label for the active length dropdown choice.
+  getMeasurementLengthDropdownLabel(mode: MeasurementLengthMode): string {
+    const key = mode === 'points' ? 'toolbar.measurement.length.points' : 'toolbar.measurement.length.edge';
+    return this.i18n.translateForComponent(this.toolbarTranslations, key);
   }
 
   // Shows or hides the ribbon command area while keeping tabs visible.
@@ -208,7 +256,11 @@ export class Toolbar {
   }
 
   // Returns a translation or literal label for descriptor rendering.
-  getLabel(item: { label?: string; labelKey?: string }): string {
+  getLabel(item: { label?: string; labelKey?: string; action?: ToolbarActionId; dropdownItems?: ToolbarButton[] }): string {
+    if (item.action === 'measurement-length' && item.dropdownItems?.length) {
+      return this.getMeasurementLengthButtonLabel();
+    }
+
     if (item.labelKey) return this.i18n.translateForComponent(this.toolbarTranslations, item.labelKey);
     return item.label ?? '';
   }
@@ -509,15 +561,71 @@ export class Toolbar {
         labelKey: 'toolbar.measurement.category.mode',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.measurement.volume', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.measurement.area', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.measurement.lenght', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.measurement.weight', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.measurement.angle', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.measurement.count', iconSrc: 'assets/images/Add_32x32.png', variant: 'large-dropdown' },
+          {
+            labelKey: 'toolbar.measurement.volume',
+            iconText: 'm3',
+            action: 'measurement-volume',
+            selected: this.activeMeasurementMode === 'volume',
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.area',
+            iconText: 'm2',
+            action: 'measurement-area',
+            selected: this.activeMeasurementMode === 'area',
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.length',
+            iconText: 'L',
+            action: 'measurement-length',
+            selected: this.activeMeasurementMode === 'length',
+            variant: 'large-dropdown',
+            dropdownItems: [
+              {
+                labelKey: 'toolbar.measurement.length.edge',
+                action: 'measurement-length-edge',
+                variant: 'large',
+                selected: this.activeMeasurementMode === 'length' && this.activeLengthMeasurementMode === 'edge',
+              },
+              {
+                labelKey: 'toolbar.measurement.length.points',
+                action: 'measurement-length-points',
+                variant: 'large',
+                selected: this.activeMeasurementMode === 'length' && this.activeLengthMeasurementMode === 'points',
+              },
+            ],
+          },
+          {
+            labelKey: 'toolbar.measurement.clearAll',
+            iconText: 'CLR',
+            action: 'clear-measurements',
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.weight',
+            iconText: 'kg',
+            action: 'measurement-weight',
+            disabled: true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.angle',
+            iconText: 'ang',
+            action: 'measurement-angle',
+            disabled: true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.count',
+            iconText: '#',
+            action: 'measurement-count',
+            disabled: true,
+            variant: 'large',
+          },
         ],
       },
-    ]
+    ];
   }
 
   private get toolCategories(): ToolbarCategory[] {

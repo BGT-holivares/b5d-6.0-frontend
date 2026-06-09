@@ -40,25 +40,64 @@
         <div class="b5d-tab-category">
           <div [class]="getCategoryButtonsClass(category)">
             @for (button of category.buttons; track getLabel(button)) {
-              <button
-                [class]="getButtonClass(button)"
-                type="button"
-                [class.b5d-toolbar-action--selected]="button.selected"
-                [disabled]="button.disabled"
-                (click)="runToolbarAction(button)"
-              >
-                <span
-                  class="b5d-toolbar-action_icon"
-                  [class.b5d-toolbar-action_icon-large]="button.variant.includes('large')"
-                >
-                  @if (button.iconSrc) {
-                    <img class="b5d-toolbar-action_image" [src]="button.iconSrc" alt="" />
-                  } @else {
-                    {{ button.iconText }}
+              @if (button.dropdownItems?.length) {
+                <div class="b5d-toolbar-dropdown">
+                  <button
+                    [class]="getButtonClass(button)"
+                    type="button"
+                    [class.b5d-toolbar-action--selected]="button.selected"
+                    [disabled]="button.disabled"
+                    (click)="runToolbarAction(button)"
+                  >
+                    <span
+                      class="b5d-toolbar-action_icon"
+                      [class.b5d-toolbar-action_icon-large]="button.variant.includes('large')"
+                    >
+                      @if (button.iconSrc) {
+                        <img class="b5d-toolbar-action_image" [src]="button.iconSrc" alt="" />
+                      } @else {
+                        {{ button.iconText }}
+                      }
+                    </span>
+                    <span class="b5d-toolbar-action_label">{{ getLabel(button) }}</span>
+                  </button>
+
+                  @if (isDropdownOpen(button)) {
+                    <div class="b5d-toolbar-dropdown__menu" (pointerdown)="$event.stopPropagation()">
+                      @for (option of button.dropdownItems; track getLabel(option)) {
+                        <button
+                          class="b5d-toolbar-dropdown__item"
+                          type="button"
+                          [class.b5d-toolbar-dropdown__item--selected]="option.selected"
+                          (click)="runDropdownAction(button, option, $event)"
+                        >
+                          <span class="b5d-toolbar-dropdown__item-label">{{ getLabel(option) }}</span>
+                        </button>
+                      }
+                    </div>
                   }
-                </span>
-                <span class="b5d-toolbar-action_label">{{ getLabel(button) }}</span>
-              </button>
+                </div>
+              } @else {
+                <button
+                  [class]="getButtonClass(button)"
+                  type="button"
+                  [class.b5d-toolbar-action--selected]="button.selected"
+                  [disabled]="button.disabled"
+                  (click)="runToolbarAction(button)"
+                >
+                  <span
+                    class="b5d-toolbar-action_icon"
+                    [class.b5d-toolbar-action_icon-large]="button.variant.includes('large')"
+                  >
+                    @if (button.iconSrc) {
+                      <img class="b5d-toolbar-action_image" [src]="button.iconSrc" alt="" />
+                    } @else {
+                      {{ button.iconText }}
+                    }
+                  </span>
+                  <span class="b5d-toolbar-action_label">{{ getLabel(button) }}</span>
+                </button>
+              }
             }
           </div>
           <label class="b5d-tab-category-label">{{ getLabel(category) }}</label>

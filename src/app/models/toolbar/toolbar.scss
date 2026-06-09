@@ -70,6 +70,12 @@
   user-select: none;
 }
 
+.b5d-toolbar-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+}
+
 .b5d-toolbar-action:hover {
   background: var(--b5d-toolbar-hover);
   border-color: var(--b5d-toolbar-selected-border);

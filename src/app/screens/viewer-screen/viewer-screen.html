@@ -4,6 +4,8 @@
     [toolbarContentVisible]="toolbarContentVisible()"
     [usuarioSesion]="usuarioSesion()"
     [activeProject]="proyectoB5dActivo()"
+    [activeMeasurementMode]="activeMeasurementMode()"
+    [activeLengthMeasurementMode]="activeLengthMeasurementMode()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     [homeToolbarState]="homeToolbarState()"
     (archivoSeleccionado)="cargarArchivo($event)"
@@ -27,6 +29,155 @@
     <div class="b5d-viewer-screen__b5d-status">
       {{ b5dMensaje() }}
     </div>
+  }
+
+  @if (isMeasurementVisible()) {
+    <section class="b5d-viewer-screen__measurement-card">
+      <header class="b5d-viewer-screen__measurement-card-header">
+        <span class="b5d-viewer-screen__measurement-card-title">{{ getMeasurementPanelTitle() }}</span>
+        <button
+          class="b5d-viewer-screen__measurement-card-close"
+          type="button"
+          [title]="getMeasurementPanelTitle()"
+          (click)="toggleMeasurementMode(activeMeasurementMode() ?? 'volume')"
+        >
+          x
+        </button>
+      </header>
+
+      @if (activeMeasurementMode() === 'area') {
+        @if (visorIfc.areaMeasurementSummary(); as measurementSummary) {
+          @if (measurementSummary.selectedFaceCount > 0 && measurementSummary.totalArea !== null) {
+            <div class="b5d-viewer-screen__measurement-card-value">
+              <span class="b5d-viewer-screen__measurement-card-number">{{ measurementSummary.totalArea.toFixed(3) }}</span>
+              <span class="b5d-viewer-screen__measurement-card-unit">m<sup>2</sup></span>
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ measurementSummary.selectedFaceCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementObjectCountLabel() }}: {{ measurementSummary.selectedObjectCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-list">
+              @for (selection of measurementSummary.selections; track selection.key) {
+                <div class="b5d-viewer-screen__measurement-card-list-item">
+                  <div class="b5d-viewer-screen__measurement-card-list-item-main">
+                    <span class="b5d-viewer-screen__measurement-card-list-item-label">{{ selection.label }}</span>
+                    <span class="b5d-viewer-screen__measurement-card-list-item-value">
+                      {{ selection.area.toFixed(3) }} m<sup>2</sup>
+                    </span>
+                  </div>
+                  <button
+                    class="b5d-viewer-screen__measurement-card-list-remove"
+                    type="button"
+                    [title]="getMeasurementRemoveLabel()"
+                    (click)="visorIfc.removeAreaMeasurementSelection(selection.key)"
+                  >
+                    {{ getMeasurementRemoveLabel() }}
+                  </button>
+                </div>
+              }
+            </div>
+          } @else if (measurementSummary.selectedFaceCount > 0) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementUnavailableMessage() }}
+            </div>
+          } @else {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementEmptyMessage() }}
+            </div>
+          }
+        } @else {
+          <div class="b5d-viewer-screen__measurement-card-empty">
+            {{ getMeasurementEmptyMessage() }}
+          </div>
+        }
+      } @else if (activeMeasurementMode() === 'length') {
+        @if (visorIfc.lengthEdgeMeasurementSummary(); as edgeSummary) {
+          <div class="b5d-viewer-screen__measurement-card-value">
+            <span class="b5d-viewer-screen__measurement-card-number">{{ edgeSummary.distance?.toFixed(3) ?? '-' }}</span>
+            <span class="b5d-viewer-screen__measurement-card-unit">m</span>
+          </div>
+          <div class="b5d-viewer-screen__measurement-card-meta">
+            {{ getMeasurementSelectedLabel() }}: 1
+          </div>
+          <div class="b5d-viewer-screen__measurement-card-meta">
+            {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+          </div>
+          <div class="b5d-viewer-screen__measurement-card-meta">
+            {{ edgeSummary.edge?.label }}
+          </div>
+        } @else if (visorIfc.lengthMeasurementSummary(); as measurementSummary) {
+          @if (measurementSummary.anchorCount === 0) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementEmptyMessage() }}
+            </div>
+          } @else if (measurementSummary.anchorCount === 1) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementLengthWaitingMessage() }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ measurementSummary.anchorCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ measurementSummary.anchors[0]?.label }}
+            </div>
+          } @else if (measurementSummary.distance !== null) {
+            <div class="b5d-viewer-screen__measurement-card-value">
+              <span class="b5d-viewer-screen__measurement-card-number">{{ measurementSummary.distance.toFixed(3) }}</span>
+              <span class="b5d-viewer-screen__measurement-card-unit">m</span>
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ measurementSummary.anchorCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ measurementSummary.anchors[0]?.label }} → {{ measurementSummary.anchors[1]?.label }}
+            </div>
+          } @else {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementUnavailableMessage() }}
+            </div>
+          }
+        } @else {
+          <div class="b5d-viewer-screen__measurement-card-empty">
+            {{ getMeasurementEmptyMessage() }}
+          </div>
+        }
+      } @else {
+        @if (volumeMeasurementSummary(); as measurementSummary) {
+          @if (measurementSummary.selectedCount > 0 && measurementSummary.totalVolume !== null) {
+            <div class="b5d-viewer-screen__measurement-card-value">
+              <span class="b5d-viewer-screen__measurement-card-number">{{ measurementSummary.totalVolume.toFixed(3) }}</span>
+              <span class="b5d-viewer-screen__measurement-card-unit">m<sup>3</sup></span>
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ measurementSummary.selectedCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+            </div>
+          } @else if (measurementSummary.selectedCount > 0) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementUnavailableMessage() }}
+            </div>
+          } @else {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementEmptyMessage() }}
+            </div>
+          }
+        } @else {
+          <div class="b5d-viewer-screen__measurement-card-empty">
+            {{ getMeasurementEmptyMessage() }}
+          </div>
+        }
+      }
+    </section>
   }
 
   @if (isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {

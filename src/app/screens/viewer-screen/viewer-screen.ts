@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   ElementRef,
+  effect,
   OnDestroy,
   ViewChild,
   inject,
@@ -13,6 +14,7 @@ import { NgStyle } from '@angular/common';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { Toolbar, type ToolbarActionId } from '../../models/toolbar/toolbar';
+import { TOOLBAR_TRANSLATIONS } from '../../models/toolbar/toolbar.translations';
 import { TreePanel } from '../../models/tree-panel/tree-panel';
 import { PropertiesPanel } from '../../models/properties-panel/properties-panel';
 import { LinkingPanel } from '../../models/linking-panel/linking-panel';
@@ -22,6 +24,7 @@ import { ParametersPanel } from '../../models/parameters-panel/parameters-panel'
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
+import { I18nService } from '../../utils/i18n/i18n.service';
 import { VisorIfc } from '../../utils/ifc-viewer';
 import type {
   CatalogoB5DOrm,
@@ -34,6 +37,7 @@ import type {
   VinculoConceptoBimOrm,
 } from '../../types/b5d-orm';
 import type { HomeToolbarState, SelectFilterMode, UnlinkedObjectsMode } from '../../types/home-toolbar';
+import type { MeasurementLengthMode, MeasurementMode, MeasurementVolumeSummary } from '../../types/measurement';
 import type { FloatingPanelId } from '../../types/floating-panel';
 import type { ElementoIfcB5D, NodoCuantificacion } from '../../types/quantity-take-off';
 
@@ -88,6 +92,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   readonly visorIfc = inject(VisorIfc);
   readonly backendAuth = inject(BackendAuthService);
   readonly backendProyectos = inject(BackendProyectosService);
+  readonly i18n = inject(I18nService);
   readonly cuantificacion = signal<NodoCuantificacion | null>(null);
   readonly ifcElements = signal<ElementoIfcB5D[]>([]);
   readonly proyectoB5dActivo = signal<ProyectoTrabajoOrm | null>(null);
@@ -118,6 +123,9 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     parameterDescriptionMatchesVisible: true,
     parameterAnalysisVisible: true,
   });
+  readonly activeMeasurementMode = signal<MeasurementMode | null>(null);
+  readonly activeLengthMeasurementMode = signal<MeasurementLengthMode>('edge');
+  readonly volumeMeasurementSummary = signal<MeasurementVolumeSummary | null>(null);
   readonly floatingPanels = signal<Record<FloatingPanelId, FloatingPanelState>>({
     tree: {
       visible: true,
@@ -181,10 +189,26 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private readonly cuantificadorB5D = new CuantificadorB5D();
   private readonly router = inject(Router);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
+  private readonly measurementSelectionEffect = effect(() => {
+    const mode = this.activeMeasurementMode();
+    const selectionMap = this.visorIfc.seleccionActual();
+
+    void this.visorIfc.setMeasurementMode(mode);
+    this.visorIfc.setMeasurementLengthMode(this.activeLengthMeasurementMode());
+
+    if (mode !== 'volume') {
+      this.measurementVolumeRequestId += 1;
+      this.volumeMeasurementSummary.set(null);
+      return;
+    }
+
+    void this.actualizarResumenVolumen(selectionMap);
+  });
   private nextFloatingPanelZIndex = 40;
   private autoSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private autoSaveInProgress = false;
   private hasPendingDraftChanges = false;
+  private measurementVolumeRequestId = 0;
 
   async ngAfterViewInit(): Promise<void> {
     if (!this.contenedorVisor?.nativeElement) return;
@@ -676,6 +700,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'view-3d': () => this.visorIfc.set3DView(),
       'view-2d': () => this.visorIfc.set2DView(),
       'focus-selection': () => this.visorIfc.focusSelectedElements(),
+      'measurement-volume': () => this.toggleVolumeMeasurementMode(),
+      'measurement-area': () => this.toggleAreaMeasurementMode(),
+      'measurement-length': () => this.toggleLengthMeasurementMode(),
+      'measurement-length-edge': () => this.setLengthMeasurementMode('edge'),
+      'measurement-length-points': () => this.setLengthMeasurementMode('points'),
+      'clear-measurements': () => this.clearMeasurements(),
       'view-default': () => this.visorIfc.setDefaultModelView(),
       'view-front': () => this.visorIfc.setFrontModelView(),
       'view-back': () => this.visorIfc.setBackModelView(),
@@ -690,6 +720,36 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     };
 
     actionMap[action]?.();
+  }
+
+  // Toggles the active measurement mode and clears the overlay when disabled.
+  toggleVolumeMeasurementMode(): void {
+    this.toggleMeasurementMode('volume');
+  }
+
+  // Toggles the area measurement mode used for face-level area selection.
+  toggleAreaMeasurementMode(): void {
+    this.toggleMeasurementMode('area');
+  }
+
+  // Toggles the length measurement mode used for vertex-to-vertex snapping.
+  toggleLengthMeasurementMode(): void {
+    this.toggleMeasurementMode('length');
+  }
+
+  // Sets the active length sub-mode and keeps the length measurement mode enabled.
+  setLengthMeasurementMode(mode: MeasurementLengthMode): void {
+    this.activeLengthMeasurementMode.set(mode);
+    if (this.activeMeasurementMode() !== 'length') {
+      this.activeMeasurementMode.set('length');
+    }
+    this.visorIfc.setMeasurementLengthMode(mode);
+  }
+
+  // Switches measurement modes without affecting unrelated toolbar state.
+  toggleMeasurementMode(mode: MeasurementMode): void {
+    this.measurementVolumeRequestId += 1;
+    this.activeMeasurementMode.set(this.activeMeasurementMode() === mode ? null : mode);
   }
 
   // Stores linking panel state used to toggle Home toolbar actions.
@@ -713,6 +773,165 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   // Syncs parameter rows returned from CRUD operations in the parameter panel.
   onParametersRowsChange(rows: ParametroB5DOrm[]): void {
     this.parametrosB5d.set(rows);
+  }
+
+  // Returns the current measurement panel title.
+  getMeasurementPanelTitle(): string {
+    const mode = this.activeMeasurementMode();
+    const key =
+      mode === 'area'
+        ? 'toolbar.measurement.panel.area.title'
+        : mode === 'length'
+          ? 'toolbar.measurement.panel.length.title'
+          : 'toolbar.measurement.panel.volume.title';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+  }
+
+  // Returns the current measurement panel empty-state message.
+  getMeasurementEmptyMessage(): string {
+    const mode = this.activeMeasurementMode();
+    const key =
+      mode === 'area'
+        ? 'toolbar.measurement.panel.area.empty'
+        : mode === 'length'
+          ? 'toolbar.measurement.panel.length.empty'
+          : 'toolbar.measurement.panel.volume.empty';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+  }
+
+  // Returns the unavailable-data message for the current measurement mode.
+  getMeasurementUnavailableMessage(): string {
+    const mode = this.activeMeasurementMode();
+    const key =
+      mode === 'area'
+        ? 'toolbar.measurement.panel.area.unavailable'
+        : mode === 'length'
+          ? 'toolbar.measurement.panel.length.unavailable'
+          : 'toolbar.measurement.panel.volume.unavailable';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+  }
+
+  // Returns the helper message shown while the user is choosing the second length anchor.
+  getMeasurementLengthWaitingMessage(): string {
+    return this.i18n.translateForComponent(
+      TOOLBAR_TRANSLATIONS,
+      'toolbar.measurement.panel.length.waitingSecond',
+    );
+  }
+
+  // Returns the selected-item label for the current measurement summary.
+  getMeasurementSelectedLabel(): string {
+    const mode = this.activeMeasurementMode();
+    if (mode === 'length') {
+      const edgeSummary = this.visorIfc.lengthEdgeMeasurementSummary();
+      if (edgeSummary) {
+        const key = edgeSummary.isPinned
+          ? 'toolbar.measurement.panel.selectedEdge'
+          : 'toolbar.measurement.panel.hoveredEdge';
+        return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+      }
+    }
+
+    const key =
+      mode === 'area'
+        ? 'toolbar.measurement.panel.selectedFaces'
+        : mode === 'length'
+          ? 'toolbar.measurement.panel.selectedPoints'
+          : 'toolbar.measurement.panel.selectedObjects';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+  }
+
+  // Returns the total measurement label for the current measurement summary.
+  getMeasurementTotalLabel(): string {
+    const mode = this.activeMeasurementMode();
+    if (mode === 'length' && this.visorIfc.lengthEdgeMeasurementSummary()) {
+      return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, 'toolbar.measurement.panel.edgeLength');
+    }
+
+    const key =
+      mode === 'area'
+        ? 'toolbar.measurement.panel.totalArea'
+        : mode === 'length'
+          ? 'toolbar.measurement.panel.totalDistance'
+          : 'toolbar.measurement.panel.totalVolume';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+  }
+
+  // Returns the label for the object count line in area measurements.
+  getMeasurementObjectCountLabel(): string {
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, 'toolbar.measurement.panel.objects');
+  }
+
+  // Returns the label used by the remove buttons in the area measurement list.
+  getMeasurementRemoveLabel(): string {
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, 'toolbar.measurement.panel.remove');
+  }
+
+  // Formats the measurement summary value for display.
+  formatMeasurementValue(): string {
+    const mode = this.activeMeasurementMode();
+    if (mode === 'area') {
+      const summary = this.visorIfc.areaMeasurementSummary();
+      if (!summary || summary.totalArea === null) return '-';
+      return `${summary.totalArea.toFixed(3)} m²`;
+    }
+
+    if (mode === 'length') {
+      const edgeSummary = this.visorIfc.lengthEdgeMeasurementSummary();
+      if (edgeSummary && edgeSummary.distance !== null) {
+        return `${edgeSummary.distance.toFixed(3)} m`;
+      }
+
+      const summary = this.visorIfc.lengthMeasurementSummary();
+      if (!summary || summary.distance === null) return '-';
+      return `${summary.distance.toFixed(3)} m`;
+    }
+
+    const summary = this.volumeMeasurementSummary();
+    if (!summary || summary.totalVolume === null) return '-';
+
+    return `${summary.totalVolume.toFixed(3)} m³`;
+  }
+
+  // Indicates whether any measurement overlay should be visible.
+  isMeasurementVisible(): boolean {
+    return (
+      this.activeMeasurementMode() === 'volume' ||
+      this.activeMeasurementMode() === 'area' ||
+      this.activeMeasurementMode() === 'length'
+    );
+  }
+
+  // Clears every measurement selection and overlay currently active in the viewer.
+  clearMeasurements(): void {
+    void this.visorIfc.clearAllMeasurements();
+    this.measurementVolumeRequestId += 1;
+    this.volumeMeasurementSummary.set(null);
+  }
+
+  // Recomputes the total volume for the current selection and guards against stale async results.
+  private async actualizarResumenVolumen(selectionMap: Record<string, Set<number>>): Promise<void> {
+    const requestId = ++this.measurementVolumeRequestId;
+
+    if (!Object.values(selectionMap).some((localIdSet) => localIdSet.size > 0)) {
+      this.volumeMeasurementSummary.set({ totalVolume: null, selectedCount: 0 });
+      return;
+    }
+
+    try {
+      const summary = await this.visorIfc.obtenerResumenVolumenSeleccionado(selectionMap);
+      if (requestId !== this.measurementVolumeRequestId) return;
+      if (this.activeMeasurementMode() !== 'volume') return;
+
+      this.volumeMeasurementSummary.set(summary);
+    } catch (error) {
+      if (requestId !== this.measurementVolumeRequestId) return;
+      console.warn('No se pudo calcular el volumen seleccionado:', error);
+      this.volumeMeasurementSummary.set({
+        totalVolume: null,
+        selectedCount: Object.values(selectionMap).reduce((count, localIdSet) => count + localIdSet.size, 0),
+      });
+    }
   }
 
   // Mirrors IFC object-table selection into the 3D model selection.

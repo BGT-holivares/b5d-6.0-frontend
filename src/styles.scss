@@ -26,6 +26,11 @@
   --b5d-toolbar-selected: #cfe5fb;
   --b5d-toolbar-selected-border: #6aa5d8;
   --b5d-toolbar-muted-text: #5f6670;
+  --b5d-toolbar-dropdown-bg: #ffffff;
+  --b5d-toolbar-dropdown-border: #c8d7e8;
+  --b5d-toolbar-dropdown-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+  --b5d-toolbar-dropdown-hover: #eaf3fb;
+  --b5d-toolbar-dropdown-selected: #d6e9fb;
   --b5d-floating-panel-bg: rgba(255, 255, 255, 0.98);
   --b5d-floating-panel-header-bg: #f8fafc;
   --b5d-floating-panel-border: #cbd5e1;
@@ -56,6 +61,11 @@
   --b5d-toolbar-selected: #1d4d78;
   --b5d-toolbar-selected-border: #60a5fa;
   --b5d-toolbar-muted-text: #cbd5e1;
+  --b5d-toolbar-dropdown-bg: #1f2937;
+  --b5d-toolbar-dropdown-border: #445166;
+  --b5d-toolbar-dropdown-shadow: 0 12px 22px rgba(0, 0, 0, 0.35);
+  --b5d-toolbar-dropdown-hover: #243449;
+  --b5d-toolbar-dropdown-selected: #1d4d78;
   --b5d-floating-panel-bg: rgba(31, 41, 55, 0.98);
   --b5d-floating-panel-header-bg: #111827;
   --b5d-floating-panel-border: #445166;
@@ -278,6 +288,49 @@ body {
   cursor: nesw-resize;
 }
 
+.b5d-toolbar-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1400;
+  display: flex;
+  min-width: 180px;
+  flex-direction: column;
+  padding: 6px;
+  margin-top: 4px;
+  background: var(--b5d-toolbar-dropdown-bg);
+  border: 1px solid var(--b5d-toolbar-dropdown-border);
+  border-radius: 8px;
+  box-shadow: var(--b5d-toolbar-dropdown-shadow);
+}
+
+.b5d-toolbar-dropdown__item {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.b5d-toolbar-dropdown__item:hover {
+  background: var(--b5d-toolbar-dropdown-hover);
+}
+
+.b5d-toolbar-dropdown__item--selected {
+  background: var(--b5d-toolbar-dropdown-selected);
+}
+
+.b5d-toolbar-dropdown__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .b5d-resizable-table thead th {
   position: sticky;
   top: 0;
@@ -342,8 +395,7 @@ body {
   width: 100%;
   height: 86px;
   min-height: 86px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   color: var(--text-color);
 }
 
