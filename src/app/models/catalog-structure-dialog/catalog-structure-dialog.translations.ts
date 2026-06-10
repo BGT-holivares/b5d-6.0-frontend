@@ -1,0 +1,36 @@
+import { type ComponentTranslations } from '../../utils/i18n/translations';
+
+export const CATALOG_STRUCTURE_DIALOG_TRANSLATIONS: ComponentTranslations = {
+  'es-MX': {
+    'catalogDialog.createTitle': 'Nueva estructura de conceptos',
+    'catalogDialog.infoTitle': 'Información de la estructura de conceptos',
+    'catalogDialog.name': 'Nombre de la estructura de conceptos',
+    'catalogDialog.description': 'Descripción',
+    'catalogDialog.propertyType': 'Nombre de la propiedad del tipo de objeto',
+    'catalogDialog.quantityGroup': 'Nombre del grupo de propiedades de cantidad',
+    'catalogDialog.externalCatalog': 'Catálogo externo asociado',
+    'catalogDialog.chooseFile': 'Examinar...',
+    'catalogDialog.fileSelected': 'Archivo seleccionado:',
+    'catalogDialog.noFile': 'Ningún archivo seleccionado.',
+    'catalogDialog.save': 'Guardar',
+    'catalogDialog.cancel': 'Cancelar',
+    'catalogDialog.readOnly': 'Solo lectura',
+    'catalogDialog.requiredFile': 'Selecciona un archivo .xdb para continuar.',
+  },
+  'en-US': {
+    'catalogDialog.createTitle': 'New concept structure',
+    'catalogDialog.infoTitle': 'Concept structure information',
+    'catalogDialog.name': 'Concept structure name',
+    'catalogDialog.description': 'Description',
+    'catalogDialog.propertyType': 'Object type property name',
+    'catalogDialog.quantityGroup': 'Quantity property group name',
+    'catalogDialog.externalCatalog': 'Associated external catalog',
+    'catalogDialog.chooseFile': 'Browse...',
+    'catalogDialog.fileSelected': 'Selected file:',
+    'catalogDialog.noFile': 'No file selected.',
+    'catalogDialog.save': 'Save',
+    'catalogDialog.cancel': 'Cancel',
+    'catalogDialog.readOnly': 'Read only',
+    'catalogDialog.requiredFile': 'Select a .xdb file to continue.',
+  },
+};

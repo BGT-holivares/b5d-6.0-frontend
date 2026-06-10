@@ -1,0 +1,94 @@
+@if (visible) {
+  <div class="b5d-catalog-dialog__backdrop" (click)="closeDialog()">
+    <section class="b5d-catalog-dialog" (click)="$event.stopPropagation()">
+      <header class="b5d-catalog-dialog__header">
+        <strong>{{ i18n.translateForComponent(translations, titleKey) }}</strong>
+        @if (isReadOnly) {
+          <span class="b5d-catalog-dialog__readonly">{{ i18n.translateForComponent(translations, 'catalogDialog.readOnly') }}</span>
+        }
+      </header>
+
+      <form class="b5d-catalog-dialog__body" (ngSubmit)="submitForm()">
+        <label class="b5d-catalog-dialog__field">
+          <span>{{ i18n.translateForComponent(translations, 'catalogDialog.name') }}</span>
+          <input
+            type="text"
+            [(ngModel)]="formDraft.nombre"
+            name="nombre"
+            [readonly]="isReadOnly"
+            class="b5d-catalog-dialog__input"
+          />
+        </label>
+
+        <label class="b5d-catalog-dialog__field">
+          <span>{{ i18n.translateForComponent(translations, 'catalogDialog.description') }}</span>
+          <textarea
+            [(ngModel)]="formDraft.descripcion"
+            name="descripcion"
+            [readonly]="isReadOnly"
+            class="b5d-catalog-dialog__textarea"
+            rows="4"
+          ></textarea>
+        </label>
+
+        <label class="b5d-catalog-dialog__field">
+          <span>{{ i18n.translateForComponent(translations, 'catalogDialog.propertyType') }}</span>
+          <input
+            type="text"
+            [(ngModel)]="formDraft.propiedad_tipo_bim"
+            name="propiedad_tipo_bim"
+            [readonly]="isReadOnly"
+            class="b5d-catalog-dialog__input"
+          />
+        </label>
+
+        <label class="b5d-catalog-dialog__field">
+          <span>{{ i18n.translateForComponent(translations, 'catalogDialog.quantityGroup') }}</span>
+          <input
+            type="text"
+            [(ngModel)]="formDraft.grupo_cantidades_bim"
+            name="grupo_cantidades_bim"
+            [readonly]="isReadOnly"
+            class="b5d-catalog-dialog__input"
+          />
+        </label>
+
+        <div class="b5d-catalog-dialog__field">
+          <span>{{ i18n.translateForComponent(translations, 'catalogDialog.externalCatalog') }}</span>
+          <div class="b5d-catalog-dialog__file-row">
+            <input
+              type="text"
+              class="b5d-catalog-dialog__input b5d-catalog-dialog__input--file"
+              [value]="selectedFileName || i18n.translateForComponent(translations, 'catalogDialog.noFile')"
+              readonly
+            />
+            <label class="b5d-catalog-dialog__file-button" [class.b5d-catalog-dialog__file-button--disabled]="isReadOnly">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.chooseFile') }}
+              <input
+                type="file"
+                accept=".xdb"
+                [disabled]="isReadOnly || loading"
+                (change)="handleFileChange($event)"
+              />
+            </label>
+          </div>
+        </div>
+
+        @if (validationMessage) {
+          <div class="b5d-catalog-dialog__message">{{ validationMessage }}</div>
+        }
+
+        <footer class="b5d-catalog-dialog__footer">
+          <button type="button" class="b5d-catalog-dialog__button" (click)="closeDialog()">
+            {{ i18n.translateForComponent(translations, 'catalogDialog.cancel') }}
+          </button>
+          @if (!isReadOnly) {
+            <button type="submit" class="b5d-catalog-dialog__button b5d-catalog-dialog__button--primary" [disabled]="loading">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.save') }}
+            </button>
+          }
+        </footer>
+      </form>
+    </section>
+  </div>
+}

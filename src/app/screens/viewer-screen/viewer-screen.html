@@ -6,6 +6,7 @@
     [activeProject]="proyectoB5dActivo()"
     [activeMeasurementMode]="activeMeasurementMode()"
     [activeLengthMeasurementMode]="activeLengthMeasurementMode()"
+    [activeCountMeasurementMode]="activeCountMeasurementMode()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     [homeToolbarState]="homeToolbarState()"
     (archivoSeleccionado)="cargarArchivo($event)"
@@ -142,6 +143,83 @@
           } @else {
             <div class="b5d-viewer-screen__measurement-card-empty">
               {{ getMeasurementUnavailableMessage() }}
+            </div>
+          }
+        } @else {
+          <div class="b5d-viewer-screen__measurement-card-empty">
+            {{ getMeasurementEmptyMessage() }}
+          </div>
+        }
+      } @else if (activeMeasurementMode() === 'angle') {
+        @if (visorIfc.angleMeasurementSummary(); as angleSummary) {
+          @if (angleSummary.anchorCount === 0) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementEmptyMessage() }}
+            </div>
+          } @else if (angleSummary.anchorCount < 3) {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementAngleWaitingMessage() }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ angleSummary.anchorCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ angleSummary.anchors[0]?.label }}
+              @if (angleSummary.anchors[1]?.label) {
+                → {{ angleSummary.anchors[1]?.label }}
+              }
+            </div>
+          } @else if (angleSummary.angle !== null) {
+            <div class="b5d-viewer-screen__measurement-card-value">
+              <span class="b5d-viewer-screen__measurement-card-number">{{ angleSummary.angle.toFixed(3) }}</span>
+              <span class="b5d-viewer-screen__measurement-card-unit">°</span>
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ angleSummary.anchorCount }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ angleSummary.anchors[0]?.label }} → {{ angleSummary.anchors[1]?.label }} → {{ angleSummary.anchors[2]?.label }}
+            </div>
+          } @else {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementUnavailableMessage() }}
+            </div>
+          }
+        } @else {
+          <div class="b5d-viewer-screen__measurement-card-empty">
+            {{ getMeasurementEmptyMessage() }}
+          </div>
+        }
+      } @else if (activeMeasurementMode() === 'count') {
+        @if (visorIfc.countMeasurementSummary(); as countSummary) {
+          @if (countSummary.count > 0) {
+            <div class="b5d-viewer-screen__measurement-card-value">
+              <span class="b5d-viewer-screen__measurement-card-number">{{ countSummary.count }}</span>
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementSelectedLabel() }}: {{ countSummary.count }}
+            </div>
+            <div class="b5d-viewer-screen__measurement-card-meta">
+              {{ getMeasurementTotalLabel() }}: {{ formatMeasurementValue() }}
+            </div>
+            @if (countSummary.selections.length) {
+              <div class="b5d-viewer-screen__measurement-card-list">
+                @for (selection of countSummary.selections; track selection.key) {
+                  <div class="b5d-viewer-screen__measurement-card-list-item">
+                    <div class="b5d-viewer-screen__measurement-card-list-item-main">
+                      <span class="b5d-viewer-screen__measurement-card-list-item-label">{{ selection.label }}</span>
+                      <span class="b5d-viewer-screen__measurement-card-list-item-value">{{ selection.count }}</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          } @else {
+            <div class="b5d-viewer-screen__measurement-card-empty">
+              {{ getMeasurementEmptyMessage() }}
             </div>
           }
         } @else {
@@ -340,6 +418,7 @@
                 [b5dLinks]="b5dLinks()"
                 [b5dCatalogs]="b5dCatalogs()"
                 [b5dLoading]="b5dCargando()"
+                [activeBottomTab]="bottomPanelTab()"
                 (toolbarStateChange)="onLinkingToolbarStateChange($event)"
                 (ifcObjectSelectionChange)="onLinkingIfcSelectionChange($event)"
                 (draftChanged)="onLinkingDraftChanged()"
@@ -366,6 +445,14 @@
           }
         </div>
       </div>
+      <app-catalog-structure-dialog
+        [visible]="catalogStructureDialogVisible()"
+        [mode]="catalogStructureDialogMode()"
+        [catalog]="catalogStructureDialogCatalog()"
+        [loading]="catalogStructureDialogLoading()"
+        (saveRequested)="guardarEstructuraCatalogo($event)"
+        (closeRequested)="cerrarDialogoEstructuraCatalogo()"
+      />
       <span
         class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
         (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top')"

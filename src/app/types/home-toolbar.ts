@@ -25,6 +25,7 @@ export interface HomeToolbarState {
   selectedObjectIds: string[];
   selectedLinkIds: string[];
   canPasteConcept: boolean;
+  selectedCatalogId?: number | null;
   parametersTotal?: number;
   selectedParameterIds?: number[];
   parameterListVisible?: boolean;

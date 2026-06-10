@@ -50,6 +50,9 @@ export interface ConceptoB5DOrm {
   agrupador_padre_id: number | null;
   unidad: string | null;
   orden: number | null;
+  costo?: number | null;
+  costo_mn?: number | null;
+  costo_me?: number | null;
   optimistic_lock_field?: number | null;
   gc_record?: number | null;
 }
@@ -72,6 +75,9 @@ export interface CatalogoB5DOrm {
   identificador_original: number | null;
   nombre: string | null;
   descripcion: string | null;
+  grupo_cantidades_bim?: string | null;
+  propiedad_tipo_bim?: string | null;
+  catalogo_externo?: string | null;
   optimistic_lock_field?: number | null;
   gc_record?: number | null;
 }

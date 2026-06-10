@@ -25,6 +25,7 @@ import type {
 } from '../../types/b5d-orm';
 import type {
   HomeToolbarState,
+  HomeBottomPanelTab,
   LinkingWorkspacePanel,
   SelectFilterMode,
   UnlinkedObjectsMode,
@@ -100,6 +101,7 @@ export class LinkingPanel implements OnChanges {
   @Input() b5dLinks: VinculoConceptoBimOrm[] = [];
   @Input() b5dCatalogs: CatalogoB5DOrm[] = [];
   @Input() b5dLoading = false;
+  @Input() activeBottomTab: HomeBottomPanelTab = 'links';
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
   @Output() ifcObjectSelectionChange = new EventEmitter<number[]>();
   @Output() draftChanged = new EventEmitter<void>();
@@ -540,6 +542,14 @@ export class LinkingPanel implements OnChanges {
     this.emitDraftChanged();
   }
 
+  // Updates the visible catalog without marking the draft as modified.
+  setCatalogSelectionFromHost(catalogId: number | null): void {
+    this.selectedCatalogId = catalogId;
+    this.selectedConceptIds.clear();
+    this.idSelectedConcept = null;
+    this.emitToolbarState();
+  }
+
   isSelectedConcept(id: number): boolean {
     return this.selectedConceptIds.has(id);
   }
@@ -753,7 +763,7 @@ export class LinkingPanel implements OnChanges {
       .map((conceptItem) => conceptItem.id);
 
     this.toolbarStateChange.emit({
-      activeBottomTab: 'links',
+      activeBottomTab: this.activeBottomTab,
       activePanel: this.activeWorkspacePanel,
       linksViewVisible: this.relatedLinksVisible,
       conceptsTotal: this.conceptosEstructurados.length,
@@ -764,6 +774,7 @@ export class LinkingPanel implements OnChanges {
       selectedObjectIds: [...this.selectedObjectIds],
       selectedLinkIds: [...this.selectedLinkIds],
       canPasteConcept: !!this.conceptClipboard,
+      selectedCatalogId: this.selectedCatalogId,
     });
   }
 

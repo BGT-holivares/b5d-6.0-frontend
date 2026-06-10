@@ -4,7 +4,7 @@ import { I18nService } from '../../utils/i18n/i18n.service';
 import { ThemeService } from '../../utils/theme.service';
 import { FloatFileTab } from '../float-file-tab/float-file-tab';
 import type { FloatingPanelId } from '../../types/floating-panel';
-import type { MeasurementLengthMode, MeasurementMode } from '../../types/measurement';
+import type { MeasurementCountMode, MeasurementLengthMode, MeasurementMode } from '../../types/measurement';
 import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import { TOOLBAR_TRANSLATIONS } from './toolbar.translations';
@@ -29,6 +29,10 @@ export type ToolbarActionId =
   | 'home-calc-boq'
   | 'home-calc-remove'
   | 'home-calc-parameter'
+  | 'home-coStru-new'
+  | 'home-coStru-remove'
+  | 'home-coStru-dup'
+  | 'home-coStru-info'
   | 'measurement-volume'
   | 'measurement-area'
   | 'measurement-length'
@@ -38,6 +42,8 @@ export type ToolbarActionId =
   | 'measurement-weight'
   | 'measurement-angle'
   | 'measurement-count'
+  | 'measurement-count-selected'
+  | 'measurement-count-manual'
   | 'parameter-toggle-list'
   | 'parameter-toggle-boq'
   | 'parameter-toggle-matches'
@@ -75,7 +81,8 @@ export type ToolbarActionId =
   | 'movement-axis-y'
   | 'movement-axis-z'
   | 'restore-selected-movement'
-  | 'restore-all-movement';
+  | 'restore-all-movement'
+  | 'import-axa-catalog';
 
 type ToolbarButton = {
   label?: string;
@@ -133,6 +140,7 @@ export class Toolbar {
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() activeMeasurementMode: MeasurementMode | null = null;
   @Input() activeLengthMeasurementMode: MeasurementLengthMode = 'edge';
+  @Input() activeCountMeasurementMode: MeasurementCountMode = 'selected';
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
@@ -225,9 +233,24 @@ export class Toolbar {
     return `${this.i18n.translateForComponent(this.toolbarTranslations, 'toolbar.measurement.length')}: ${this.i18n.translateForComponent(this.toolbarTranslations, mode)}`;
   }
 
+  // Builds the current measurement count label for dropdown buttons.
+  getMeasurementCountButtonLabel(): string {
+    const mode =
+      this.activeCountMeasurementMode === 'manual'
+        ? 'toolbar.measurement.count.manual'
+        : 'toolbar.measurement.count.selected';
+    return `${this.i18n.translateForComponent(this.toolbarTranslations, 'toolbar.measurement.count')}: ${this.i18n.translateForComponent(this.toolbarTranslations, mode)}`;
+  }
+
   // Returns the label for the active length dropdown choice.
   getMeasurementLengthDropdownLabel(mode: MeasurementLengthMode): string {
     const key = mode === 'points' ? 'toolbar.measurement.length.points' : 'toolbar.measurement.length.edge';
+    return this.i18n.translateForComponent(this.toolbarTranslations, key);
+  }
+
+  // Returns the label for the active count dropdown choice.
+  getMeasurementCountDropdownLabel(mode: MeasurementCountMode): string {
+    const key = mode === 'manual' ? 'toolbar.measurement.count.manual' : 'toolbar.measurement.count.selected';
     return this.i18n.translateForComponent(this.toolbarTranslations, key);
   }
 
@@ -259,6 +282,10 @@ export class Toolbar {
   getLabel(item: { label?: string; labelKey?: string; action?: ToolbarActionId; dropdownItems?: ToolbarButton[] }): string {
     if (item.action === 'measurement-length' && item.dropdownItems?.length) {
       return this.getMeasurementLengthButtonLabel();
+    }
+
+    if (item.action === 'measurement-count' && item.dropdownItems?.length) {
+      return this.getMeasurementCountButtonLabel();
     }
 
     if (item.labelKey) return this.i18n.translateForComponent(this.toolbarTranslations, item.labelKey);
@@ -373,13 +400,48 @@ export class Toolbar {
         ],
       },
       {
+        labelKey: 'toolbar.home.category.concept',
+        layout: 'horizontal',
+        visible: activeBottomTab === 'links',
+        buttons: [
+          {
+            labelKey: 'toolbar.home.newCoStructure',
+            iconSrc: 'assets/images/VerVistaVinIFC_32x32.png',
+            action: 'home-coStru-new',
+            disabled: !this.activeProject,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.removeCoStructure',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-coStru-remove',
+            disabled: !this.activeProject || this.homeToolbarState.selectedCatalogId == null,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.dupCoStructure',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-coStru-dup',
+            disabled: true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.infoCoStructure',
+            iconSrc: 'assets/images/Add_32x32.png',
+            action: 'home-coStru-info',
+            disabled: !this.activeProject || this.homeToolbarState.selectedCatalogId == null,
+            variant: 'large',
+          },
+        ],
+      },
+      {
         labelKey: 'toolbar.home.category.boq',
         layout: 'horizontal',
         visible: activeBottomTab === 'boq',
         buttons: [
           {
             labelKey: 'toolbar.home.calcInfo',
-            iconSrc: 'assets/images/Add_32x32.png',
+            iconSrc: 'assets/images/VerVistaVinIFC_32x32.png',
             action: 'home-calc-info',
             disabled: true,
             variant: 'large',
@@ -485,6 +547,13 @@ export class Toolbar {
         return false;
       }
       return true;
+    }
+
+    if (activeBottomTab === 'links') {
+      if (actionId === 'home-coStru-new') return !this.activeProject;
+      if (actionId === 'home-coStru-remove') return !this.activeProject || state.selectedCatalogId == null;
+      if (actionId === 'home-coStru-info') return !this.activeProject || state.selectedCatalogId == null;
+      if (actionId === 'home-coStru-dup') return true;
     }
 
     if (actionId === 'home-add-item') return !isConceptPanel;
@@ -597,6 +666,34 @@ export class Toolbar {
             ],
           },
           {
+            labelKey: 'toolbar.measurement.angle',
+            iconText: '∠',
+            action: 'measurement-angle',
+            selected: this.activeMeasurementMode === 'angle',
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.measurement.count',
+            iconText: '#',
+            action: 'measurement-count',
+            selected: this.activeMeasurementMode === 'count',
+            variant: 'large-dropdown',
+            dropdownItems: [
+              {
+                labelKey: 'toolbar.measurement.count.selected',
+                action: 'measurement-count-selected',
+                variant: 'large',
+                selected: this.activeMeasurementMode === 'count' && this.activeCountMeasurementMode === 'selected',
+              },
+              {
+                labelKey: 'toolbar.measurement.count.manual',
+                action: 'measurement-count-manual',
+                variant: 'large',
+                selected: this.activeMeasurementMode === 'count' && this.activeCountMeasurementMode === 'manual',
+              },
+            ],
+          },
+          {
             labelKey: 'toolbar.measurement.clearAll',
             iconText: 'CLR',
             action: 'clear-measurements',
@@ -606,20 +703,6 @@ export class Toolbar {
             labelKey: 'toolbar.measurement.weight',
             iconText: 'kg',
             action: 'measurement-weight',
-            disabled: true,
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.measurement.angle',
-            iconText: 'ang',
-            action: 'measurement-angle',
-            disabled: true,
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.measurement.count',
-            iconText: '#',
-            action: 'measurement-count',
             disabled: true,
             variant: 'large',
           },
@@ -636,7 +719,12 @@ export class Toolbar {
         buttons: [
           { labelKey: 'toolbar.tools.importExcel', iconSrc: 'assets/images/ImportExcel_32x32.png', variant: 'large-dropdown' },
           { labelKey: 'toolbar.tools.importB5D', iconSrc: 'assets/images/Add_32x32.png', action: 'import-b5d-project', variant: 'large' },
-          { labelKey: 'toolbar.tools.importAXA', iconSrc: 'assets/images/ImportAXA_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.tools.importAXA',
+            iconSrc: 'assets/images/ImportAXA_32x32.png',
+            action: 'import-axa-catalog',
+            variant: 'large',
+          },
           { labelKey: 'toolbar.tools.cloneDB', iconSrc: 'assets/images/CloneDB_32x32.png', variant: 'large' },
           { labelKey: 'toolbar.tools.objLinks', iconSrc: 'assets/images/CopyLinks_32x32.png', action: 'refresh-b5d-project', variant: 'large-dropdown' },
         ],
@@ -681,14 +769,14 @@ export class Toolbar {
         layout: 'horizontal',
         buttons: [
           { labelKey: 'toolbar.view.3D', action: 'view-3d', iconSrc: 'assets/images/3D_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.view.2D', action: 'view-2d', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.view.2D', action: 'view-2d', iconSrc: 'assets/images/2D_32x32.png', variant: 'large' },
         ],
       },
       {
         labelKey: 'toolbar.view.category.camera',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.view.restoreZoom', action: 'reset-view', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.view.restoreZoom', action: 'reset-view', iconSrc: 'assets/images/RestoreZoom_32x32.png', variant: 'large' },
           { labelKey: 'toolbar.view.focus', action: 'focus-selection', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
         ],
       },
@@ -696,14 +784,14 @@ export class Toolbar {
         labelKey: 'toolbar.view.category.view',
         layout: 'vertical',
         buttons: [
-          { labelKey: 'toolbar.view.default', action: 'view-default', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.front', action: 'view-front', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.back', action: 'view-back', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.up', action: 'view-up', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.right', action: 'view-right', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.left', action: 'view-left', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.rotateLeft', action: 'rotate-left', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.rotateRight', action: 'rotate-right', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.default', action: 'view-default', iconSrc: 'assets/images/Default_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.front', action: 'view-front', iconSrc: 'assets/images/Front_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.back', action: 'view-back', iconSrc: 'assets/images/Back_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.up', action: 'view-up', iconSrc: 'assets/images/Top_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.right', action: 'view-right', iconSrc: 'assets/images/Right_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.left', action: 'view-left', iconSrc: 'assets/images/Left_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.rotateLeft', action: 'rotate-left', iconSrc: 'assets/images/RotateLeft_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.rotateRight', action: 'rotate-right', iconSrc: 'assets/images/RotateRight_32x32.png', variant: 'small' },
         ],
       },
       {

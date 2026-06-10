@@ -1,4 +1,4 @@
-import { Inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
+﻿import { Inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import type { Box3, Sphere, Vector3 } from 'three';
 import type {
@@ -8,7 +8,11 @@ import type {
   ValorCacheSeleccion,
 } from '../types/ifc';
 import type {
+  MeasurementAngleSummary,
   MeasurementAreaSummary,
+  MeasurementCountMode,
+  MeasurementCountSelection,
+  MeasurementCountSummary,
   MeasurementLengthAnchor,
   MeasurementLengthEdge,
   MeasurementLengthEdgeSummary,
@@ -148,14 +152,20 @@ export class VisorIfc {
   private modelTransparencyState = new Map<string, ModelTransparencyState>();
   private measurementMode: MeasurementMode | null = null;
   private measurementLengthMode: MeasurementLengthMode = 'edge';
+  private measurementCountMode: MeasurementCountMode = 'selected';
   private readonly measurementFaceSelections = new Map<string, MeasurementFaceSelection>();
   private readonly measurementLengthAnchors = new Map<string, MeasurementLengthAnchor>();
+  private readonly measurementAngleAnchors = new Map<string, MeasurementLengthAnchor>();
+  private readonly measurementCountSelections = new Map<string, MeasurementCountSelection>();
   private lengthEdgeSelection: MeasurementLengthEdge | null = null;
   private lengthEdgePreview: MeasurementLengthEdge | null = null;
   private lengthMeasurementOverlay: any = null;
   private lengthEdgeMeasurementOverlay: any = null;
+  private angleMeasurementOverlay: any = null;
   readonly lengthMeasurementSummary = signal<MeasurementLengthSummary | null>(null);
   readonly lengthEdgeMeasurementSummary = signal<MeasurementLengthEdgeSummary | null>(null);
+  readonly angleMeasurementSummary = signal<MeasurementAngleSummary | null>(null);
+  readonly countMeasurementSummary = signal<MeasurementCountSummary | null>(null);
   private measurementOverlayGroup: any = null;
   private readonly measurementSelectionColor = '#f472b6';
   private readonly defaultSelectionColor = '#f7f31c';
@@ -302,6 +312,8 @@ export class VisorIfc {
     this.contenedorVisor?.removeEventListener('pointerdown', this.handleAltPointerDown, true);
     this.clearAreaMeasurementSelections();
     this.clearLengthMeasurementSelections();
+    this.clearAngleMeasurementSelections();
+    this.clearCountMeasurementSelections();
     this.removeModelVisualGuides();
 
     if (this.urlTrabajador) URL.revokeObjectURL(this.urlTrabajador);
@@ -329,11 +341,16 @@ export class VisorIfc {
     this.registrosArbol.clear();
     this.seleccionActual.set({});
     this.measurementMode = null;
+    this.measurementLengthMode = 'edge';
+    this.measurementCountMode = 'selected';
     this.lengthMeasurementSummary.set(null);
     this.lengthEdgeMeasurementSummary.set(null);
+    this.angleMeasurementSummary.set(null);
+    this.countMeasurementSummary.set(null);
     this.measurementOverlayGroup = null;
     this.lengthMeasurementOverlay = null;
     this.lengthEdgeMeasurementOverlay = null;
+    this.angleMeasurementOverlay = null;
     this.lengthEdgeSelection = null;
     this.lengthEdgePreview = null;
   }
@@ -359,6 +376,8 @@ export class VisorIfc {
     this.seleccionActual.set({});
     this.clearAreaMeasurementSelections();
     this.clearLengthMeasurementSelections();
+    this.clearAngleMeasurementSelections();
+    this.clearCountMeasurementSelections();
 
     try {
       const datos = await archivo.arrayBuffer();
@@ -414,16 +433,10 @@ export class VisorIfc {
   }
 
   async limpiarSeleccion(): Promise<void> {
-    this.informacionSeleccionada.set(null);
-    this.seleccionActual.set({});
-    this.clearAreaMeasurementSelections();
-    this.clearLengthMeasurementSelections();
-
-    try {
-      if (this.resaltador?.clear) await this.resaltador.clear();
-    } catch (error) {
-      console.warn('No se pudo limpiar selección:', error);
-    }
+    await this.clearSelectionStateForMeasurementMode();
+    this.measurementMode = null;
+    this.measurementLengthMode = 'edge';
+    this.measurementCountMode = 'selected';
   }
 
   // Updates the active measurement mode and prepares the model interaction state.
@@ -433,25 +446,30 @@ export class VisorIfc {
     this.measurementMode = mode;
     await this.applyMeasurementSelectionStyle(mode !== null);
 
-    if (mode === 'area') {
-      await this.limpiarSeleccion();
+    if (mode === 'area' || mode === 'length' || mode === 'angle') {
+      await this.clearSelectionStateForMeasurementMode();
       return;
     }
 
-    if (mode === 'length') {
-      await this.limpiarSeleccion();
+    if (mode === 'count') {
+      await this.clearSelectionStateForMeasurementMode();
+
+      if (this.measurementCountMode === 'manual') {
+        this.countMeasurementSummary.set(null);
+      } else {
+        this.updateCountMeasurementSummaryFromSelection();
+      }
       return;
     }
 
     if (mode === 'volume') {
-      this.clearAreaMeasurementSelections();
-      this.clearLengthMeasurementSelections();
+      await this.clearSelectionStateForMeasurementMode();
+      this.updateCountMeasurementSummaryFromSelection();
       this.clearLengthEdgeMeasurement();
       return;
     }
 
-    this.clearAreaMeasurementSelections();
-    this.clearLengthMeasurementSelections();
+    await this.clearSelectionStateForMeasurementMode();
     this.clearLengthEdgeMeasurement();
   }
 
@@ -462,6 +480,25 @@ export class VisorIfc {
     this.measurementLengthMode = mode;
     this.clearLengthMeasurementSelections();
     this.clearLengthEdgeMeasurement();
+  }
+
+  // Switches the active count sub-mode used while count measurement is enabled.
+  setMeasurementCountMode(mode: MeasurementCountMode): void {
+    if (this.measurementCountMode === mode) return;
+
+    this.measurementCountMode = mode;
+    this.clearCountMeasurementSelections();
+    if (mode === 'manual') {
+      void this.resaltador?.clear?.();
+    }
+
+    if (this.measurementMode === 'count') {
+      if (mode === 'selected') {
+        this.updateCountMeasurementSummaryFromSelection();
+      } else {
+        this.countMeasurementSummary.set(null);
+      }
+    }
   }
 
   async clearAllMeasurements(): Promise<void> {
@@ -813,6 +850,7 @@ export class VisorIfc {
 
     // Volume mode should keep the normal fragments selection flow intact.
     if (this.measurementMode === 'volume') return;
+    if (this.measurementMode === 'count' && this.measurementCountMode === 'selected') return;
 
     const pointerPosition = this.getPointerPixelPositionFromEvent(event);
     const canvas = this.getRendererCanvas();
@@ -833,10 +871,41 @@ export class VisorIfc {
         return;
       }
 
+      if (this.measurementMode === 'angle') {
+        const hit = await this.findClosestLengthMeasurementHit(pointerPosition, camera, canvas);
+        if (!hit) return;
+
+        this.debugMeasurement('angle hit', {
+          modelId: hit.modelId,
+          localId: hit.localId,
+          itemId: hit.itemId,
+          distance: hit.distance,
+          point: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+        });
+        this.toggleAngleMeasurementAnchor(hit);
+        return;
+      }
+
+      if (this.measurementMode === 'count') {
+        const hit = await this.findClosestAreaMeasurementHit(pointerPosition, camera, canvas);
+        if (!hit) return;
+
+        this.toggleCountMeasurementSelection(hit);
+        return;
+      }
+
       if (this.measurementMode === 'length') {
         if (this.measurementLengthMode === 'edge') {
         const edgeHit = await this.findClosestLengthEdgeHit(pointerPosition, camera, canvas);
         if (edgeHit) {
+          this.debugMeasurement('length edge hit', {
+            modelId: edgeHit.modelId,
+            localId: edgeHit.localId,
+            itemId: edgeHit.itemId,
+            distance: edgeHit.distance,
+            start: { x: edgeHit.start.x, y: edgeHit.start.y, z: edgeHit.start.z },
+            end: { x: edgeHit.end.x, y: edgeHit.end.y, z: edgeHit.end.z },
+          });
           this.pinLengthEdgeMeasurement(edgeHit);
           return;
         }
@@ -846,6 +915,13 @@ export class VisorIfc {
         const hit = await this.findClosestLengthMeasurementHit(pointerPosition, camera, canvas);
         if (!hit) return;
 
+        this.debugMeasurement('length hit', {
+          modelId: hit.modelId,
+          localId: hit.localId,
+          itemId: hit.itemId,
+          distance: hit.distance,
+          point: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+        });
         this.clearLengthEdgeMeasurement();
         this.toggleLengthMeasurementAnchor(hit);
       }
@@ -1049,7 +1125,6 @@ export class VisorIfc {
     const sortedHits = [...hits]
       .filter((hit) => this.isValidLengthHit(hit))
       .sort((a, b) => (Number(a.distance) || Number.POSITIVE_INFINITY) - (Number(b.distance) || Number.POSITIVE_INFINITY));
-
     const hit = sortedHits[0];
     if (!hit) return null;
 
@@ -1122,15 +1197,17 @@ export class VisorIfc {
 
     const key = this.getMeasurementLengthAnchorKey(hit);
     const existingAnchor = this.measurementLengthAnchors.get(key);
+    this.debugMeasurement('length anchor before', {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      existingAnchor: !!existingAnchor,
+      anchorCount: this.measurementLengthAnchors.size,
+    });
     if (existingAnchor) return;
 
     if (this.measurementLengthAnchors.size >= 2) {
       this.measurementLengthAnchors.clear();
-    }
-
-    if (this.measurementLengthAnchors.size === 1) {
-      const [firstAnchor] = Array.from(this.measurementLengthAnchors.values());
-      if (this.isSameMeasurementObject(firstAnchor, hit)) return;
     }
 
     this.measurementLengthAnchors.set(key, {
@@ -1143,7 +1220,95 @@ export class VisorIfc {
       z: hit.point.z,
     });
 
+    this.debugMeasurement('length anchor after', {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      anchorCount: this.measurementLengthAnchors.size,
+    });
     this.updateLengthMeasurementSummary();
+  }
+
+  // Adds or replaces the current angle measurement anchor sequence.
+  private toggleAngleMeasurementAnchor(hit: MeasurementLengthHit): void {
+    if (!this.moduloThree) return;
+
+    const key = this.getMeasurementLengthAnchorKey(hit);
+    const existingAnchor = this.measurementAngleAnchors.get(key);
+    this.debugMeasurement('angle anchor before', {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      existingAnchor: !!existingAnchor,
+      anchorCount: this.measurementAngleAnchors.size,
+    });
+    if (existingAnchor) return;
+
+    if (this.measurementAngleAnchors.size >= 3) {
+      this.measurementAngleAnchors.clear();
+    }
+
+    this.measurementAngleAnchors.set(key, {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+      x: hit.point.x,
+      y: hit.point.y,
+      z: hit.point.z,
+    });
+
+    this.debugMeasurement('angle anchor after', {
+      modelId: hit.modelId,
+      localId: hit.localId,
+      itemId: hit.itemId,
+      anchorCount: this.measurementAngleAnchors.size,
+    });
+    this.updateAngleMeasurementSummary();
+  }
+
+  // Adds or removes an object from the manual count measurement.
+  private async toggleCountMeasurementSelection(hit: MeasurementFaceHit): Promise<void> {
+    const key = this.getMeasurementCountSelectionKey(hit);
+    if (this.measurementCountSelections.has(key)) {
+      this.measurementCountSelections.delete(key);
+    } else {
+      this.measurementCountSelections.set(key, {
+        key,
+        modelId: hit.modelId,
+        localId: hit.localId,
+        itemId: hit.itemId,
+        label: this.getMeasurementEntityLabel(hit.modelId, hit.localId),
+        count: 1,
+      });
+    }
+
+    await this.syncCountMeasurementSelectionHighlight();
+    this.updateCountMeasurementSummaryFromManualSelection();
+  }
+
+  // Synchronizes the highlighter selection with the manual count selection set.
+  private async syncCountMeasurementSelectionHighlight(): Promise<void> {
+    if (!this.resaltador) return;
+
+    const selectionMap: Record<string, Set<number>> = {};
+    for (const selection of this.measurementCountSelections.values()) {
+      const localIdSet = selectionMap[selection.modelId] ?? new Set<number>();
+      localIdSet.add(selection.localId);
+      selectionMap[selection.modelId] = localIdSet;
+    }
+
+    if (this.resaltador.clear) await this.resaltador.clear();
+    if (!Object.keys(selectionMap).length) {
+      this.updateSelectionFromMap({});
+      return;
+    }
+
+    if (this.resaltador.highlightByID) {
+      await this.resaltador.highlightByID('select', selectionMap);
+    }
+
+    this.updateSelectionFromMap(selectionMap);
   }
 
   // Pins a hovered edge as the active length measurement and clears the point workflow.
@@ -1205,6 +1370,38 @@ export class VisorIfc {
     this.lengthEdgeMeasurementSummary.set(null);
   }
 
+  // Clears the active angle selection anchors and their overlay.
+  private clearAngleMeasurementSelections(): void {
+    this.debugMeasurement('angle anchors cleared', {
+      anchorCount: this.measurementAngleAnchors.size,
+    });
+    this.measurementAngleAnchors.clear();
+    this.removeAngleMeasurementOverlay();
+    this.angleMeasurementSummary.set(null);
+  }
+
+  // Clears the active count selections and their summary state.
+  private clearCountMeasurementSelections(): void {
+    this.measurementCountSelections.clear();
+    this.countMeasurementSummary.set(null);
+  }
+
+  // Clears selection state without resetting the active measurement mode.
+  private async clearSelectionStateForMeasurementMode(): Promise<void> {
+    this.informacionSeleccionada.set(null);
+    this.seleccionActual.set({});
+    this.clearAreaMeasurementSelections();
+    this.clearLengthMeasurementSelections();
+    this.clearAngleMeasurementSelections();
+    this.clearCountMeasurementSelections();
+
+    try {
+      if (this.resaltador?.clear) await this.resaltador.clear();
+    } catch (error) {
+      console.warn('No se pudo limpiar selecciÃƒÂ³n:', error);
+    }
+  }
+
   // Adds or removes a measurement face and updates the summary state.
   private async toggleAreaMeasurementFace(hit: MeasurementFaceHit): Promise<void> {
     const builtSelection = await this.buildAreaMeasurementSelection(hit);
@@ -1212,6 +1409,15 @@ export class VisorIfc {
 
     const key = builtSelection.key;
     const existingSelection = this.measurementFaceSelections.get(key);
+    this.debugMeasurement('area selection toggle', {
+      modelId: builtSelection.modelId,
+      localId: builtSelection.localId,
+      key,
+      area: builtSelection.area,
+      triangleCount: builtSelection.triangles.length,
+      hasExistingSelection: !!existingSelection,
+      overlayGroupReady: !!this.measurementOverlayGroup,
+    });
 
     if (existingSelection) {
       this.removeAreaMeasurementFace(existingSelection);
@@ -1222,6 +1428,12 @@ export class VisorIfc {
 
     const area = builtSelection.area;
     const overlay = this.createAreaMeasurementOverlay(builtSelection.triangles);
+    this.debugMeasurement('area overlay', {
+      modelId: builtSelection.modelId,
+      localId: builtSelection.localId,
+      hasOverlay: !!overlay,
+      overlayGroupReady: !!this.measurementOverlayGroup,
+    });
     if (!overlay || !this.measurementOverlayGroup) return;
 
     overlay.userData = {
@@ -1399,13 +1611,25 @@ export class VisorIfc {
     if (!facePoints.length) return null;
     const targetKeys = facePoints.map((point) => this.getPointKey(point)).sort();
 
+    const exactMatches: number[] = [];
+    const partialMatches: Array<{ index: number; matchCount: number }> = [];
+
     for (const triangle of triangles) {
       const triangleKeys = [...triangle.vertexKeys].sort();
-      if (triangleKeys.length !== targetKeys.length) continue;
-      if (triangleKeys.every((key, index) => key === targetKeys[index])) return triangle.index;
+      if (triangleKeys.every((key) => targetKeys.includes(key))) {
+        exactMatches.push(triangle.index);
+        continue;
+      }
+
+      const matchCount = triangleKeys.filter((key) => targetKeys.includes(key)).length;
+      if (matchCount >= 2) {
+        partialMatches.push({ index: triangle.index, matchCount });
+      }
     }
 
-    return null;
+    if (exactMatches.length) return exactMatches[0];
+    partialMatches.sort((first, second) => second.matchCount - first.matchCount);
+    return partialMatches[0]?.index ?? null;
   }
 
   // Flood-fills the coplanar, edge-adjacent triangle region around the clicked triangle.
@@ -1617,6 +1841,9 @@ export class VisorIfc {
 
   // Clears the active length selection anchors and their overlay.
   private clearLengthMeasurementSelections(): void {
+    this.debugMeasurement('length anchors cleared', {
+      anchorCount: this.measurementLengthAnchors.size,
+    });
     this.measurementLengthAnchors.clear();
     this.removeLengthMeasurementOverlay();
     this.lengthMeasurementSummary.set(null);
@@ -1654,6 +1881,11 @@ export class VisorIfc {
       selectedObjectCount: objectKeys.size,
       selections,
     });
+    this.debugMeasurement('area summary', {
+      selectedFaceCount: this.measurementFaceSelections.size,
+      selectedObjectCount: objectKeys.size,
+      totalArea,
+    });
 
   }
 
@@ -1677,6 +1909,10 @@ export class VisorIfc {
       anchorCount: normalizedAnchors.length,
       anchors: normalizedAnchors,
     });
+    this.debugMeasurement('length summary', {
+      anchorCount: normalizedAnchors.length,
+      distance,
+    });
 
     this.updateLengthMeasurementOverlay(normalizedAnchors);
   }
@@ -1695,6 +1931,12 @@ export class VisorIfc {
         edge: { ...this.lengthEdgeSelection },
         isPinned: true,
       });
+      this.debugMeasurement('length edge summary', {
+        isPinned: true,
+        distance,
+        modelId: this.lengthEdgeSelection.modelId,
+        localId: this.lengthEdgeSelection.localId,
+      });
       this.updateLengthEdgeMeasurementOverlay(this.lengthEdgeSelection);
       return;
     }
@@ -1711,12 +1953,174 @@ export class VisorIfc {
         edge: { ...this.lengthEdgePreview },
         isPinned: false,
       });
+      this.debugMeasurement('length edge summary', {
+        isPinned: false,
+        distance,
+        modelId: this.lengthEdgePreview.modelId,
+        localId: this.lengthEdgePreview.localId,
+      });
       this.updateLengthEdgeMeasurementOverlay(this.lengthEdgePreview);
       return;
     }
 
     this.lengthEdgeMeasurementSummary.set(null);
     this.removeLengthEdgeMeasurementOverlay();
+  }
+
+  // Updates the active angle summary and rebuilds the overlay polyline.
+  private updateAngleMeasurementSummary(): void {
+    const anchors = Array.from(this.measurementAngleAnchors.values());
+    if (!anchors.length) {
+      this.angleMeasurementSummary.set(null);
+      this.removeAngleMeasurementOverlay();
+      return;
+    }
+
+    const normalizedAnchors = anchors.map((anchor) => ({ ...anchor }));
+    const angle =
+      normalizedAnchors.length >= 3
+        ? this.getAngleBetweenAnchors(normalizedAnchors[0], normalizedAnchors[1], normalizedAnchors[2])
+        : null;
+
+    this.angleMeasurementSummary.set({
+      angle: Number.isFinite(angle) ? angle : null,
+      anchorCount: normalizedAnchors.length,
+      anchors: normalizedAnchors,
+    });
+    this.debugMeasurement('angle summary', {
+      anchorCount: normalizedAnchors.length,
+      angle: Number.isFinite(angle) ? angle : null,
+    });
+
+    this.updateAngleMeasurementOverlay(normalizedAnchors);
+  }
+
+  // Updates the active count summary from the current selection mode.
+  private updateCountMeasurementSummaryFromSelection(): void {
+    const selectionMap = this.cloneSelectionMap(this.seleccionActual());
+    const selections = this.buildCountSelectionsFromSelectionMap(selectionMap);
+    this.countMeasurementSummary.set({
+      count: selections.reduce((total, selection) => total + selection.count, 0),
+      selections,
+    });
+  }
+
+  // Updates the active count summary from the manual count selections.
+  private updateCountMeasurementSummaryFromManualSelection(): void {
+    const selections = this.groupCountSelectionsByLabel(Array.from(this.measurementCountSelections.values()));
+    this.countMeasurementSummary.set({
+      count: selections.reduce((total, selection) => total + selection.count, 0),
+      selections,
+    });
+  }
+
+  // Rebuilds the overlay markers and lines for the current angle measurement.
+  private updateAngleMeasurementOverlay(anchors: MeasurementLengthAnchor[]): void {
+    if (!this.moduloThree || !this.measurementOverlayGroup) return;
+
+    this.removeAngleMeasurementOverlay();
+
+    if (!anchors.length) return;
+
+    const group = new this.moduloThree.Group();
+    group.name = 'measurement-angle-overlay';
+    group.renderOrder = 10002;
+    group.frustumCulled = false;
+
+    const sphereRadius = this.getMeasurementMarkerRadius(anchors);
+
+    for (const anchor of anchors) {
+      const marker = this.createLengthMeasurementMarker(anchor, sphereRadius);
+      if (marker) group.add(marker);
+    }
+
+    if (anchors.length >= 2) {
+      const firstLine = this.createLengthMeasurementLine(anchors[0], anchors[1]);
+      if (firstLine) group.add(firstLine);
+    }
+
+    if (anchors.length >= 3) {
+      const secondLine = this.createLengthMeasurementLine(anchors[1], anchors[2]);
+      if (secondLine) group.add(secondLine);
+    }
+
+    this.measurementOverlayGroup.add(group);
+    this.angleMeasurementOverlay = group;
+  }
+
+  // Removes the active angle overlay group from the scene.
+  private removeAngleMeasurementOverlay(): void {
+    if (!this.angleMeasurementOverlay) return;
+
+    this.measurementOverlayGroup?.remove(this.angleMeasurementOverlay);
+    this.disposeMeasurementOverlay(this.angleMeasurementOverlay);
+    this.angleMeasurementOverlay = null;
+  }
+
+  // Computes the angle defined by three measured anchors in degrees.
+  private getAngleBetweenAnchors(
+    first: MeasurementLengthAnchor,
+    center: MeasurementLengthAnchor,
+    second: MeasurementLengthAnchor,
+  ): number {
+    if (!this.moduloThree) return Number.NaN;
+
+    const firstVector = new this.moduloThree.Vector3(first.x - center.x, first.y - center.y, first.z - center.z);
+    const secondVector = new this.moduloThree.Vector3(second.x - center.x, second.y - center.y, second.z - center.z);
+    const firstLength = firstVector.length();
+    const secondLength = secondVector.length();
+    if (!firstLength || !secondLength) return Number.NaN;
+
+    const cosine = firstVector.dot(secondVector) / (firstLength * secondLength);
+    const clampedCosine = Math.max(-1, Math.min(1, cosine));
+    return (Math.acos(clampedCosine) * 180) / Math.PI;
+  }
+
+  // Builds a stable key for a count selection.
+  private getMeasurementCountSelectionKey(hit: MeasurementFaceHit): string {
+    return `${hit.modelId}:${hit.localId}`;
+  }
+
+  // Builds a list of count selections from the current selection map.
+  private buildCountSelectionsFromSelectionMap(selectionMap: Record<string, Set<number>>): MeasurementCountSelection[] {
+    const rawSelections: MeasurementCountSelection[] = [];
+
+    for (const [modelId, localIdSet] of Object.entries(selectionMap)) {
+      for (const localId of localIdSet) {
+        rawSelections.push({
+          key: `${modelId}:${localId}`,
+          modelId,
+          localId,
+          itemId: localId,
+          label: this.getMeasurementEntityLabel(modelId, localId),
+          count: 1,
+        });
+      }
+    }
+
+    return this.groupCountSelectionsByLabel(rawSelections);
+  }
+
+  // Groups count rows by their display label so identical names are counted together.
+  private groupCountSelectionsByLabel(selections: MeasurementCountSelection[]): MeasurementCountSelection[] {
+    const groupedSelections = new Map<string, MeasurementCountSelection>();
+
+    for (const selection of selections) {
+      const groupKey = selection.label.trim().toLowerCase();
+      const existingSelection = groupedSelections.get(groupKey);
+
+      if (existingSelection) {
+        existingSelection.count += selection.count;
+        continue;
+      }
+
+      groupedSelections.set(groupKey, {
+        ...selection,
+        key: groupKey,
+      });
+    }
+
+    return Array.from(groupedSelections.values()).sort((first, second) => first.label.localeCompare(second.label));
   }
 
   // Rebuilds the overlay line and markers for the current length measurement.
@@ -2030,6 +2434,13 @@ export class VisorIfc {
     this.selectedModelItems = this.cloneSelectionMap(selectionMap);
     this.seleccionActual.set(this.cloneSelectionMap(selectionMap));
     this.activeModelId = this.resolveActiveModelIdFromSelection(selectionMap) ?? this.activeModelId;
+    if (this.measurementMode === 'count') {
+      if (this.measurementCountMode === 'manual') {
+        this.updateCountMeasurementSummaryFromManualSelection();
+      } else {
+        this.updateCountMeasurementSummaryFromSelection();
+      }
+    }
     this.syncModelVisualGuides();
     void this.refreshSelectionFilter();
     void this.applyPersistentTransparencyForActiveModel();
@@ -3543,3 +3954,5 @@ export class VisorIfc {
     return clase.replace('IFC', '') || nombreNormalizado || 'Elemento';
   }
 }
+
+

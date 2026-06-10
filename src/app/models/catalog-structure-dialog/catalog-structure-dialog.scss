@@ -1,0 +1,146 @@
+.b5d-catalog-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.b5d-catalog-dialog {
+  width: min(620px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.3);
+}
+
+.b5d-catalog-dialog__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.b5d-catalog-dialog__readonly {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.b5d-catalog-dialog__body {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.b5d-catalog-dialog__field {
+  display: grid;
+  gap: 6px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.b5d-catalog-dialog__input,
+.b5d-catalog-dialog__textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 13px;
+}
+
+.b5d-catalog-dialog__textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.b5d-catalog-dialog__input--file {
+  flex: 1 1 auto;
+}
+
+.b5d-catalog-dialog__file-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.b5d-catalog-dialog__file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 110px;
+  padding: 8px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.b5d-catalog-dialog__file-button--disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.b5d-catalog-dialog__file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.b5d-catalog-dialog__message {
+  padding: 10px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.b5d-catalog-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.b5d-catalog-dialog__button {
+  min-width: 96px;
+  padding: 8px 14px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.b5d-catalog-dialog__button--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.b5d-catalog-dialog__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

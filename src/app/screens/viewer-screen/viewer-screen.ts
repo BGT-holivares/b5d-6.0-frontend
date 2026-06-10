@@ -21,6 +21,7 @@ import { LinkingPanel } from '../../models/linking-panel/linking-panel';
 import { ModelVisibilityPanel } from '../../models/model-visibility-panel/model-visibility-panel';
 import { BoqPanel } from '../../models/boq-panel/boq-panel';
 import { ParametersPanel } from '../../models/parameters-panel/parameters-panel';
+import { CatalogStructureDialog, type CatalogStructureDraft } from '../../models/catalog-structure-dialog/catalog-structure-dialog';
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
@@ -36,13 +37,18 @@ import type {
   UsuarioSesionOrm,
   VinculoConceptoBimOrm,
 } from '../../types/b5d-orm';
-import type { HomeToolbarState, SelectFilterMode, UnlinkedObjectsMode } from '../../types/home-toolbar';
-import type { MeasurementLengthMode, MeasurementMode, MeasurementVolumeSummary } from '../../types/measurement';
+import type { HomeBottomPanelTab, HomeToolbarState, SelectFilterMode, UnlinkedObjectsMode } from '../../types/home-toolbar';
+import type {
+  MeasurementCountMode,
+  MeasurementLengthMode,
+  MeasurementMode,
+  MeasurementVolumeSummary,
+} from '../../types/measurement';
 import type { FloatingPanelId } from '../../types/floating-panel';
 import type { ElementoIfcB5D, NodoCuantificacion } from '../../types/quantity-take-off';
 
 type DockSide = 'left' | 'right' | 'bottom';
-type BottomPanelTab = 'links' | 'boq' | 'parameters';
+type BottomPanelTab = HomeBottomPanelTab;
 type ResizeHandle =
   | 'top'
   | 'right'
@@ -74,7 +80,8 @@ type FloatingPanelState = {
     LinkingPanel,
     ModelVisibilityPanel,
     BoqPanel,
-    ParametersPanel,
+  ParametersPanel,
+    CatalogStructureDialog,
   ],
   templateUrl: './viewer-screen.html',
   styleUrl: './viewer-screen.scss',
@@ -104,6 +111,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   readonly b5dCargando = signal(false);
   readonly b5dMensaje = signal('');
   readonly usuarioSesion = signal<UsuarioSesionOrm | null>(null);
+  readonly catalogStructureDialogVisible = signal(false);
+  readonly catalogStructureDialogMode = signal<'create' | 'info'>('create');
+  readonly catalogStructureDialogCatalog = signal<CatalogoB5DOrm | null>(null);
+  readonly catalogStructureDialogLoading = signal(false);
   readonly homeToolbarState = signal<HomeToolbarState>({
     activeBottomTab: 'links',
     activePanel: 'concepts',
@@ -116,6 +127,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     selectedObjectIds: [],
     selectedLinkIds: [],
     canPasteConcept: false,
+    selectedCatalogId: null,
     parametersTotal: 0,
     selectedParameterIds: [],
     parameterListVisible: true,
@@ -125,6 +137,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   });
   readonly activeMeasurementMode = signal<MeasurementMode | null>(null);
   readonly activeLengthMeasurementMode = signal<MeasurementLengthMode>('edge');
+  readonly activeCountMeasurementMode = signal<MeasurementCountMode>('selected');
   readonly volumeMeasurementSummary = signal<MeasurementVolumeSummary | null>(null);
   readonly floatingPanels = signal<Record<FloatingPanelId, FloatingPanelState>>({
     tree: {
@@ -191,10 +204,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly measurementSelectionEffect = effect(() => {
     const mode = this.activeMeasurementMode();
-    const selectionMap = this.visorIfc.seleccionActual();
 
     void this.visorIfc.setMeasurementMode(mode);
     this.visorIfc.setMeasurementLengthMode(this.activeLengthMeasurementMode());
+    this.visorIfc.setMeasurementCountMode(this.activeCountMeasurementMode());
 
     if (mode !== 'volume') {
       this.measurementVolumeRequestId += 1;
@@ -202,6 +215,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       return;
     }
 
+    const selectionMap = this.visorIfc.seleccionActual();
     void this.actualizarResumenVolumen(selectionMap);
   });
   private nextFloatingPanelZIndex = 40;
@@ -409,6 +423,102 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo exportar el proyecto B5D.'));
     } finally {
       this.b5dCargando.set(false);
+    }
+  }
+
+  // Opens the concept-structure dialog in create or read-only mode.
+  abrirDialogoEstructuraCatalogo(modo: 'create' | 'info'): void {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para administrar catálogos.');
+      return;
+    }
+
+    const catalogoSeleccionado = this.obtenerCatalogoSeleccionado();
+    if (modo === 'info' && !catalogoSeleccionado) {
+      this.b5dMensaje.set('Selecciona un catálogo para ver su información.');
+      return;
+    }
+
+    this.catalogStructureDialogMode.set(modo);
+    this.catalogStructureDialogCatalog.set(modo === 'info' ? catalogoSeleccionado : null);
+    this.catalogStructureDialogLoading.set(false);
+    this.catalogStructureDialogVisible.set(true);
+    this.b5dMensaje.set('');
+  }
+
+  // Closes the concept-structure dialog and clears its local state.
+  cerrarDialogoEstructuraCatalogo(): void {
+    this.catalogStructureDialogVisible.set(false);
+    this.catalogStructureDialogCatalog.set(null);
+    this.catalogStructureDialogLoading.set(false);
+  }
+
+  // Imports a PlanAXA catalog and refreshes the current project snapshot.
+  async guardarEstructuraCatalogo(draft: CatalogStructureDraft): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para importar catálogos.');
+      return;
+    }
+
+    if (this.catalogStructureDialogLoading()) return;
+
+    this.catalogStructureDialogLoading.set(true);
+    this.b5dMensaje.set('');
+    try {
+      const respuesta = await firstValueFrom(
+        this.backendProyectos.importarCatalogoAxa(proyecto.id, {
+          archivo: draft.archivo as File,
+          nombre: draft.nombre,
+          descripcion: draft.descripcion,
+          propiedad_tipo_bim: draft.propiedad_tipo_bim,
+          grupo_cantidades_bim: draft.grupo_cantidades_bim,
+        }),
+      );
+
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      this.setBottomPanelTab('links');
+      await this.sincronizarCatalogoSeleccionado(respuesta.catalogo.id);
+      this.cerrarDialogoEstructuraCatalogo();
+      this.b5dMensaje.set(`Catálogo importado correctamente: ${respuesta.catalogo.nombre ?? draft.nombre}.`);
+    } catch (error) {
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar la estructura de conceptos.'));
+    } finally {
+      this.catalogStructureDialogLoading.set(false);
+    }
+  }
+
+  // Deletes the selected catalog and keeps the remaining catalog selection in sync.
+  async eliminarCatalogoSeleccionado(): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    const catalogoSeleccionado = this.obtenerCatalogoSeleccionado();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para eliminar catálogos.');
+      return;
+    }
+    if (!catalogoSeleccionado) {
+      this.b5dMensaje.set('Selecciona un catálogo para eliminarlo.');
+      return;
+    }
+
+    const nombreCatalogo = catalogoSeleccionado.nombre ?? `ID ${catalogoSeleccionado.id}`;
+    const confirmado = window.confirm(`¿Eliminar la estructura de conceptos "${nombreCatalogo}"?`);
+    if (!confirmado) return;
+
+    this.catalogStructureDialogLoading.set(true);
+    this.b5dMensaje.set('');
+    try {
+      await firstValueFrom(this.backendProyectos.eliminarCatalogo(proyecto.id, catalogoSeleccionado.id));
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      this.setBottomPanelTab('links');
+      await this.sincronizarCatalogoSeleccionado(this.b5dCatalogs()[0]?.id ?? null);
+      this.cerrarDialogoEstructuraCatalogo();
+      this.b5dMensaje.set('La estructura de conceptos se eliminó correctamente.');
+    } catch (error) {
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo eliminar la estructura de conceptos.'));
+    } finally {
+      this.catalogStructureDialogLoading.set(false);
     }
   }
 
@@ -662,6 +772,15 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'import-b5d-project': () => {
         void this.abrirSelectorImportacionB5d();
       },
+      'import-axa-catalog': () => {
+        void this.asegurarSesionBackend().then((autenticado) => {
+          if (!autenticado) {
+            void this.irALogin();
+            return;
+          }
+          this.abrirDialogoEstructuraCatalogo('create');
+        });
+      },
       'export-b5d-project': () => {
         void this.asegurarSesionBackend().then((autenticado) => {
           if (!autenticado) {
@@ -703,8 +822,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'measurement-volume': () => this.toggleVolumeMeasurementMode(),
       'measurement-area': () => this.toggleAreaMeasurementMode(),
       'measurement-length': () => this.toggleLengthMeasurementMode(),
+      'measurement-angle': () => this.toggleAngleMeasurementMode(),
+      'measurement-count': () => this.toggleCountMeasurementMode(),
       'measurement-length-edge': () => this.setLengthMeasurementMode('edge'),
       'measurement-length-points': () => this.setLengthMeasurementMode('points'),
+      'measurement-count-selected': () => this.setCountMeasurementMode('selected'),
+      'measurement-count-manual': () => this.setCountMeasurementMode('manual'),
       'clear-measurements': () => this.clearMeasurements(),
       'view-default': () => this.visorIfc.setDefaultModelView(),
       'view-front': () => this.visorIfc.setFrontModelView(),
@@ -737,6 +860,16 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.toggleMeasurementMode('length');
   }
 
+  // Toggles the angle measurement mode used for three-point angle snapping.
+  toggleAngleMeasurementMode(): void {
+    this.toggleMeasurementMode('angle');
+  }
+
+  // Toggles the count measurement mode used for selected or clicked objects.
+  toggleCountMeasurementMode(): void {
+    this.toggleMeasurementMode('count');
+  }
+
   // Sets the active length sub-mode and keeps the length measurement mode enabled.
   setLengthMeasurementMode(mode: MeasurementLengthMode): void {
     this.activeLengthMeasurementMode.set(mode);
@@ -744,6 +877,15 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       this.activeMeasurementMode.set('length');
     }
     this.visorIfc.setMeasurementLengthMode(mode);
+  }
+
+  // Sets the active count sub-mode and keeps the count measurement mode enabled.
+  setCountMeasurementMode(mode: MeasurementCountMode): void {
+    this.activeCountMeasurementMode.set(mode);
+    if (this.activeMeasurementMode() !== 'count') {
+      this.activeMeasurementMode.set('count');
+    }
+    this.visorIfc.setMeasurementCountMode(mode);
   }
 
   // Switches measurement modes without affecting unrelated toolbar state.
@@ -757,7 +899,6 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.homeToolbarState.set({
       ...this.homeToolbarState(),
       ...state,
-      activeBottomTab: 'links',
     });
   }
 
@@ -783,6 +924,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         ? 'toolbar.measurement.panel.area.title'
         : mode === 'length'
           ? 'toolbar.measurement.panel.length.title'
+          : mode === 'angle'
+            ? 'toolbar.measurement.panel.angle.title'
+            : mode === 'count'
+              ? 'toolbar.measurement.panel.count.title'
           : 'toolbar.measurement.panel.volume.title';
     return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
@@ -795,6 +940,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         ? 'toolbar.measurement.panel.area.empty'
         : mode === 'length'
           ? 'toolbar.measurement.panel.length.empty'
+          : mode === 'angle'
+            ? 'toolbar.measurement.panel.angle.empty'
+            : mode === 'count'
+              ? this.activeCountMeasurementMode() === 'manual'
+                ? 'toolbar.measurement.panel.count.manual.empty'
+                : 'toolbar.measurement.panel.count.empty'
           : 'toolbar.measurement.panel.volume.empty';
     return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
@@ -807,6 +958,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         ? 'toolbar.measurement.panel.area.unavailable'
         : mode === 'length'
           ? 'toolbar.measurement.panel.length.unavailable'
+          : mode === 'angle'
+            ? 'toolbar.measurement.panel.angle.unavailable'
+            : mode === 'count'
+              ? 'toolbar.measurement.panel.count.unavailable'
           : 'toolbar.measurement.panel.volume.unavailable';
     return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
@@ -817,6 +972,11 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       TOOLBAR_TRANSLATIONS,
       'toolbar.measurement.panel.length.waitingSecond',
     );
+  }
+
+  // Returns the helper message shown while the user is choosing the remaining angle vertices.
+  getMeasurementAngleWaitingMessage(): string {
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, 'toolbar.measurement.panel.angle.waiting');
   }
 
   // Returns the selected-item label for the current measurement summary.
@@ -832,11 +992,21 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       }
     }
 
+    if (mode === 'count') {
+      const key =
+        this.activeCountMeasurementMode() === 'manual'
+          ? 'toolbar.measurement.panel.countedObjects'
+          : 'toolbar.measurement.panel.selectedObjects';
+      return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
+    }
+
     const key =
       mode === 'area'
         ? 'toolbar.measurement.panel.selectedFaces'
         : mode === 'length'
           ? 'toolbar.measurement.panel.selectedPoints'
+          : mode === 'angle'
+            ? 'toolbar.measurement.panel.selectedPoints'
           : 'toolbar.measurement.panel.selectedObjects';
     return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
@@ -853,6 +1023,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         ? 'toolbar.measurement.panel.totalArea'
         : mode === 'length'
           ? 'toolbar.measurement.panel.totalDistance'
+          : mode === 'angle'
+            ? 'toolbar.measurement.panel.totalAngle'
+            : mode === 'count'
+              ? 'toolbar.measurement.panel.totalCount'
           : 'toolbar.measurement.panel.totalVolume';
     return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
@@ -887,6 +1061,18 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       return `${summary.distance.toFixed(3)} m`;
     }
 
+    if (mode === 'angle') {
+      const summary = this.visorIfc.angleMeasurementSummary();
+      if (!summary || summary.angle === null) return '-';
+      return `${summary.angle.toFixed(3)} °`;
+    }
+
+    if (mode === 'count') {
+      const summary = this.visorIfc.countMeasurementSummary();
+      if (!summary) return '-';
+      return `${summary.count}`;
+    }
+
     const summary = this.volumeMeasurementSummary();
     if (!summary || summary.totalVolume === null) return '-';
 
@@ -898,7 +1084,9 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     return (
       this.activeMeasurementMode() === 'volume' ||
       this.activeMeasurementMode() === 'area' ||
-      this.activeMeasurementMode() === 'length'
+      this.activeMeasurementMode() === 'length' ||
+      this.activeMeasurementMode() === 'angle' ||
+      this.activeMeasurementMode() === 'count'
     );
   }
 
@@ -1277,12 +1465,36 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'home-links-view',
       'home-assign-property',
       'home-unlinked-objects',
+      'home-coStru-new',
+      'home-coStru-remove',
+      'home-coStru-dup',
+      'home-coStru-info',
     ].includes(action);
   }
 
   // Routes Home actions to the linking workspace and option prompts.
   private handleHomeToolbarAction(action: ToolbarActionId): void {
     const activeTab = this.bottomPanelTab();
+
+    if (action === 'home-coStru-new') {
+      this.abrirDialogoEstructuraCatalogo('create');
+      return;
+    }
+
+    if (action === 'home-coStru-info') {
+      this.abrirDialogoEstructuraCatalogo('info');
+      return;
+    }
+
+    if (action === 'home-coStru-remove') {
+      void this.eliminarCatalogoSeleccionado();
+      return;
+    }
+
+    if (action === 'home-coStru-dup') {
+      this.b5dMensaje.set('La duplicación de estructuras de conceptos aún no está disponible.');
+      return;
+    }
 
     if (activeTab === 'links') {
       const linkingWorkspace = this.linkingPanel;
@@ -1312,6 +1524,26 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     }
 
     // BOQ actions will be implemented later.
+  }
+
+  // Returns the catalog currently selected in the concept workspace.
+  private obtenerCatalogoSeleccionado(): CatalogoB5DOrm | null {
+    const catalogoSeleccionadoId = this.homeToolbarState().selectedCatalogId;
+    if (catalogoSeleccionadoId == null) return null;
+    return this.b5dCatalogs().find((catalogoItem) => catalogoItem.id === catalogoSeleccionadoId) ?? null;
+  }
+
+  // Syncs the selected catalog in the toolbar and the linking workspace without creating a draft save.
+  private async sincronizarCatalogoSeleccionado(catalogoId: number | null): Promise<void> {
+    this.homeToolbarState.update((state) => ({
+      ...state,
+      selectedCatalogId: catalogoId,
+    }));
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (this.linkingPanel) {
+      this.linkingPanel.setCatalogSelectionFromHost(catalogoId);
+    }
   }
 
   // Requests filter mode to select IFC object rows and their model elements.

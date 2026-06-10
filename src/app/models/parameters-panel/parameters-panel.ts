@@ -539,6 +539,7 @@ export class ParametersPanel implements OnChanges {
       selectedObjectIds: [],
       selectedLinkIds: [],
       canPasteConcept: false,
+      selectedCatalogId: null,
       parametersTotal: this.visibleRows.length,
       selectedParameterIds: [...this.selectedParameterIds],
       parameterListVisible: this.parameterListVisible,

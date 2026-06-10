@@ -34,6 +34,18 @@ export interface ImportarProyectoPayload {
   sincrono?: boolean;
 }
 
+export interface ImportarCatalogoAxaPayload {
+  archivo: File;
+  nombre: string;
+  descripcion?: string;
+  propiedad_tipo_bim?: string;
+  grupo_cantidades_bim?: string;
+}
+
+export interface ImportarCatalogoAxaResponse extends GuardarProyectoB5DResponseOrm {
+  catalogo: CatalogoB5DOrm;
+}
+
 export interface EditarConceptoPayload {
   clave?: string | null;
   clave_secundaria?: string | null;
@@ -88,6 +100,26 @@ export class BackendProyectosService {
     }
     return this.http.post<ProyectoTrabajoOrm>(
       this.url('/api/proyectos/importar/'),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  importarCatalogoAxa(proyectoId: number, payload: ImportarCatalogoAxaPayload): Observable<ImportarCatalogoAxaResponse> {
+    const formData = new FormData();
+    formData.append('archivo', payload.archivo);
+    formData.append('nombre', payload.nombre);
+    if (payload.descripcion) {
+      formData.append('descripcion', payload.descripcion);
+    }
+    if (payload.propiedad_tipo_bim) {
+      formData.append('propiedad_tipo_bim', payload.propiedad_tipo_bim);
+    }
+    if (payload.grupo_cantidades_bim) {
+      formData.append('grupo_cantidades_bim', payload.grupo_cantidades_bim);
+    }
+    return this.http.post<ImportarCatalogoAxaResponse>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/importar-axa/`),
       formData,
       this.requestOptions,
     );
@@ -151,6 +183,13 @@ export class BackendProyectosService {
   eliminarParametro(proyectoId: number, parametroId: number): Observable<{ deleted: boolean }> {
     return this.http.delete<{ deleted: boolean }>(
       this.url(`/api/proyectos/${proyectoId}/parametros/${parametroId}/eliminar/`),
+      this.requestOptions,
+    );
+  }
+
+  eliminarCatalogo(proyectoId: number, catalogoId: number): Observable<GuardarProyectoB5DResponseOrm> {
+    return this.http.delete<GuardarProyectoB5DResponseOrm>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/${catalogoId}/`),
       this.requestOptions,
     );
   }
