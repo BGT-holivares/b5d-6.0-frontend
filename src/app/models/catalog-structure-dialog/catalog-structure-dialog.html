@@ -72,7 +72,50 @@
               />
             </label>
           </div>
+          @if (mode === 'create') {
+            <div class="b5d-catalog-dialog__hint">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.optionalFileHint') }}
+            </div>
+          }
         </div>
+
+        @if (mode === 'create') {
+          <section class="b5d-catalog-dialog__section">
+            <label class="b5d-catalog-dialog__checkbox-row">
+              <input
+                type="checkbox"
+                [(ngModel)]="formDraft.copiar_vinculos"
+                name="copiar_vinculos"
+                [disabled]="isReadOnly || loading || !canCopyLinks"
+                (ngModelChange)="handleCopyLinksToggle($event)"
+              />
+              <span>{{ i18n.translateForComponent(translations, 'catalogDialog.copyLinks') }}</span>
+            </label>
+
+            @if (formDraft.copiar_vinculos) {
+              <label class="b5d-catalog-dialog__field">
+                <span>{{ i18n.translateForComponent(translations, 'catalogDialog.copyLinksSource') }}</span>
+                <select
+                  class="b5d-catalog-dialog__input"
+                  [(ngModel)]="formDraft.copiar_vinculos_desde_catalogo_id"
+                  name="copiar_vinculos_desde_catalogo_id"
+                  [disabled]="isReadOnly || loading || !canCopyLinks"
+                >
+                  <option [ngValue]="null">{{ i18n.translateForComponent(translations, 'catalogDialog.copyLinksSourcePlaceholder') }}</option>
+                  @for (catalog of copySourceCatalogs; track catalog.id) {
+                    <option [ngValue]="catalog.id">
+                      {{ catalog.nombre || (i18n.translateForComponent(translations, 'catalogDialog.copyLinksSourceOption') + catalog.id) }}
+                    </option>
+                  }
+                </select>
+              </label>
+            }
+
+            <div class="b5d-catalog-dialog__hint">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.copyLinksHint') }}
+            </div>
+          </section>
+        }
 
         @if (validationMessage) {
           <div class="b5d-catalog-dialog__message">{{ validationMessage }}</div>

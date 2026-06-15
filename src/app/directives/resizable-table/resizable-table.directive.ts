@@ -1,12 +1,13 @@
-import { AfterViewInit, Directive, ElementRef, Input, OnDestroy } from '@angular/core';
+import { AfterViewInit, Directive, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 
 @Directive({
   selector: 'table[b5dResizableTable]',
   standalone: true,
 })
-export class ResizableTableDirective implements AfterViewInit, OnDestroy {
+export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDestroy {
   @Input('b5dResizableTable') storageKey = '';
   @Input() b5dResizableMinWidthPx = 90;
+  @Input() b5dResizableRefreshToken = 0;
 
   private readonly maxWidthPx = 2400;
   private readonly boundHandleListenerRemovers: Array<() => void> = [];
@@ -18,9 +19,21 @@ export class ResizableTableDirective implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     const table = this.host.nativeElement;
     table.classList.add('b5d-resizable-table');
-    this.restoreColumnWidths();
-    this.bindHeaderHandles();
-    this.applyColumnWidths();
+    this.rebindTableStructure();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['storageKey'] && !changes['storageKey'].firstChange) {
+      this.columnWidths = [];
+      this.rebindTableStructure();
+      return;
+    }
+    if (changes['b5dResizableRefreshToken'] && !changes['b5dResizableRefreshToken'].firstChange) {
+      this.columnWidths = [];
+      this.rebindTableStructure();
+      return;
+    }
+    this.rebindTableStructure();
   }
 
   ngOnDestroy(): void {
@@ -29,9 +42,19 @@ export class ResizableTableDirective implements AfterViewInit, OnDestroy {
     this.clearPointerListeners();
   }
 
+  private rebindTableStructure(): void {
+    for (const removeListener of this.boundHandleListenerRemovers) removeListener();
+    this.boundHandleListenerRemovers.length = 0;
+    this.restoreColumnWidths();
+    this.bindHeaderHandles();
+    this.applyColumnWidths();
+  }
+
   private bindHeaderHandles(): void {
     const headers = this.getHeaderCells();
     headers.forEach((headerCell, index) => {
+      const existingHandle = headerCell.querySelector('.b5d-resizable-table__handle');
+      if (existingHandle) existingHandle.remove();
       headerCell.classList.add('b5d-resizable-table__header');
       const handle = document.createElement('span');
       handle.className = 'b5d-resizable-table__handle';

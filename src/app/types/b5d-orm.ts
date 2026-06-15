@@ -125,6 +125,9 @@ export interface ConceptoB5DDraftOrm {
   clave: string | null;
   clave_secundaria: string | null;
   descripcion: string | null;
+  costo?: number | null;
+  costo_mn?: number | null;
+  costo_me?: number | null;
   es_agrupador: boolean;
   agrupador_padre_id: number | null;
   unidad: string | null;

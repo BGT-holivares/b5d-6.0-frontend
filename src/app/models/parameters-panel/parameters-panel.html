@@ -43,129 +43,351 @@
         @if (parameterListVisible) {
           <section class="b5d-parameters-panel__pane">
             <div class="b5d-parameters-panel__pane-title">Parametros disponibles</div>
-            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
-              <table class="b5d-parameters-panel__table" b5dResizableTable="parameters-main">
-                <thead>
-                  <tr>
-                    <th>Activo</th>
-                    <th>Clave</th>
-                    <th>Descripcion</th>
-                    <th>Comparacion</th>
-                    <th>Tipo</th>
-                    <th>Edificacion</th>
-                    <th>Unidad</th>
-                    <th>Minimo</th>
-                    <th>Maximo</th>
-                    <th>Promedio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of visibleRows; track row.id) {
-                    <tr
-                      class="b5d-parameters-panel__selectable"
-                      [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
-                      (click)="onRowClick(row.id, $event)"
-                    >
-                      <td>
+            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll" (click)="closeParameterTableContextMenu()">
+              @if (parameterTablePreferences.chooserOpen) {
+                <div class="b5d-parameters-panel__column-chooser">
+                  @for (column of parameterTableColumns; track column.key) {
+                    <div class="b5d-parameters-panel__column-chooser-row">
+                      <label class="b5d-parameters-panel__column-chooser-label">
                         <input
                           type="checkbox"
-                          [checked]="row.activo"
-                          [disabled]="isSavingParameterActive(row.id)"
-                          (click)="$event.stopPropagation()"
-                          (change)="onParameterActiveToggle(row, $any($event.target).checked)"
+                          [checked]="isParameterTableColumnVisible(column.key)"
+                          (change)="toggleParameterTableColumnVisibility(column.key)"
                         />
-                      </td>
-                      <td>{{ row.clave || '-' }}</td>
-                      <td>{{ row.descripcion || '-' }}</td>
-                      <td>{{ resolveComparisonLabel(row.tipo_comparacion) }}</td>
-                      <td>{{ row.tipo_parametro === 'costo' ? 'Costo' : 'Cantidad' }}</td>
-                      <td>{{ row.tipo_edificacion || '-' }}</td>
-                      <td>{{ row.unidad || '-' }}</td>
-                      <td>{{ formatValue(row.minimo) }}</td>
-                      <td>{{ formatValue(row.maximo) }}</td>
-                      <td>{{ formatValue(resolveAverage(row)) }}</td>
-                    </tr>
-
-                    @if (isInlineEditorAnchoredAfter(row.id)) {
-                      <tr class="b5d-parameters-panel__editor-row">
-                        <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
-                        <td>
-                          <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                            <option value="clave_exacta">Clave exacta</option>
-                            <option value="clave_parcial">Clave parcial</option>
-                            <option value="descripcion_parcial">Descripcion parcial</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select [(ngModel)]="creatingDraft.tipo_parametro">
-                            <option value="cantidad">Cantidad</option>
-                            <option value="costo">Costo</option>
-                          </select>
-                        </td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
-                        <td>
-                          <div class="b5d-parameters-panel__editor-actions">
-                            <input type="text" [(ngModel)]="creatingDraft.promedio" />
-                            <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                              {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
-                            </button>
-                            <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                              Cancelar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    }
-                  } @empty {
-                    @if (creatingParameterInline) {
-                      <tr class="b5d-parameters-panel__editor-row">
-                        <td><input type="checkbox" [(ngModel)]="creatingDraft.activo" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.clave" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.descripcion" /></td>
-                        <td>
-                          <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                            <option value="clave_exacta">Clave exacta</option>
-                            <option value="clave_parcial">Clave parcial</option>
-                            <option value="descripcion_parcial">Descripcion parcial</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select [(ngModel)]="creatingDraft.tipo_parametro">
-                            <option value="cantidad">Cantidad</option>
-                            <option value="costo">Costo</option>
-                          </select>
-                        </td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.unidad" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.minimo" /></td>
-                        <td><input type="text" [(ngModel)]="creatingDraft.maximo" /></td>
-                        <td>
-                          <div class="b5d-parameters-panel__editor-actions">
-                            <input type="text" [(ngModel)]="creatingDraft.promedio" />
-                            <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                              {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
-                            </button>
-                            <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                              Cancelar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    } @else {
-                      <tr>
-                        <td colspan="10" class="b5d-parameters-panel__muted">
-                          No hay parametros para los filtros seleccionados.
-                        </td>
-                      </tr>
-                    }
+                        <span>{{ column.label }}</span>
+                      </label>
+                      <div class="b5d-parameters-panel__column-chooser-actions">
+                        <button
+                          type="button"
+                          class="b5d-parameters-panel__tool-button"
+                          [disabled]="parameterTablePreferences.order.indexOf(column.key) <= 0"
+                          (click)="moveParameterTableColumn(column.key, 'left')"
+                        >
+                          ←
+                        </button>
+                        <button
+                          type="button"
+                          class="b5d-parameters-panel__tool-button"
+                          [disabled]="parameterTablePreferences.order.indexOf(column.key) >= parameterTablePreferences.order.length - 1"
+                          (click)="moveParameterTableColumn(column.key, 'right')"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
                   }
-                </tbody>
-              </table>
+                </div>
+              }
+
+              @if (visibleParameterColumns.length) {
+                <table
+                  class="b5d-parameters-panel__table"
+                  [b5dResizableTable]="parameterTableResizableStorageKey"
+                  [b5dResizableRefreshToken]="parameterTableRefreshToken"
+                  (contextmenu)="openParameterTableContextMenu($event)"
+                >
+                  <thead>
+                    <tr>
+                      @for (column of visibleParameterColumns; track column.key) {
+                        <th>{{ column.label }}</th>
+                      }
+                    </tr>
+                    @if (tableFiltersVisible) {
+                      <tr class="b5d-parameters-panel__filter-row">
+                        @for (column of visibleParameterColumns; track column.key) {
+                          <th>
+                            <div class="b5d-parameters-panel__filter-cell">
+                              <select
+                                class="b5d-parameters-panel__filter-mode"
+                                [ngModel]="getParameterFilterMode(column.key)"
+                                (ngModelChange)="setParameterFilterMode(column.key, $event)"
+                              >
+                                @for (mode of getParameterFilterModes(column.key); track mode.value) {
+                                  <option [value]="mode.value">{{ mode.label }}</option>
+                                }
+                              </select>
+                              <input
+                                class="b5d-parameters-panel__filter-input"
+                                type="text"
+                                [ngModel]="getParameterFilterValue(column.key)"
+                                (ngModelChange)="setParameterFilterValue(column.key, $event)"
+                                [placeholder]="column.label"
+                              />
+                            </div>
+                          </th>
+                        }
+                      </tr>
+                    }
+                  </thead>
+                  <tbody>
+                    @for (row of visibleRows; track row.id) {
+                      <tr
+                        class="b5d-parameters-panel__selectable"
+                        [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
+                        (click)="onRowClick(row.id, $event)"
+                      >
+                        @for (column of visibleParameterColumns; track column.key) {
+                          <td>
+                            @switch (column.key) {
+                              @case ('activo') {
+                                <input
+                                  type="checkbox"
+                                  [checked]="row.activo"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (change)="onParameterActiveToggle(row, $any($event.target).checked)"
+                                />
+                              }
+                              @case ('clave') {
+                                <input
+                                  type="text"
+                                  [(ngModel)]="row.clave"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('descripcion') {
+                                <input
+                                  type="text"
+                                  [(ngModel)]="row.descripcion"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('tipo_comparacion') {
+                                <select
+                                  [(ngModel)]="row.tipo_comparacion"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (change)="saveParameterRow(row)"
+                                >
+                                  <option value="clave_exacta">Clave exacta</option>
+                                  <option value="clave_parcial">Clave parcial</option>
+                                  <option value="descripcion_parcial">Descripcion parcial</option>
+                                </select>
+                              }
+                              @case ('tipo_parametro') {
+                                <select
+                                  [(ngModel)]="row.tipo_parametro"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (change)="saveParameterRow(row)"
+                                >
+                                  <option value="cantidad">Cantidad</option>
+                                  <option value="costo">Costo</option>
+                                </select>
+                              }
+                              @case ('tipo_edificacion') {
+                                <input
+                                  type="text"
+                                  [(ngModel)]="row.tipo_edificacion"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('unidad') {
+                                <input
+                                  type="text"
+                                  [(ngModel)]="row.unidad"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('minimo') {
+                                <input
+                                  type="text"
+                                  [ngModel]="row.minimo"
+                                  (ngModelChange)="row.minimo = parseOptionalNumber($event)"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('maximo') {
+                                <input
+                                  type="text"
+                                  [ngModel]="row.maximo"
+                                  (ngModelChange)="row.maximo = parseOptionalNumber($event)"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                              @case ('promedio') {
+                                <input
+                                  type="text"
+                                  [ngModel]="row.promedio"
+                                  (ngModelChange)="row.promedio = parseOptionalNumber($event)"
+                                  [disabled]="isSavingParameterActive(row.id)"
+                                  (click)="$event.stopPropagation()"
+                                  (blur)="saveParameterRow(row)"
+                                />
+                              }
+                            }
+                          </td>
+                        }
+                      </tr>
+
+                      @if (isInlineEditorAnchoredAfter(row.id)) {
+                        <tr class="b5d-parameters-panel__editor-row">
+                          @for (column of visibleParameterColumns; track column.key) {
+                            <td>
+                              @switch (column.key) {
+                                @case ('activo') {
+                                  <input type="checkbox" [(ngModel)]="creatingDraft.activo" />
+                                }
+                                @case ('clave') {
+                                  <input type="text" [(ngModel)]="creatingDraft.clave" />
+                                }
+                                @case ('descripcion') {
+                                  <input type="text" [(ngModel)]="creatingDraft.descripcion" />
+                                }
+                                @case ('tipo_comparacion') {
+                                  <select [(ngModel)]="creatingDraft.tipo_comparacion">
+                                    <option value="clave_exacta">Clave exacta</option>
+                                    <option value="clave_parcial">Clave parcial</option>
+                                    <option value="descripcion_parcial">Descripcion parcial</option>
+                                  </select>
+                                }
+                                @case ('tipo_parametro') {
+                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                    <option value="cantidad">Cantidad</option>
+                                    <option value="costo">Costo</option>
+                                  </select>
+                                }
+                                @case ('tipo_edificacion') {
+                                  <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
+                                }
+                                @case ('unidad') {
+                                  <input type="text" [(ngModel)]="creatingDraft.unidad" />
+                                }
+                                @case ('minimo') {
+                                  <input type="text" [(ngModel)]="creatingDraft.minimo" />
+                                }
+                                @case ('maximo') {
+                                  <input type="text" [(ngModel)]="creatingDraft.maximo" />
+                                }
+                                @case ('promedio') {
+                                  @if (isParameterTableLastColumn(column.key)) {
+                                    <div class="b5d-parameters-panel__editor-actions">
+                                      <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                                      <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                                        {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                                      </button>
+                                      <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  } @else {
+                                    <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                                  }
+                                }
+                              }
+                            </td>
+                          }
+                        </tr>
+                      }
+                    } @empty {
+                      @if (creatingParameterInline) {
+                        <tr class="b5d-parameters-panel__editor-row">
+                          @for (column of visibleParameterColumns; track column.key) {
+                            <td>
+                              @switch (column.key) {
+                                @case ('activo') {
+                                  <input type="checkbox" [(ngModel)]="creatingDraft.activo" />
+                                }
+                                @case ('clave') {
+                                  <input type="text" [(ngModel)]="creatingDraft.clave" />
+                                }
+                                @case ('descripcion') {
+                                  <input type="text" [(ngModel)]="creatingDraft.descripcion" />
+                                }
+                                @case ('tipo_comparacion') {
+                                  <select [(ngModel)]="creatingDraft.tipo_comparacion">
+                                    <option value="clave_exacta">Clave exacta</option>
+                                    <option value="clave_parcial">Clave parcial</option>
+                                    <option value="descripcion_parcial">Descripcion parcial</option>
+                                  </select>
+                                }
+                                @case ('tipo_parametro') {
+                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                    <option value="cantidad">Cantidad</option>
+                                    <option value="costo">Costo</option>
+                                  </select>
+                                }
+                                @case ('tipo_edificacion') {
+                                  <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
+                                }
+                                @case ('unidad') {
+                                  <input type="text" [(ngModel)]="creatingDraft.unidad" />
+                                }
+                                @case ('minimo') {
+                                  <input type="text" [(ngModel)]="creatingDraft.minimo" />
+                                }
+                                @case ('maximo') {
+                                  <input type="text" [(ngModel)]="creatingDraft.maximo" />
+                                }
+                                @case ('promedio') {
+                                  @if (isParameterTableLastColumn(column.key)) {
+                                    <div class="b5d-parameters-panel__editor-actions">
+                                      <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                                      <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                                        {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                                      </button>
+                                      <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  } @else {
+                                    <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                                  }
+                                }
+                              }
+                            </td>
+                          }
+                        </tr>
+                      } @else {
+                        <tr>
+                          <td class="b5d-parameters-panel__muted" [attr.colspan]="visibleParameterColumns.length">
+                            No hay parametros para los filtros seleccionados.
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              } @else {
+                <div class="b5d-parameters-panel__muted">
+                  No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+                </div>
+              }
+
+              @if (parameterTableContextMenuVisible) {
+                <div
+                  class="b5d-parameters-panel__context-menu"
+                  [style.left.px]="parameterTableContextMenuX"
+                  [style.top.px]="parameterTableContextMenuY"
+                  (click)="$event.stopPropagation()"
+                  (contextmenu)="$event.preventDefault()"
+                >
+                  <button type="button" (click)="handleParameterTableContextMenuAction('chooser')">
+                    {{ parameterTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+                  </button>
+                  <button type="button" (click)="handleParameterTableContextMenuAction('filters')">
+                    {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+                  </button>
+                  <button type="button" (click)="handleParameterTableContextMenuAction('best-fit')">
+                    Best fit
+                  </button>
+                  <button type="button" (click)="handleParameterTableContextMenuAction('reset')">
+                    Restablecer vista
+                  </button>
+                </div>
+              }
             </div>
           </section>
         }
@@ -222,33 +444,74 @@
 
     @if (bottomWorkspaceVisible) {
       <div class="b5d-parameters-panel__workspace-row" [style.grid-template-columns]="bottomRowTemplateColumns">
-        @if (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) {
+        @if ((descriptionMatchesVisible && descriptionMatchCandidateGroups.length) || costMatchCandidateGroups.length) {
           <section class="b5d-parameters-panel__pane">
-            <div class="b5d-parameters-panel__pane-title">Coincidencias por descripcion parcial</div>
+            <div class="b5d-parameters-panel__pane-title">Coincidencias</div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
-              <div class="b5d-parameters-panel__description-matches">
-                @for (group of descriptionMatchCandidateGroups; track group.parameterId) {
-                  <div class="b5d-parameters-panel__description-group">
-                    <div class="b5d-parameters-panel__description-group-title">
-                      {{ group.parameterCode }} - {{ group.parameterDescription }}
+              @if (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) {
+                <div class="b5d-parameters-panel__description-matches">
+                  @for (group of descriptionMatchCandidateGroups; track group.parameterId) {
+                    <div class="b5d-parameters-panel__description-group">
+                      <div class="b5d-parameters-panel__description-group-title">
+                        {{ group.parameterCode }} - {{ group.parameterDescription }}
+                      </div>
+                      <div class="b5d-parameters-panel__description-group-list">
+                        @for (candidate of group.candidates; track candidate.row + '-' + candidate.clave + '-' + candidate.descripcion) {
+                          <label class="b5d-parameters-panel__description-option">
+                            <input
+                              type="checkbox"
+                              [checked]="isDescriptionCandidateSelected(group.parameterId, candidate)"
+                              (change)="onDescriptionCandidateToggle(group.parameterId, candidate, $any($event.target).checked)"
+                            />
+                            <span>
+                              Fila {{ candidate.row }} | {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }}
+                            </span>
+                          </label>
+                        }
+                      </div>
                     </div>
-                    <div class="b5d-parameters-panel__description-group-list">
-                      @for (candidate of group.candidates; track candidate.row + '-' + candidate.clave + '-' + candidate.descripcion) {
-                        <label class="b5d-parameters-panel__description-option">
-                          <input
-                            type="checkbox"
-                            [checked]="isDescriptionCandidateSelected(group.parameterId, candidate)"
-                            (change)="onDescriptionCandidateToggle(group.parameterId, candidate, $any($event.target).checked)"
-                          />
-                          <span>
-                            Fila {{ candidate.row }} | {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }}
-                          </span>
-                        </label>
+                  }
+                </div>
+              }
+
+              @if (costMatchCandidateGroups.length) {
+                <div class="b5d-parameters-panel__cost-matches">
+                  <label class="b5d-parameters-panel__cost-catalog-selector">
+                    <span>Catalogo de costos</span>
+                    <select [ngModel]="selectedCostCatalogId" (ngModelChange)="onCostCatalogChange($event)">
+                      @if (!availableCostCatalogs.length) {
+                        <option [ngValue]="null">Sin catalogos de costo</option>
                       }
+                      @for (catalog of availableCostCatalogs; track catalog.id) {
+                        <option [ngValue]="catalog.id">{{ catalog.nombre || ('Catalogo ' + catalog.id) }}</option>
+                      }
+                    </select>
+                    <small>{{ selectedCostCatalogLabel }}</small>
+                  </label>
+                  @for (group of costMatchCandidateGroups; track group.parameterId) {
+                    <div class="b5d-parameters-panel__cost-group">
+                      <div class="b5d-parameters-panel__description-group-title">
+                        Costo: {{ group.parameterCode }} - {{ group.parameterDescription }}
+                      </div>
+                      <div class="b5d-parameters-panel__cost-group-list">
+                        @for (candidate of group.candidates; track candidate.id) {
+                          <label class="b5d-parameters-panel__cost-option">
+                            <input
+                              type="radio"
+                              [name]="'cost-' + group.parameterId"
+                              [checked]="isCostConceptSelected(group.parameterId, candidate.id)"
+                              (change)="onCostConceptToggle(group.parameterId, candidate.id)"
+                            />
+                            <span>
+                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ formatValue(candidate.costo) }}
+                            </span>
+                          </label>
+                        }
+                      </div>
                     </div>
-                  </div>
-                }
-              </div>
+                  }
+                </div>
+              }
             </div>
           </section>
         }
@@ -273,12 +536,13 @@
                       <th>Clave</th>
                       <th>Descripcion</th>
                       <th>Cantidad</th>
-                      <th>Unidad</th>
-                      <th>Parametro</th>
-                      <th>Unidad parametro</th>
-                      <th>Rango</th>
-                      <th>Diferencia</th>
-                      <th>Resultado</th>
+                    <th>Unidad</th>
+                    <th>Valor evaluado</th>
+                    <th>Parametro</th>
+                    <th>Unidad parametro</th>
+                    <th>Rango</th>
+                    <th>Diferencia</th>
+                    <th>Resultado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -289,6 +553,7 @@
                         <td>{{ analysisRow.descripcion || '-' }}</td>
                         <td>{{ formatValue(analysisRow.cantidad) }}</td>
                         <td>{{ analysisRow.unidad || '-' }}</td>
+                        <td>{{ analysisRow.evaluatedText }}</td>
                         <td>{{ analysisRow.matchedParameterCode }}</td>
                         <td>{{ analysisRow.matchedParameterUnit }}</td>
                         <td>{{ analysisRow.rangeText }}</td>
@@ -297,7 +562,7 @@
                       </tr>
                     } @empty {
                       <tr>
-                        <td colspan="10" class="b5d-parameters-panel__muted">
+                        <td colspan="11" class="b5d-parameters-panel__muted">
                           No se encontraron filas BOQ legibles en la hoja seleccionada.
                         </td>
                       </tr>

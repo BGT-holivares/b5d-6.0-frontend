@@ -67,6 +67,30 @@
   min-height: 96px;
 }
 
+.b5d-catalog-dialog__section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.b5d-catalog-dialog__checkbox-row {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.b5d-catalog-dialog__hint {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .b5d-catalog-dialog__input--file {
   flex: 1 1 auto;
 }

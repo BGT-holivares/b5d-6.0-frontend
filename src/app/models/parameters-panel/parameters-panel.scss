@@ -143,6 +143,100 @@
   min-width: 90px;
 }
 
+.b5d-parameters-panel__table-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.b5d-parameters-panel__tool-button {
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid #b6c2d2;
+  border-radius: 4px;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.b5d-parameters-panel__tool-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.b5d-parameters-panel__column-chooser {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid #d9dee4;
+  background: #f8fafc;
+}
+
+.b5d-parameters-panel__column-chooser-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.b5d-parameters-panel__column-chooser-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.b5d-parameters-panel__column-chooser-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.b5d-parameters-panel__context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  min-width: 180px;
+  padding: 6px;
+  gap: 4px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+}
+
+.b5d-parameters-panel__context-menu button {
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 0;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.b5d-parameters-panel__context-menu button:hover {
+  background: #eff6ff;
+}
+
+.b5d-parameters-panel__filter-row th {
+  background: #f8fbff;
+}
+
+.b5d-parameters-panel__filter-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.b5d-parameters-panel__filter-mode,
+.b5d-parameters-panel__filter-input {
+  width: 100%;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid #c4cbd4;
+  background: #ffffff;
+}
+
 .b5d-parameters-panel__selectable {
   cursor: pointer;
 }
@@ -230,6 +324,24 @@
 .b5d-parameters-panel__description-group-title {
   font-weight: 700;
   margin-bottom: 4px;
+}
+
+.b5d-parameters-panel__cost-catalog-selector {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.b5d-parameters-panel__cost-catalog-selector select {
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid #c7c7c7;
+  background: #ffffff;
+}
+
+.b5d-parameters-panel__cost-catalog-selector small {
+  color: #64748b;
+  font-style: italic;
 }
 
 .b5d-parameters-panel__description-group-list {

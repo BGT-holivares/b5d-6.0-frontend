@@ -1,0 +1,269 @@
+<section class="b5d-parameters-report">
+  <header class="b5d-parameters-report__header">
+    <div>
+      <strong>Resumen de parametros</strong>
+      <div class="b5d-parameters-report__subtitle">
+        @if (activeProject) {
+          Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})
+        } @else {
+          Sin proyecto activo
+        }
+      </div>
+    </div>
+
+    <div class="b5d-parameters-report__header-actions">
+      <button type="button" class="b5d-report-button b5d-report-button--secondary" (click)="resetView()">Restablecer vista</button>
+    </div>
+  </header>
+
+  <div class="b5d-parameters-report__controls">
+    <label class="b5d-report-field">
+      <span>Cuantificacion</span>
+      <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectQuantification($event)">
+        @if (!quantificationsWithWorkbook.length) {
+          <option [ngValue]="null">Sin libro Excel</option>
+        }
+        @for (quantification of quantificationsWithWorkbook; track quantification.id) {
+          <option [ngValue]="quantification.id">{{ quantification.nombre || ('Cuantificacion ' + quantification.id) }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="b5d-report-field">
+      <span>Esquema</span>
+      <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectSheet($event)" [disabled]="!boqSheets.length">
+        @if (!boqSheets.length) {
+          <option [ngValue]="null">Sin hojas</option>
+        }
+        @for (sheet of boqSheets; track sheet.index) {
+          <option [ngValue]="sheet.index">{{ sheet.name }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="b5d-report-field">
+      <span>Catalogo de costos</span>
+      <select [ngModel]="selectedCatalogId" (ngModelChange)="selectCatalog($event)">
+        @if (!availableCostCatalogs.length) {
+          <option [ngValue]="null">Sin catalogos</option>
+        }
+        @for (catalog of availableCostCatalogs; track catalog.id) {
+          <option [ngValue]="catalog.id">{{ catalog.nombre || ('Catalogo ' + catalog.id) }}</option>
+        }
+      </select>
+      <small>{{ selectedCatalogLabel }}</small>
+    </label>
+  </div>
+
+  @if (b5dLoading || loading) {
+    <div class="b5d-report-empty">Cargando datos del resumen...</div>
+  } @else if (error) {
+    <div class="b5d-report-empty b5d-report-empty--error">{{ error }}</div>
+  } @else if (!activeProject) {
+    <div class="b5d-report-empty">Activa un proyecto B5D para ver el resumen de parametros.</div>
+  } @else if (!selectedQuantificationId) {
+    <div class="b5d-report-empty">Selecciona una cuantificacion con libro Excel para generar el resumen.</div>
+  } @else if (!hasReportData) {
+    <div class="b5d-report-empty">No se encontraron filas legibles en la hoja seleccionada.</div>
+  } @else {
+    <section class="b5d-summary-grid">
+      <article class="b5d-summary-card">
+        <header class="b5d-summary-head">
+          <div class="b5d-summary-pie" [style.background]="reportData.quantitySummary.background"></div>
+          <div class="b5d-summary-head-copy">
+            <div class="b5d-summary-total">{{ reportData.quantitySummary.total }}</div>
+            <div class="b5d-summary-label">Cantidad</div>
+            <div class="b5d-summary-meta">
+              Cuantificacion: {{ selectedQuantificationLabel }} | Hoja: {{ selectedSheetLabel }}
+            </div>
+          </div>
+        </header>
+
+        <div class="b5d-summary-list">
+          @for (slice of reportData.quantitySummary.slices; track slice.key) {
+            <div class="b5d-summary-list-item">
+              <span class="b5d-summary-dot" [style.background]="slice.color"></span>
+              <span class="b5d-summary-list-label">{{ slice.label }}</span>
+              <strong>{{ slice.count }}</strong>
+              <span class="b5d-summary-list-percent">{{ formatPercent(slice.percent) }}</span>
+            </div>
+          }
+        </div>
+      </article>
+
+      <article class="b5d-summary-card">
+        <header class="b5d-summary-head">
+          <div class="b5d-summary-pie" [style.background]="reportData.costSummary.background"></div>
+          <div class="b5d-summary-head-copy">
+            <div class="b5d-summary-total">{{ reportData.costSummary.total }}</div>
+            <div class="b5d-summary-label">Costo</div>
+            <div class="b5d-summary-meta">Catalogo: {{ selectedCatalogLabel }}</div>
+          </div>
+        </header>
+
+        <div class="b5d-summary-list">
+          @for (slice of reportData.costSummary.slices; track slice.key) {
+            <div class="b5d-summary-list-item">
+              <span class="b5d-summary-dot" [style.background]="slice.color"></span>
+              <span class="b5d-summary-list-label">{{ slice.label }}</span>
+              <strong>{{ slice.count }}</strong>
+              <span class="b5d-summary-list-percent">{{ formatPercent(slice.percent) }}</span>
+            </div>
+          }
+        </div>
+      </article>
+    </section>
+
+    <section class="b5d-report-grid">
+      <article class="b5d-report-table-card">
+        <header class="b5d-report-table-card__header">
+          <div>
+            <strong>Tabla de parametros de cantidad</strong>
+            <div class="b5d-report-table-card__meta">{{ reportData.quantityRows.length }} coincidencias</div>
+          </div>
+        </header>
+
+        <div class="b5d-table-wrapper">
+          <table class="b5d-data-table">
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>Clave</th>
+                <th>Descripcion</th>
+                <th>Cantidad</th>
+                <th>Unidad</th>
+                <th>Parametro</th>
+                <th>Unidad parametro</th>
+                <th>Evaluado</th>
+                <th>Rango</th>
+                <th>Diferencia</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of reportData.quantityRows; track trackByRow($index, row)) {
+                <tr>
+                  <td>{{ row.row }}</td>
+                  <td>{{ row.clave || '-' }}</td>
+                  <td>{{ row.descripcion || '-' }}</td>
+                  <td>{{ row.cantidad ?? '-' }}</td>
+                  <td>{{ row.unidad || '-' }}</td>
+                  <td>{{ row.parametro }}</td>
+                  <td>{{ row.parametroUnidad }}</td>
+                  <td>{{ row.evaluado }}</td>
+                  <td>{{ row.rango }}</td>
+                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
+                    {{ row.diferencia }}
+                  </td>
+                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
+                    {{ row.resultado }}
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="11" class="b5d-report-table-card__empty">No hay coincidencias de cantidad para mostrar.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="b5d-report-table-card">
+        <header class="b5d-report-table-card__header">
+          <div>
+            <strong>Tabla de parametros de costo</strong>
+            <div class="b5d-report-table-card__meta">{{ reportData.costRows.length }} coincidencias</div>
+          </div>
+        </header>
+
+        <div class="b5d-table-wrapper">
+          <table class="b5d-data-table">
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>Clave</th>
+                <th>Descripcion</th>
+                <th>Cantidad</th>
+                <th>Unidad</th>
+                <th>Parametro</th>
+                <th>Concepto costo</th>
+                <th>Costo unitario</th>
+                <th>Evaluado</th>
+                <th>Rango</th>
+                <th>Diferencia</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of reportData.costRows; track trackByRow($index, row)) {
+                <tr>
+                  <td>{{ row.row }}</td>
+                  <td>{{ row.clave || '-' }}</td>
+                  <td>{{ row.descripcion || '-' }}</td>
+                  <td>{{ row.cantidad ?? '-' }}</td>
+                  <td>{{ row.unidad || '-' }}</td>
+                  <td>{{ row.parametro }}</td>
+                  <td>{{ row.conceptoCosto }}</td>
+                  <td>{{ row.costoUnitario }}</td>
+                  <td>{{ row.evaluado }}</td>
+                  <td>{{ row.rango }}</td>
+                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
+                    {{ row.diferencia }}
+                  </td>
+                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
+                    {{ row.resultado }}
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="12" class="b5d-report-table-card__empty">No hay coincidencias de costo para mostrar.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="b5d-report-table-card b5d-report-table-card--wide">
+        <header class="b5d-report-table-card__header">
+          <div>
+            <strong>Conceptos sin parametro</strong>
+            <div class="b5d-report-table-card__meta">{{ reportData.unassignedRows.length }} filas</div>
+          </div>
+        </header>
+
+        <div class="b5d-table-wrapper">
+          <table class="b5d-data-table">
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>Clave</th>
+                <th>Descripcion</th>
+                <th>Cantidad</th>
+                <th>Unidad</th>
+                <th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of reportData.unassignedRows; track trackByRow($index, row)) {
+                <tr>
+                  <td>{{ row.row }}</td>
+                  <td>{{ row.clave || '-' }}</td>
+                  <td>{{ row.descripcion || '-' }}</td>
+                  <td>{{ row.cantidad ?? '-' }}</td>
+                  <td>{{ row.unidad || '-' }}</td>
+                  <td>{{ row.motivo }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="6" class="b5d-report-table-card__empty">No hay conceptos sin parametro para mostrar.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  }
+</section>

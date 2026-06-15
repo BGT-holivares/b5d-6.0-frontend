@@ -1,5 +1,5 @@
 export type LinkingWorkspacePanel = 'concepts' | 'ifc-objects' | 'related-links';
-export type HomeBottomPanelTab = 'links' | 'boq' | 'parameters';
+export type HomeBottomPanelTab = 'links' | 'boq' | 'parameters' | 'report';
 
 export type SelectFilterMode =
   | 'linked-concepts-all'
@@ -32,4 +32,5 @@ export interface HomeToolbarState {
   parameterBoqVisible?: boolean;
   parameterDescriptionMatchesVisible?: boolean;
   parameterAnalysisVisible?: boolean;
+  tableFiltersVisible?: boolean;
 }

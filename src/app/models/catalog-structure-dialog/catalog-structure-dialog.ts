@@ -13,6 +13,8 @@ export type CatalogStructureDraft = {
   propiedad_tipo_bim: string;
   grupo_cantidades_bim: string;
   archivo: File | null;
+  copiar_vinculos: boolean;
+  copiar_vinculos_desde_catalogo_id: number | null;
 };
 
 @Component({
@@ -25,6 +27,7 @@ export class CatalogStructureDialog implements OnChanges {
   @Input() visible = false;
   @Input() mode: CatalogStructureMode = 'create';
   @Input() catalog: CatalogoB5DOrm | null = null;
+  @Input() catalogs: CatalogoB5DOrm[] = [];
   @Input() loading = false;
   @Output() saveRequested = new EventEmitter<CatalogStructureDraft>();
   @Output() closeRequested = new EventEmitter<void>();
@@ -54,12 +57,35 @@ export class CatalogStructureDialog implements OnChanges {
     return this.formDraft.archivo?.name || this.catalog?.catalogo_externo || '';
   }
 
+  get copySourceCatalogs(): CatalogoB5DOrm[] {
+    return this.catalogs;
+  }
+
+  get canCopyLinks(): boolean {
+    return this.copySourceCatalogs.length > 0;
+  }
+
   // Stores the selected PlanAXA file and clears the validation message.
   handleFileChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.formDraft.archivo = input.files?.[0] ?? null;
     this.validationMessage = '';
     input.value = '';
+  }
+
+  // Enables or disables the link-copy option and keeps the source selection valid.
+  handleCopyLinksToggle(enabled: boolean): void {
+    this.formDraft.copiar_vinculos = enabled;
+    if (!enabled) {
+      this.formDraft.copiar_vinculos_desde_catalogo_id = null;
+      this.validationMessage = '';
+      return;
+    }
+
+    if (this.formDraft.copiar_vinculos_desde_catalogo_id == null) {
+      this.formDraft.copiar_vinculos_desde_catalogo_id = this.copySourceCatalogs[0]?.id ?? null;
+    }
+    this.validationMessage = '';
   }
 
   // Emits the close request so the host can hide the dialog.
@@ -77,8 +103,8 @@ export class CatalogStructureDialog implements OnChanges {
       return;
     }
 
-    if (!this.formDraft.archivo) {
-      this.validationMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.requiredFile');
+    if (this.formDraft.copiar_vinculos && this.formDraft.copiar_vinculos_desde_catalogo_id == null) {
+      this.validationMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.requiredCopySource');
       return;
     }
 
@@ -88,6 +114,8 @@ export class CatalogStructureDialog implements OnChanges {
       propiedad_tipo_bim: this.formDraft.propiedad_tipo_bim.trim() || 'Name',
       grupo_cantidades_bim: this.formDraft.grupo_cantidades_bim.trim(),
       archivo: this.formDraft.archivo,
+      copiar_vinculos: this.formDraft.copiar_vinculos,
+      copiar_vinculos_desde_catalogo_id: this.formDraft.copiar_vinculos_desde_catalogo_id,
     });
   }
 
@@ -100,6 +128,8 @@ export class CatalogStructureDialog implements OnChanges {
         propiedad_tipo_bim: this.catalog.propiedad_tipo_bim ?? 'Name',
         grupo_cantidades_bim: this.catalog.grupo_cantidades_bim ?? '',
         archivo: null,
+        copiar_vinculos: false,
+        copiar_vinculos_desde_catalogo_id: null,
       };
     } else if (this.mode === 'create') {
       this.formDraft = this.createEmptyDraft();
@@ -115,6 +145,8 @@ export class CatalogStructureDialog implements OnChanges {
       propiedad_tipo_bim: 'Name',
       grupo_cantidades_bim: '',
       archivo: null,
+      copiar_vinculos: false,
+      copiar_vinculos_desde_catalogo_id: null,
     };
   }
 }

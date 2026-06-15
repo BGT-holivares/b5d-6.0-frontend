@@ -32,112 +32,279 @@
       <section class="b5d-linking-panel__box" (click)="selectActivePanel('concepts')">
         <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</div>
 
-        <div class="b5d-linking-panel__box-content">
-          <table class="b5d-linking-panel__table" b5dResizableTable="linking-concepts">
-            <thead>
-              <tr>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.id') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.description') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.unit') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (concepto of conceptosEstructurados; track concepto.id) {
-                <tr
-                  class="b5d-linking-panel__selectable"
-                  [class.b5d-linking-panel__selectable--active]="isSelectedConcept(concepto.id)"
-                  (click)="selectConcept(concepto.id, $event)"
-                >
-                  <td
-                    [style.padding-left]="indentation(concepto.level)"
-                    [class.b5d-linking-panel__linked]="concepto.linked"
-                  >
-                    {{ concepto.clave || '-' }}
-                  </td>
-                  <td [class.b5d-linking-panel__linked]="concepto.linked">{{ concepto.descripcion || '-' }}</td>
-                  <td>{{ concepto.unidad || '-' }}</td>
-                </tr>
-
-                @if (isConceptEditorAnchoredAfter(concepto.id)) {
-                  <tr class="b5d-linking-panel__concept-editor-row">
-                    <td>
-                      <input
-                        type="text"
-                        class="b5d-linking-panel__input"
-                        [(ngModel)]="creatingConceptDraft.clave"
-                        placeholder="Clave"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        class="b5d-linking-panel__input"
-                        [(ngModel)]="creatingConceptDraft.descripcion"
-                        placeholder="Descripcion"
-                      />
-                    </td>
-                    <td>
-                      <div class="b5d-linking-panel__concept-editor-actions">
-                        <input
-                          type="text"
-                          class="b5d-linking-panel__input"
-                          [(ngModel)]="creatingConceptDraft.unidad"
-                          placeholder="Unidad"
-                        />
-                        <label class="b5d-linking-panel__checkbox-label">
-                          <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
-                          Agrupador
-                        </label>
-                        <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                        <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
-                      </div>
-                    </td>
-                  </tr>
-                }
-              } @empty {
-                @if (creatingConceptInline) {
-                  <tr class="b5d-linking-panel__concept-editor-row">
-                    <td>
-                      <input
-                        type="text"
-                        class="b5d-linking-panel__input"
-                        [(ngModel)]="creatingConceptDraft.clave"
-                        placeholder="Clave"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        class="b5d-linking-panel__input"
-                        [(ngModel)]="creatingConceptDraft.descripcion"
-                        placeholder="Descripcion"
-                      />
-                    </td>
-                    <td>
-                      <div class="b5d-linking-panel__concept-editor-actions">
-                        <input
-                          type="text"
-                          class="b5d-linking-panel__input"
-                          [(ngModel)]="creatingConceptDraft.unidad"
-                          placeholder="Unidad"
-                        />
-                        <label class="b5d-linking-panel__checkbox-label">
-                          <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
-                          Agrupador
-                        </label>
-                        <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                        <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
-                      </div>
-                    </td>
-                  </tr>
-                } @else {
-                  <tr>
-                    <td class="b5d-linking-panel__muted" colspan="3">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.none') }}</td>
-                  </tr>
-                }
+        <div class="b5d-linking-panel__box-content" (click)="closeConceptTableContextMenu()">
+          @if (conceptTablePreferences.chooserOpen) {
+            <div class="b5d-linking-panel__column-chooser">
+              @for (column of conceptTableColumns; track column.key) {
+                <div class="b5d-linking-panel__column-chooser-row">
+                  <label class="b5d-linking-panel__column-chooser-label">
+                    <input
+                      type="checkbox"
+                      [checked]="isConceptTableColumnVisible(column.key)"
+                      (change)="toggleConceptTableColumnVisibility(column.key)"
+                    />
+                    <span>{{ column.label }}</span>
+                  </label>
+                  <div class="b5d-linking-panel__column-chooser-actions">
+                    <button
+                      type="button"
+                      class="b5d-linking-panel__tool-button"
+                      [disabled]="conceptTablePreferences.order.indexOf(column.key) <= 0"
+                      (click)="moveConceptTableColumn(column.key, 'left')"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      class="b5d-linking-panel__tool-button"
+                      [disabled]="conceptTablePreferences.order.indexOf(column.key) >= conceptTablePreferences.order.length - 1"
+                      (click)="moveConceptTableColumn(column.key, 'right')"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
               }
-            </tbody>
-          </table>
+            </div>
+          }
+
+          @if (visibleConceptColumns.length) {
+            <table
+              class="b5d-linking-panel__table"
+              [b5dResizableTable]="conceptTableResizableStorageKey"
+              [b5dResizableRefreshToken]="conceptTableRefreshToken"
+              (contextmenu)="openConceptTableContextMenu($event)"
+            >
+              <thead>
+                <tr>
+                  @for (column of visibleConceptColumns; track column.key) {
+                    <th>{{ column.label }}</th>
+                  }
+                </tr>
+                @if (tableFiltersVisible) {
+                  <tr class="b5d-linking-panel__filter-row">
+                    @for (column of visibleConceptColumns; track column.key) {
+                      <th>
+                        <div class="b5d-linking-panel__filter-cell">
+                          <select
+                            class="b5d-linking-panel__filter-mode"
+                            [ngModel]="getConceptFilterMode(column.key)"
+                            (ngModelChange)="setConceptFilterMode(column.key, $event)"
+                          >
+                            @for (mode of getConceptFilterModes(column.key); track mode.value) {
+                              <option [value]="mode.value">{{ mode.label }}</option>
+                            }
+                          </select>
+                          <input
+                            class="b5d-linking-panel__filter-input"
+                            type="text"
+                            [ngModel]="getConceptFilterValue(column.key)"
+                            (ngModelChange)="setConceptFilterValue(column.key, $event)"
+                            [placeholder]="column.label"
+                          />
+                        </div>
+                      </th>
+                    }
+                  </tr>
+                }
+              </thead>
+              <tbody>
+                @for (concepto of conceptosEstructuradosFiltrados; track concepto.id) {
+                  @if (getConceptById(concepto.id); as editableConcept) {
+                    <tr
+                      class="b5d-linking-panel__selectable"
+                      [class.b5d-linking-panel__selectable--active]="isSelectedConcept(concepto.id)"
+                      (click)="selectConcept(concepto.id, $event)"
+                    >
+                      @for (column of visibleConceptColumns; track column.key) {
+                        <td
+                          [class.b5d-linking-panel__linked]="concepto.linked && (column.key === 'clave' || column.key === 'descripcion')"
+                          [style.padding-left]="column.key === 'clave' ? indentation(concepto.level) : null"
+                        >
+                          @switch (column.key) {
+                            @case ('clave') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="editableConcept.clave"
+                                (click)="$event.stopPropagation()"
+                                (ngModelChange)="markDraftChanged()"
+                                placeholder="Clave"
+                              />
+                            }
+                            @case ('descripcion') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="editableConcept.descripcion"
+                                (click)="$event.stopPropagation()"
+                                (ngModelChange)="markDraftChanged()"
+                                placeholder="Descripcion"
+                              />
+                            }
+                            @case ('unidad') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="editableConcept.unidad"
+                                (click)="$event.stopPropagation()"
+                                (ngModelChange)="markDraftChanged()"
+                                placeholder="Unidad"
+                              />
+                            }
+                            @case ('costo') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [ngModel]="editableConcept.costo ?? ''"
+                                (ngModelChange)="editableConcept.costo = parseOptionalNumber($event)"
+                                (click)="$event.stopPropagation()"
+                                (input)="markDraftChanged()"
+                                placeholder="Costo"
+                              />
+                            }
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+
+                  @if (isConceptEditorAnchoredAfter(concepto.id)) {
+                    <tr class="b5d-linking-panel__concept-editor-row">
+                      @for (column of visibleConceptColumns; track column.key) {
+                        <td>
+                          @switch (column.key) {
+                            @case ('clave') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.clave"
+                                placeholder="Clave"
+                              />
+                            }
+                            @case ('descripcion') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.descripcion"
+                                placeholder="Descripcion"
+                              />
+                            }
+                            @case ('unidad') {
+                              <div class="b5d-linking-panel__concept-editor-actions">
+                                <input
+                                  type="text"
+                                  class="b5d-linking-panel__input"
+                                  [(ngModel)]="creatingConceptDraft.unidad"
+                                  placeholder="Unidad"
+                                />
+                                <label class="b5d-linking-panel__checkbox-label">
+                                  <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
+                                  Agrupador
+                                </label>
+                                @if (isConceptTableLastColumn(column.key)) {
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                }
+                              </div>
+                            }
+                            @case ('costo') {
+                              @if (isConceptTableLastColumn(column.key)) {
+                                <div class="b5d-linking-panel__concept-editor-actions">
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                </div>
+                              }
+                            }
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                } @empty {
+                  @if (creatingConceptInline) {
+                    <tr class="b5d-linking-panel__concept-editor-row">
+                      @for (column of visibleConceptColumns; track column.key) {
+                        <td>
+                          @switch (column.key) {
+                            @case ('clave') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.clave"
+                                placeholder="Clave"
+                              />
+                            }
+                            @case ('descripcion') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.descripcion"
+                                placeholder="Descripcion"
+                              />
+                            }
+                            @case ('unidad') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.unidad"
+                                placeholder="Unidad"
+                              />
+                            }
+                            @case ('costo') {
+                              @if (isConceptTableLastColumn(column.key)) {
+                                <div class="b5d-linking-panel__concept-editor-actions">
+                                  <label class="b5d-linking-panel__checkbox-label">
+                                    <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
+                                    Agrupador
+                                  </label>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                </div>
+                              }
+                            }
+                          }
+                        </td>
+                      }
+                    </tr>
+                  } @else {
+                    <tr>
+                      <td class="b5d-linking-panel__muted" [attr.colspan]="visibleConceptColumns.length">
+                        {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.none') }}
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          } @else {
+            <div class="b5d-linking-panel__muted">
+              No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+            </div>
+          }
+
+          @if (conceptTableContextMenuVisible) {
+            <div
+              class="b5d-linking-panel__context-menu"
+              [style.left.px]="conceptTableContextMenuX"
+              [style.top.px]="conceptTableContextMenuY"
+              (click)="$event.stopPropagation()"
+              (contextmenu)="$event.preventDefault()"
+            >
+              <button type="button" (click)="handleConceptTableContextMenuAction('chooser')">
+                {{ conceptTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+              </button>
+              <button type="button" (click)="handleConceptTableContextMenuAction('filters')">
+                {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+              </button>
+              <button type="button" (click)="handleConceptTableContextMenuAction('best-fit')">
+                Best fit
+              </button>
+              <button type="button" (click)="handleConceptTableContextMenuAction('reset')">
+                Restablecer vista
+              </button>
+            </div>
+          }
         </div>
       </section>
 

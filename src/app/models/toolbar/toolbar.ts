@@ -33,6 +33,9 @@ export type ToolbarActionId =
   | 'home-coStru-remove'
   | 'home-coStru-dup'
   | 'home-coStru-info'
+  | 'home-refresh-view'
+  | 'home-toggle-filters'
+  | 'home-reset-view'
   | 'measurement-volume'
   | 'measurement-area'
   | 'measurement-length'
@@ -48,6 +51,7 @@ export type ToolbarActionId =
   | 'parameter-toggle-boq'
   | 'parameter-toggle-matches'
   | 'parameter-toggle-analysis'
+  | 'import-parameters-excel'
   | 'import-b5d-project'
   | 'export-b5d-project'
   | 'refresh-b5d-project'
@@ -359,7 +363,7 @@ export class Toolbar {
       {
         labelKey: 'toolbar.home.category.model',
         layout: 'horizontal',
-        visible: activeBottomTab === 'links',
+        visible: true,
         buttons: [
           {
             labelKey: 'toolbar.home.selectFilter',
@@ -400,9 +404,38 @@ export class Toolbar {
         ],
       },
       {
+        labelKey: 'toolbar.home.category.view',
+        layout: 'horizontal',
+        visible: true,
+        buttons: [
+          {
+            labelKey: 'toolbar.home.refresh',
+            iconSrc: 'assets/images/CopyLinks_32x32.png',
+            action: 'home-refresh-view',
+            disabled: !this.activeProject, // and the disabled changed based off of the actual needs
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.filter',
+            iconSrc: 'assets/images/Options_32x32.png',
+            action: 'home-toggle-filters',
+            disabled: !this.activeProject,
+            selected: this.homeToolbarState.tableFiltersVisible === true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.resetView',
+            iconSrc: 'assets/images/RestoreZoom_32x32.png',
+            action: 'home-reset-view',
+            disabled: !this.activeProject, // and the disabled changed based off of the actual needs
+            variant: 'large',
+          },
+        ],
+      },
+      {
         labelKey: 'toolbar.home.category.concept',
         layout: 'horizontal',
-        visible: activeBottomTab === 'links',
+        visible: true,
         buttons: [
           {
             labelKey: 'toolbar.home.newCoStructure',
@@ -468,6 +501,13 @@ export class Toolbar {
         visible: activeBottomTab === 'parameters',
         buttons: [
           {
+            labelKey: 'toolbar.home.importParameters',
+            iconSrc: 'assets/images/ImportExcel_32x32.png',
+            action: 'import-parameters-excel',
+            disabled: this.isHomeActionDisabled('import-parameters-excel'),
+            variant: 'large',
+          },
+          {
             labelKey: 'toolbar.home.testParameters',
             iconSrc: 'assets/images/Add_32x32.png',
             action: 'home-calc-parameter',
@@ -529,15 +569,12 @@ export class Toolbar {
     const isIfcObjectsPanel = state.activePanel === 'ifc-objects';
     const isRelatedLinksPanel = state.activePanel === 'related-links';
 
-    if (activeBottomTab === 'boq') {
-      return true;
-    }
-
     if (activeBottomTab === 'parameters') {
       if (actionId === 'home-add-item') return !this.activeProject;
       if (actionId === 'home-remove-item') return !hasParameterSelection;
       if (actionId === 'home-select-all') return (state.parametersTotal ?? 0) === 0;
       if (actionId === 'home-calc-parameter') return false;
+      if (actionId === 'import-parameters-excel') return !this.activeProject;
       if (
         actionId === 'parameter-toggle-list' ||
         actionId === 'parameter-toggle-boq' ||
@@ -546,7 +583,6 @@ export class Toolbar {
       ) {
         return false;
       }
-      return true;
     }
 
     if (activeBottomTab === 'links') {
@@ -554,6 +590,10 @@ export class Toolbar {
       if (actionId === 'home-coStru-remove') return !this.activeProject || state.selectedCatalogId == null;
       if (actionId === 'home-coStru-info') return !this.activeProject || state.selectedCatalogId == null;
       if (actionId === 'home-coStru-dup') return true;
+    }
+
+    if (actionId === 'home-refresh-view' || actionId === 'home-toggle-filters' || actionId === 'home-reset-view') {
+      return !this.activeProject;
     }
 
     if (actionId === 'home-add-item') return !isConceptPanel;

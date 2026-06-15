@@ -21,6 +21,8 @@ import { LinkingPanel } from '../../models/linking-panel/linking-panel';
 import { ModelVisibilityPanel } from '../../models/model-visibility-panel/model-visibility-panel';
 import { BoqPanel } from '../../models/boq-panel/boq-panel';
 import { ParametersPanel } from '../../models/parameters-panel/parameters-panel';
+import { ParametersReportPanel } from '../../models/parameters-report-panel/parameters-report-panel';
+import { ParametersImportDialog } from '../../models/parameters-import-dialog/parameters-import-dialog';
 import { CatalogStructureDialog, type CatalogStructureDraft } from '../../models/catalog-structure-dialog/catalog-structure-dialog';
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
@@ -80,7 +82,9 @@ type FloatingPanelState = {
     LinkingPanel,
     ModelVisibilityPanel,
     BoqPanel,
-  ParametersPanel,
+    ParametersPanel,
+    ParametersReportPanel,
+    ParametersImportDialog,
     CatalogStructureDialog,
   ],
   templateUrl: './viewer-screen.html',
@@ -91,6 +95,8 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   @ViewChild('inputB5d') private readonly inputB5d?: ElementRef<HTMLInputElement>;
   @ViewChild(LinkingPanel) private readonly linkingPanel?: LinkingPanel;
   @ViewChild(ParametersPanel) private readonly parametersPanel?: ParametersPanel;
+  @ViewChild(ParametersReportPanel) private readonly parametersReportPanel?: ParametersReportPanel;
+  @ViewChild(BoqPanel) private readonly boqPanel?: BoqPanel;
   private readonly defaultDockedTopWithToolbar = 114;
   private readonly defaultDockedTopWithoutToolbar = 34;
   private readonly defaultTreeDockedWidth = 360;
@@ -115,6 +121,8 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   readonly catalogStructureDialogMode = signal<'create' | 'info'>('create');
   readonly catalogStructureDialogCatalog = signal<CatalogoB5DOrm | null>(null);
   readonly catalogStructureDialogLoading = signal(false);
+  readonly parameterImportDialogVisible = signal(false);
+  private readonly catalogLinkCopySourceByTargetId = new Map<number, number>();
   readonly homeToolbarState = signal<HomeToolbarState>({
     activeBottomTab: 'links',
     activePanel: 'concepts',
@@ -134,6 +142,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     parameterBoqVisible: true,
     parameterDescriptionMatchesVisible: true,
     parameterAnalysisVisible: true,
+    tableFiltersVisible: false,
   });
   readonly activeMeasurementMode = signal<MeasurementMode | null>(null);
   readonly activeLengthMeasurementMode = signal<MeasurementLengthMode>('edge');
@@ -197,6 +206,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     { id: 'links', label: 'Estructura de conceptos' },
     { id: 'boq', label: 'Cuantificaciones' },
     { id: 'parameters', label: 'Parameters' },
+    { id: 'report', label: 'Reporte' },
   ];
   treeSectionHeight = 220;
   private readonly cuantificadorB5D = new CuantificadorB5D();
@@ -222,11 +232,15 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private autoSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private autoSaveInProgress = false;
   private hasPendingDraftChanges = false;
+  private draftChangeVersion = 0;
   private measurementVolumeRequestId = 0;
+  private readonly b5dDebugLoggingEnabled = true;
 
   async ngAfterViewInit(): Promise<void> {
     if (!this.contenedorVisor?.nativeElement) return;
+    this.debugB5d('ngAfterViewInit: initializing viewer');
     await this.visorIfc.inicializarVisor(this.contenedorVisor.nativeElement);
+    this.debugB5d('ngAfterViewInit: viewer ready, loading B5D panels');
     await this.inicializarPanelesB5d();
   }
 
@@ -301,16 +315,21 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   private async inicializarPanelesB5d(): Promise<void> {
+    this.debugB5d('inicializarPanelesB5d: checking backend session');
     if (!(await this.asegurarSesionBackend())) {
+      this.debugB5d('inicializarPanelesB5d: session check failed, redirecting to login');
       await this.router.navigate(['/login']);
       return;
     }
+    this.debugB5d('inicializarPanelesB5d: session OK, loading recent project');
     await this.cargarProyectoReciente();
   }
 
   private async asegurarSesionBackend(): Promise<boolean> {
     try {
+      this.debugB5d('asegurarSesionBackend: calling /api/auth/me');
       const sesion = await firstValueFrom(this.backendAuth.me());
+      this.debugB5d('asegurarSesionBackend: response received', sesion);
       if (!sesion.authenticated || !sesion.user) {
         this.usuarioSesion.set(null);
         this.b5dMensaje.set('Sesion no iniciada.');
@@ -326,10 +345,13 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   private async cargarProyectoReciente(): Promise<void> {
+    this.debugB5d('cargarProyectoReciente: start');
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
     try {
+      this.debugB5d('cargarProyectoReciente: requesting project list');
       const proyectos = await firstValueFrom(this.backendProyectos.listarProyectos());
+      this.debugB5d('cargarProyectoReciente: project list received', proyectos);
       const proyecto = proyectos.resultados[0] ?? null;
       this.proyectoB5dActivo.set(proyecto);
       if (!proyecto) {
@@ -342,10 +364,14 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         return;
       }
 
+      this.debugB5d('cargarProyectoReciente: loading active project data', proyecto.id);
       await this.cargarDatosProyectoB5d(proyecto.id);
+      this.debugB5d('cargarProyectoReciente: project data loaded');
     } catch (error) {
+      this.debugB5d('cargarProyectoReciente: error', error);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo consultar la lista de proyectos B5D.'));
     } finally {
+      this.debugB5d('cargarProyectoReciente: end');
       this.b5dCargando.set(false);
     }
   }
@@ -454,6 +480,23 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.catalogStructureDialogLoading.set(false);
   }
 
+  // Opens the parameter import wizard.
+  abrirDialogoImportacionParametros(): void {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para importar parametros.');
+      return;
+    }
+
+    this.parameterImportDialogVisible.set(true);
+    this.b5dMensaje.set('');
+  }
+
+  // Closes the parameter import wizard.
+  cerrarDialogoImportacionParametros(): void {
+    this.parameterImportDialogVisible.set(false);
+  }
+
   // Imports a PlanAXA catalog and refreshes the current project snapshot.
   async guardarEstructuraCatalogo(draft: CatalogStructureDraft): Promise<void> {
     const proyecto = this.proyectoB5dActivo();
@@ -489,6 +532,73 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     }
   }
 
+  // Creates an empty catalog or imports a PlanAXA catalog, then optionally copies links.
+  async guardarEstructuraCatalogoV2(draft: CatalogStructureDraft): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para administrar catalogos.');
+      return;
+    }
+
+    if (this.catalogStructureDialogLoading()) return;
+
+    this.catalogStructureDialogLoading.set(true);
+    this.b5dMensaje.set('');
+    try {
+      const sourceCatalogId = draft.copiar_vinculos ? draft.copiar_vinculos_desde_catalogo_id : null;
+      const shouldCopyLinks = sourceCatalogId != null;
+      const respuesta = draft.archivo
+        ? await firstValueFrom(
+            this.backendProyectos.importarCatalogoAxa(proyecto.id, {
+              archivo: draft.archivo,
+              nombre: draft.nombre,
+              descripcion: draft.descripcion,
+              propiedad_tipo_bim: draft.propiedad_tipo_bim,
+              grupo_cantidades_bim: draft.grupo_cantidades_bim,
+            }),
+          )
+        : await firstValueFrom(
+            this.backendProyectos.crearCatalogo(proyecto.id, {
+              nombre: draft.nombre,
+              descripcion: draft.descripcion,
+              propiedad_tipo_bim: draft.propiedad_tipo_bim,
+              grupo_cantidades_bim: draft.grupo_cantidades_bim,
+              copiar_vinculos_desde_catalogo_id: sourceCatalogId,
+            }),
+          );
+
+      const catalogoCreado = this.obtenerCatalogoDeRespuesta(respuesta);
+      if (shouldCopyLinks) {
+        this.catalogLinkCopySourceByTargetId.set(catalogoCreado.id, sourceCatalogId);
+      }
+
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      this.setBottomPanelTab('links');
+      await this.sincronizarCatalogoSeleccionado(catalogoCreado.id);
+      if (shouldCopyLinks) {
+        await this.persistirCambiosB5dEnServidor(proyecto.id, this.draftChangeVersion);
+      }
+      this.cerrarDialogoEstructuraCatalogo();
+      const actionLabel = draft.archivo ? 'importado' : 'creado';
+      this.b5dMensaje.set(`Catalogo ${actionLabel} correctamente: ${catalogoCreado.nombre ?? draft.nombre}.`);
+    } catch (error) {
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo guardar la estructura de conceptos.'));
+    } finally {
+      this.catalogStructureDialogLoading.set(false);
+    }
+  }
+
+  // Refreshes project state after the parameter import wizard completes.
+  async onParametersImportCompleted(summary: { created: number; updated: number; skipped: number; failed: number }): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) return;
+
+    await this.cargarDatosProyectoB5d(proyecto.id);
+    this.b5dMensaje.set(
+      `Importación de parámetros finalizada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`,
+    );
+  }
+
   // Deletes the selected catalog and keeps the remaining catalog selection in sync.
   async eliminarCatalogoSeleccionado(): Promise<void> {
     const proyecto = this.proyectoB5dActivo();
@@ -510,6 +620,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.b5dMensaje.set('');
     try {
       await firstValueFrom(this.backendProyectos.eliminarCatalogo(proyecto.id, catalogoSeleccionado.id));
+      this.catalogLinkCopySourceByTargetId.delete(catalogoSeleccionado.id);
+      for (const [targetCatalogId, sourceCatalogId] of [...this.catalogLinkCopySourceByTargetId.entries()]) {
+        if (sourceCatalogId === catalogoSeleccionado.id) {
+          this.catalogLinkCopySourceByTargetId.delete(targetCatalogId);
+        }
+      }
       await this.cargarDatosProyectoB5d(proyecto.id);
       this.setBottomPanelTab('links');
       await this.sincronizarCatalogoSeleccionado(this.b5dCatalogs()[0]?.id ?? null);
@@ -523,7 +639,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   // Persists the current linking workspace draft in the backend project tables.
-  private async persistirCambiosB5dEnServidor(proyectoId: number): Promise<void> {
+  private async persistirCambiosB5dEnServidor(proyectoId: number, draftVersionAtStart: number): Promise<void> {
     if (this.bottomPanelTab() !== 'links') {
       this.setBottomPanelTab('links');
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -540,6 +656,9 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
             clave: conceptItem.clave ?? null,
             clave_secundaria: conceptItem.clave_secundaria ?? null,
             descripcion: conceptItem.descripcion ?? null,
+            costo: conceptItem.costo ?? null,
+            costo_mn: conceptItem.costo_mn ?? null,
+            costo_me: conceptItem.costo_me ?? null,
             es_agrupador: !!conceptItem.es_agrupador,
             agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
             unidad: conceptItem.unidad ?? null,
@@ -562,11 +681,19 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         };
 
     const savedSnapshot = await firstValueFrom(this.backendProyectos.guardarProyecto(proyectoId, draftPayload));
+    if (draftVersionAtStart !== this.draftChangeVersion) {
+      this.debugB5d('persistirCambiosB5dEnServidor: stale response ignored', {
+        proyectoId,
+        draftVersionAtStart,
+        currentDraftVersion: this.draftChangeVersion,
+      });
+      return;
+    }
     this.proyectoB5dActivo.set(savedSnapshot.proyecto);
     if (savedSnapshot.catalogos?.resultados) {
       this.b5dCatalogs.set(savedSnapshot.catalogos.resultados);
     }
-    this.b5dConcepts.set(savedSnapshot.conceptos.resultados);
+    this.b5dConcepts.set(this.normalizarConceptosB5d(savedSnapshot.conceptos.resultados));
     this.b5dLinks.set(savedSnapshot.vinculos.resultados);
   }
 
@@ -588,7 +715,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.autoSaveInProgress = true;
     this.hasPendingDraftChanges = false;
     try {
-      await this.persistirCambiosB5dEnServidor(proyecto.id);
+      await this.persistirCambiosB5dEnServidor(proyecto.id, this.draftChangeVersion);
     } catch (error) {
       this.hasPendingDraftChanges = true;
       console.warn('No se pudo guardar automaticamente el borrador B5D.', error);
@@ -611,11 +738,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
     if (this.hasPendingDraftChanges) {
       this.hasPendingDraftChanges = false;
-      await this.persistirCambiosB5dEnServidor(proyectoId);
+      await this.persistirCambiosB5dEnServidor(proyectoId, this.draftChangeVersion);
     }
   }
 
   private async cargarDatosProyectoB5d(proyectoId: number): Promise<void> {
+    this.debugB5d('cargarDatosProyectoB5d: start', proyectoId);
     const [estado, conceptos, vinculos, catalogos, cuantificaciones, parametros] = await Promise.all([
       firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId)),
       firstValueFrom(this.backendProyectos.listarConceptos(proyectoId)),
@@ -624,13 +752,38 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       firstValueFrom(this.backendProyectos.listarCuantificaciones(proyectoId)),
       firstValueFrom(this.backendProyectos.listarParametros(proyectoId)),
     ]);
+    this.debugB5d('cargarDatosProyectoB5d: responses received', {
+      estado: !!estado,
+      conceptos: conceptos.resultados.length,
+      vinculos: vinculos.resultados.length,
+      catalogos: catalogos.resultados.length,
+      cuantificaciones: cuantificaciones.resultados.length,
+      parametros: parametros.resultados.length,
+    });
 
     this.proyectoB5dActivo.set(estado);
-    this.b5dConcepts.set(conceptos.resultados);
+    this.b5dConcepts.set(this.normalizarConceptosB5d(conceptos.resultados));
     this.b5dLinks.set(vinculos.resultados);
     this.b5dCatalogs.set(catalogos.resultados);
+    this.limpiarCopiasDeCatalogosInexistentes(catalogos.resultados);
     this.cuantificacionesB5d.set(cuantificaciones.resultados);
     this.parametrosB5d.set(parametros.resultados);
+    this.debugB5d('cargarDatosProyectoB5d: end', proyectoId);
+  }
+
+  // Extracts the created catalog from either a raw catalog or a wrapped response.
+  private obtenerCatalogoDeRespuesta(respuesta: CatalogoB5DOrm | { catalogo: CatalogoB5DOrm }): CatalogoB5DOrm {
+    return 'catalogo' in respuesta ? respuesta.catalogo : respuesta;
+  }
+
+  // Removes copy-link mappings that point to catalogs no longer present in the project.
+  private limpiarCopiasDeCatalogosInexistentes(catalogos: CatalogoB5DOrm[]): void {
+    const catalogIds = new Set(catalogos.map((catalogo) => catalogo.id));
+    for (const [targetCatalogId, sourceCatalogId] of [...this.catalogLinkCopySourceByTargetId.entries()]) {
+      if (!catalogIds.has(targetCatalogId) || !catalogIds.has(sourceCatalogId)) {
+        this.catalogLinkCopySourceByTargetId.delete(targetCatalogId);
+      }
+    }
   }
 
   private async actualizarReferenciaIfc(archivo: File): Promise<void> {
@@ -676,6 +829,48 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       }
     }
     return mensajePredeterminado;
+  }
+
+  private debugB5d(message: string, data?: unknown): void {
+    if (!this.b5dDebugLoggingEnabled) return;
+    if (data === undefined) {
+      console.debug(`[B5D] ${message}`);
+      return;
+    }
+    console.debug(`[B5D] ${message}`, data);
+  }
+
+  private normalizarConceptosB5d(conceptos: ConceptoB5DOrm[]): ConceptoB5DOrm[] {
+    return conceptos.map((concepto) => ({
+      ...concepto,
+      costo: this.parseNumericLikeValue(concepto.costo),
+      costo_mn: this.parseNumericLikeValue(concepto.costo_mn),
+      costo_me: this.parseNumericLikeValue(concepto.costo_me),
+    }));
+  }
+
+  private parseNumericLikeValue(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+
+    let sanitized = normalized.replace(/[^\d.,-]/g, '');
+    if (sanitized.includes(',') && sanitized.includes('.')) {
+      if (sanitized.lastIndexOf(',') > sanitized.lastIndexOf('.')) {
+        sanitized = sanitized.replace(/\./g, '').replace(',', '.');
+      } else {
+        sanitized = sanitized.replace(/,/g, '');
+      }
+    } else if (sanitized.includes(',')) {
+      sanitized = sanitized.replace(',', '.');
+    }
+
+    const numericValue = Number(sanitized);
+    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   // Returns whether a floating panel is currently enabled by the user.
@@ -911,6 +1106,15 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     });
   }
 
+  // Stores BOQ panel state updates so the shared Home toolbar can reflect filter toggles.
+  onBoqToolbarStateChange(state: HomeToolbarState): void {
+    this.homeToolbarState.set({
+      ...this.homeToolbarState(),
+      ...state,
+      activeBottomTab: 'boq',
+    });
+  }
+
   // Syncs parameter rows returned from CRUD operations in the parameter panel.
   onParametersRowsChange(rows: ParametroB5DOrm[]): void {
     this.parametrosB5d.set(rows);
@@ -1129,6 +1333,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Schedules draft autosave when the linking workspace mutates concepts or links.
   onLinkingDraftChanged(): void {
+    this.draftChangeVersion += 1;
     this.hasPendingDraftChanges = true;
     this.scheduleAutoSave();
   }
@@ -1465,16 +1670,56 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'home-links-view',
       'home-assign-property',
       'home-unlinked-objects',
+      'home-refresh-view',
+      'home-toggle-filters',
+      'home-reset-view',
       'home-coStru-new',
       'home-coStru-remove',
       'home-coStru-dup',
       'home-coStru-info',
+      'import-parameters-excel',
     ].includes(action);
   }
 
   // Routes Home actions to the linking workspace and option prompts.
   private handleHomeToolbarAction(action: ToolbarActionId): void {
     const activeTab = this.bottomPanelTab();
+
+    if (action === 'home-refresh-view') {
+      const proyecto = this.proyectoB5dActivo();
+      if (!proyecto) return;
+      const catalogoActual = this.homeToolbarState().selectedCatalogId ?? null;
+      void (async () => {
+        await this.cargarDatosProyectoB5d(proyecto.id);
+        await this.sincronizarCatalogoSeleccionado(catalogoActual);
+      })();
+      return;
+    }
+
+    if (action === 'home-toggle-filters') {
+      this.homeToolbarState.update((state) => ({
+        ...state,
+        tableFiltersVisible: !state.tableFiltersVisible,
+      }));
+      return;
+    }
+
+    if (action === 'home-reset-view') {
+      this.homeToolbarState.update((state) => ({
+        ...state,
+        tableFiltersVisible: false,
+      }));
+      if (activeTab === 'links') {
+        this.linkingPanel?.resetTableViews();
+      } else if (activeTab === 'parameters') {
+        this.parametersPanel?.resetTableViews();
+      } else if (activeTab === 'report') {
+        this.parametersReportPanel?.resetView();
+      } else if (activeTab === 'boq') {
+        this.boqPanel?.resetTableViews();
+      }
+      return;
+    }
 
     if (action === 'home-coStru-new') {
       this.abrirDialogoEstructuraCatalogo('create');
@@ -1483,6 +1728,11 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
     if (action === 'home-coStru-info') {
       this.abrirDialogoEstructuraCatalogo('info');
+      return;
+    }
+
+    if (action === 'import-parameters-excel') {
+      this.abrirDialogoImportacionParametros();
       return;
     }
 
@@ -1496,7 +1746,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       return;
     }
 
-    if (activeTab === 'links') {
+    if (action === 'home-select-filter' || action === 'home-unlinked-objects' || action === 'home-links-view') {
       const linkingWorkspace = this.linkingPanel;
       if (!linkingWorkspace) return;
 
@@ -1518,12 +1768,20 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       return;
     }
 
+    if (activeTab === 'links') {
+      this.linkingPanel?.triggerHomeAction(action);
+      return;
+    }
+
     if (activeTab === 'parameters') {
       this.parametersPanel?.triggerHomeAction(action);
       return;
     }
 
-    // BOQ actions will be implemented later.
+    if (activeTab === 'boq') {
+      this.boqPanel?.triggerHomeAction(action);
+      return;
+    }
   }
 
   // Returns the catalog currently selected in the concept workspace.
@@ -1531,6 +1789,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     const catalogoSeleccionadoId = this.homeToolbarState().selectedCatalogId;
     if (catalogoSeleccionadoId == null) return null;
     return this.b5dCatalogs().find((catalogoItem) => catalogoItem.id === catalogoSeleccionadoId) ?? null;
+  }
+
+  get selectedCatalogLinkCopySourceId(): number | null {
+    const catalogoSeleccionadoId = this.homeToolbarState().selectedCatalogId;
+    if (catalogoSeleccionadoId == null) return null;
+    return this.catalogLinkCopySourceByTargetId.get(catalogoSeleccionadoId) ?? null;
   }
 
   // Syncs the selected catalog in the toolbar and the linking workspace without creating a draft save.

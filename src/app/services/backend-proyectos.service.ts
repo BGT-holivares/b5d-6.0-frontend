@@ -42,6 +42,14 @@ export interface ImportarCatalogoAxaPayload {
   grupo_cantidades_bim?: string;
 }
 
+export interface CrearCatalogoPayload {
+  nombre: string;
+  descripcion?: string;
+  propiedad_tipo_bim?: string;
+  grupo_cantidades_bim?: string;
+  copiar_vinculos_desde_catalogo_id?: number | null;
+}
+
 export interface ImportarCatalogoAxaResponse extends GuardarProyectoB5DResponseOrm {
   catalogo: CatalogoB5DOrm;
 }
@@ -50,6 +58,9 @@ export interface EditarConceptoPayload {
   clave?: string | null;
   clave_secundaria?: string | null;
   descripcion?: string | null;
+  costo?: number | null;
+  costo_mn?: number | null;
+  costo_me?: number | null;
   es_agrupador?: boolean;
   unidad?: string | null;
   orden?: number | null;
@@ -125,6 +136,14 @@ export class BackendProyectosService {
     );
   }
 
+  crearCatalogo(proyectoId: number, payload: CrearCatalogoPayload): Observable<CatalogoB5DOrm | { catalogo: CatalogoB5DOrm }> {
+    return this.http.post<CatalogoB5DOrm | { catalogo: CatalogoB5DOrm }>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
   consultarEstadoProyecto(proyectoId: number): Observable<ProyectoTrabajoOrm> {
     return this.http.get<ProyectoTrabajoOrm>(
       this.url(`/api/proyectos/${proyectoId}/estado/`),
@@ -183,6 +202,30 @@ export class BackendProyectosService {
   eliminarParametro(proyectoId: number, parametroId: number): Observable<{ deleted: boolean }> {
     return this.http.delete<{ deleted: boolean }>(
       this.url(`/api/proyectos/${proyectoId}/parametros/${parametroId}/eliminar/`),
+      this.requestOptions,
+    );
+  }
+
+  actualizarConcepto(
+    proyectoId: number,
+    conceptoId: number,
+    payload: EditarConceptoPayload,
+  ): Observable<ConceptoB5DOrm> {
+    return this.http.patch<ConceptoB5DOrm>(
+      this.url(`/api/proyectos/${proyectoId}/conceptos/${conceptoId}/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
+  actualizarCuantificacion(
+    proyectoId: number,
+    cuantificacionId: number,
+    payload: Partial<CuantificacionB5DOrm>,
+  ): Observable<CuantificacionB5DOrm> {
+    return this.http.patch<CuantificacionB5DOrm>(
+      this.url(`/api/proyectos/${proyectoId}/cuantificaciones/${cuantificacionId}/`),
+      payload,
       this.requestOptions,
     );
   }

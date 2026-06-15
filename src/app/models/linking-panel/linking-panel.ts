@@ -23,6 +23,22 @@ import type {
   VinculoConceptoBimDraftOrm,
   VinculoConceptoBimOrm,
 } from '../../types/b5d-orm';
+import {
+  applyTableFilters,
+  createDefaultTableViewPreferences,
+  ensureTablePreferencesColumns,
+  getFilterModesForKind,
+  getVisibleColumns,
+  loadTableViewPreferences,
+  reorderTableColumn,
+  resetTableViewPreferences,
+  saveTableViewPreferences,
+  setTableFilterMode,
+  setTableFilterValue,
+  toggleTableColumnVisibility,
+  type TableColumnDefinition,
+  type TableViewPreferences,
+} from '../../utils/table-view/table-view';
 import type {
   HomeToolbarState,
   HomeBottomPanelTab,
@@ -66,8 +82,11 @@ type ConceptoFila = {
   clave: string;
   descripcion: string;
   unidad: string;
+  costo: number | null;
   linked: boolean;
 };
+
+type ConceptTableColumnKey = 'clave' | 'descripcion' | 'unidad' | 'costo';
 
 type ConceptDraft = {
   clave: string;
@@ -100,11 +119,55 @@ export class LinkingPanel implements OnChanges {
   @Input() b5dConcepts: ConceptoB5DOrm[] = [];
   @Input() b5dLinks: VinculoConceptoBimOrm[] = [];
   @Input() b5dCatalogs: CatalogoB5DOrm[] = [];
+  @Input() copyLinksFromCatalogId: number | null = null;
   @Input() b5dLoading = false;
   @Input() activeBottomTab: HomeBottomPanelTab = 'links';
+  @Input() tableFiltersVisible = false;
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
   @Output() ifcObjectSelectionChange = new EventEmitter<number[]>();
   @Output() draftChanged = new EventEmitter<void>();
+
+  readonly conceptTableColumns: TableColumnDefinition<ConceptoFila>[] = [
+    {
+      key: 'clave',
+      label: 'Concepto ID',
+      kind: 'text',
+      widthPx: 190,
+      getValue: (row) => row.clave,
+    },
+    {
+      key: 'descripcion',
+      label: 'Descripcion',
+      kind: 'text',
+      widthPx: 320,
+      getValue: (row) => row.descripcion,
+    },
+    {
+      key: 'unidad',
+      label: 'Unidad',
+      kind: 'text',
+      widthPx: 110,
+      getValue: (row) => row.unidad,
+    },
+    {
+      key: 'costo',
+      label: 'Costo',
+      kind: 'number',
+      widthPx: 120,
+      getValue: (row) => row.costo,
+    },
+  ];
+  private readonly conceptTableDefaults = createDefaultTableViewPreferences(
+    this.conceptTableColumns.map((column) => ({
+      key: column.key,
+      hiddenByDefault: column.hiddenByDefault,
+    })),
+  );
+  private readonly conceptTableStorageKey = 'linking-concepts';
+  conceptTablePreferences: TableViewPreferences = loadTableViewPreferences(
+    this.conceptTableStorageKey,
+    this.conceptTableDefaults,
+  );
 
   idSelectedConcept: number | null = null;
   idSelectedObject = '';
@@ -126,6 +189,10 @@ export class LinkingPanel implements OnChanges {
   creatingConceptInline = false;
   creatingConceptAnchorId: number | null = null;
   creatingConceptDraft: ConceptDraft = this.getEmptyConceptDraft();
+  conceptTableContextMenuVisible = false;
+  conceptTableContextMenuX = 0;
+  conceptTableContextMenuY = 0;
+  conceptTableRefreshToken = 0;
   private temporalConceptId = -1;
   private lastSelectedConceptId: number | null = null;
   private lastSelectedObjectId = '';
@@ -138,6 +205,7 @@ export class LinkingPanel implements OnChanges {
       this.selectedConceptIds.clear();
       this.idSelectedConcept = null;
       this.lastSelectedConceptId = null;
+      this.syncConceptTablePreferences();
     }
     if (changes['b5dCatalogs'] || changes['b5dConcepts']) {
       const availableCatalogIds = new Set(this.b5dCatalogs.map((catalogItem) => catalogItem.id));
@@ -319,6 +387,7 @@ export class LinkingPanel implements OnChanges {
           clave: concepto.clave ?? '',
           descripcion: concepto.descripcion ?? '',
           unidad: concepto.unidad ?? '',
+          costo: concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null,
           linked: linkedIds.has(concepto.id),
         });
         recorrer(concepto.id, level + 1);
@@ -334,11 +403,20 @@ export class LinkingPanel implements OnChanges {
         clave: concepto.clave ?? '',
         descripcion: concepto.descripcion ?? '',
         unidad: concepto.unidad ?? '',
+        costo: concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null,
         linked: linkedIds.has(concepto.id),
       });
     }
 
     return filas;
+  }
+
+  get visibleConceptColumns(): TableColumnDefinition<ConceptoFila>[] {
+    return getVisibleColumns(this.conceptTableColumns, this.conceptTablePreferences);
+  }
+
+  get conceptosEstructuradosFiltrados(): ConceptoFila[] {
+    return applyTableFilters(this.conceptosEstructurados, this.conceptTableColumns, this.conceptTablePreferences);
   }
 
   get relatedLinks(): VinculoPanel[] {
@@ -638,12 +716,16 @@ export class LinkingPanel implements OnChanges {
 
   // Returns the current concepts and links draft to persist in the backend project.
   getProjectDraft(): SaveB5DProyectPayloadOrm {
+    const copiedLinks = this.buildCopiedLinksForDraft();
     const conceptDraftRows: ConceptoB5DDraftOrm[] = this.workConcepts.map((conceptItem) => ({
       id: conceptItem.id,
       catalogo_id: conceptItem.catalogo_id ?? this.selectedCatalogId ?? null,
       clave: conceptItem.clave ?? null,
       clave_secundaria: conceptItem.clave_secundaria ?? null,
       descripcion: conceptItem.descripcion ?? null,
+      costo: conceptItem.costo ?? null,
+      costo_mn: conceptItem.costo_mn ?? null,
+      costo_me: conceptItem.costo_me ?? null,
       es_agrupador: !!conceptItem.es_agrupador,
       agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
       unidad: conceptItem.unidad ?? null,
@@ -652,19 +734,22 @@ export class LinkingPanel implements OnChanges {
       gc_record: conceptItem.gc_record ?? null,
     }));
 
-    const linkDraftRows: VinculoConceptoBimDraftOrm[] = this.relatedLinks.map((linkItem) => ({
-      id: linkItem.id,
-      identificador_original: linkItem.originalIdentifier ?? null,
-      concepto_id: linkItem.conceptoId ?? null,
-      tipo_objeto_bim: linkItem.objectType || null,
-      material_bim: linkItem.material || null,
-      propiedad_cantidad_bim: linkItem.propertyLabel || null,
-      factor_conversion: linkItem.conversionFactor ?? 1,
-      descripcion: linkItem.description || null,
-      optimistic_lock_field:
-        'optimisticLockField' in linkItem ? ((linkItem as { optimisticLockField?: number | null }).optimisticLockField ?? null) : null,
-      gc_record: 'gcRecord' in linkItem ? ((linkItem as { gcRecord?: number | null }).gcRecord ?? null) : null,
-    }));
+    const linkDraftRows: VinculoConceptoBimDraftOrm[] = [
+      ...this.relatedLinks.map((linkItem) => ({
+        id: linkItem.id,
+        identificador_original: linkItem.originalIdentifier ?? null,
+        concepto_id: linkItem.conceptoId ?? null,
+        tipo_objeto_bim: linkItem.objectType || null,
+        material_bim: linkItem.material || null,
+        propiedad_cantidad_bim: linkItem.propertyLabel || null,
+        factor_conversion: linkItem.conversionFactor ?? 1,
+        descripcion: linkItem.description || null,
+        optimistic_lock_field:
+          'optimisticLockField' in linkItem ? ((linkItem as { optimisticLockField?: number | null }).optimisticLockField ?? null) : null,
+        gc_record: 'gcRecord' in linkItem ? ((linkItem as { gcRecord?: number | null }).gcRecord ?? null) : null,
+      })),
+      ...copiedLinks,
+    ];
 
     return {
       catalogo_activo_id: this.selectedCatalogId ?? null,
@@ -775,7 +860,135 @@ export class LinkingPanel implements OnChanges {
       selectedLinkIds: [...this.selectedLinkIds],
       canPasteConcept: !!this.conceptClipboard,
       selectedCatalogId: this.selectedCatalogId,
+      tableFiltersVisible: this.tableFiltersVisible,
     });
+  }
+
+  private syncConceptTablePreferences(): void {
+    ensureTablePreferencesColumns(this.conceptTablePreferences, this.conceptTableColumns);
+    this.persistConceptTablePreferences();
+  }
+
+  private persistConceptTablePreferences(): void {
+    saveTableViewPreferences(this.conceptTableStorageKey, this.conceptTablePreferences);
+  }
+
+  get conceptTableResizableStorageKey(): string {
+    return `${this.conceptTableStorageKey}:${this.conceptTablePreferences.order.join('|')}:${this.conceptTablePreferences.hidden.join('|')}`;
+  }
+
+  getConceptById(conceptId: number): ConceptoB5DOrm | null {
+    return this.workConcepts.find((concepto) => concepto.id === conceptId) ?? null;
+  }
+
+  markDraftChanged(): void {
+    this.emitDraftChanged();
+  }
+
+  parseOptionalNumber(value: unknown): number | null {
+    if (value == null) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    const numericValue = Number(normalized.replace(',', '.'));
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  resetTableViews(): void {
+    this.leftPanelWidth = 420;
+    this.topPanelHeight = 260;
+    this.relatedLinksVisible = true;
+    this.activeWorkspacePanel = 'concepts';
+    this.resetConceptTablePreferences();
+    this.resetConceptTableWidths();
+    this.emitToolbarState();
+  }
+
+  openConceptTableContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.conceptTableContextMenuVisible = true;
+    this.conceptTableContextMenuX = event.clientX;
+    this.conceptTableContextMenuY = event.clientY;
+  }
+
+  closeConceptTableContextMenu(): void {
+    this.conceptTableContextMenuVisible = false;
+  }
+
+  handleConceptTableContextMenuAction(action: 'chooser' | 'filters' | 'best-fit' | 'reset'): void {
+    if (action === 'chooser') {
+      this.toggleConceptTableChooser();
+    } else if (action === 'filters') {
+      this.toggleConceptTableFiltersVisible();
+    } else if (action === 'best-fit') {
+      this.resetConceptTableWidths();
+    } else if (action === 'reset') {
+      this.resetTableViews();
+    }
+    this.closeConceptTableContextMenu();
+  }
+
+  resetConceptTablePreferences(): void {
+    resetTableViewPreferences(this.conceptTablePreferences, this.conceptTableDefaults);
+    this.persistConceptTablePreferences();
+  }
+
+  resetConceptTableWidths(): void {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`b5d-resizable-table:${this.conceptTableResizableStorageKey}`);
+    }
+    this.conceptTableRefreshToken += 1;
+  }
+
+  toggleConceptTableChooser(): void {
+    this.conceptTablePreferences.chooserOpen = !this.conceptTablePreferences.chooserOpen;
+    this.persistConceptTablePreferences();
+  }
+
+  toggleConceptTableFiltersVisible(): void {
+    this.tableFiltersVisible = !this.tableFiltersVisible;
+    this.emitToolbarState();
+  }
+
+  isConceptTableColumnVisible(columnKey: string): boolean {
+    return !this.conceptTablePreferences.hidden.includes(columnKey);
+  }
+
+  toggleConceptTableColumnVisibility(columnKey: string): void {
+    toggleTableColumnVisibility(this.conceptTablePreferences, columnKey);
+    this.persistConceptTablePreferences();
+  }
+
+  moveConceptTableColumn(columnKey: string, direction: 'left' | 'right'): void {
+    reorderTableColumn(this.conceptTablePreferences, columnKey, direction);
+    this.persistConceptTablePreferences();
+  }
+
+  getConceptFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
+    const column = this.conceptTableColumns.find((columnItem) => columnItem.key === columnKey);
+    return column ? getFilterModesForKind(column.kind) : getFilterModesForKind('text');
+  }
+
+  getConceptFilterMode(columnKey: string): string {
+    return this.conceptTablePreferences.filters[columnKey]?.mode ?? 'contains';
+  }
+
+  getConceptFilterValue(columnKey: string): string {
+    return this.conceptTablePreferences.filters[columnKey]?.value ?? '';
+  }
+
+  setConceptFilterMode(columnKey: string, mode: string): void {
+    setTableFilterMode(this.conceptTablePreferences, columnKey, mode as never);
+    this.persistConceptTablePreferences();
+  }
+
+  setConceptFilterValue(columnKey: string, value: string): void {
+    setTableFilterValue(this.conceptTablePreferences, columnKey, value);
+    this.persistConceptTablePreferences();
+  }
+
+  isConceptTableLastColumn(columnKey: string): boolean {
+    return this.visibleConceptColumns.at(-1)?.key === columnKey;
   }
 
   // Toggles row selection while keeping single-select mode when Ctrl/Cmd is not pressed.
@@ -851,6 +1064,7 @@ export class LinkingPanel implements OnChanges {
     material: string,
     propertyLabel: string,
     description: string,
+    conversionFactor = 1,
   ): VinculoPanel {
     const localIdentifier = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     return {
@@ -865,9 +1079,102 @@ export class LinkingPanel implements OnChanges {
       material,
       propertyKey: this.normalizeText(propertyLabel),
       propertyLabel,
-      conversionFactor: 1,
+      conversionFactor,
       description,
     };
+  }
+
+  // Copies links from the configured source catalog when concept keys match.
+  private buildCopiedLinksForDraft(): VinculoConceptoBimDraftOrm[] {
+    const sourceCatalogId = this.copyLinksFromCatalogId;
+    const targetCatalogId = this.selectedCatalogId;
+    if (sourceCatalogId == null || targetCatalogId == null || sourceCatalogId === targetCatalogId) return [];
+
+    const sourceConcepts = this.workConcepts.filter((conceptItem) => conceptItem.catalogo_id === sourceCatalogId);
+    const targetConcepts = this.workConcepts.filter((conceptItem) => conceptItem.catalogo_id === targetCatalogId);
+    if (!sourceConcepts.length || !targetConcepts.length) return [];
+
+    const sourceConceptIds = new Set<number>();
+    const sourceKeysById = new Map<number, string>();
+    const targetConceptsByKey = new Map<string, ConceptoB5DOrm[]>();
+
+    for (const conceptItem of sourceConcepts) {
+      sourceConceptIds.add(conceptItem.id);
+      sourceKeysById.set(conceptItem.id, this.normalizeText(conceptItem.clave ?? ''));
+    }
+
+    for (const conceptItem of targetConcepts) {
+      const key = this.normalizeText(conceptItem.clave ?? '');
+      if (!key) continue;
+      const conceptsForKey = targetConceptsByKey.get(key) ?? [];
+      conceptsForKey.push(conceptItem);
+      targetConceptsByKey.set(key, conceptsForKey);
+    }
+
+    const existingLinkSignatures = new Set(
+      this.relatedLinks.map((linkItem) => this.buildLinkSignature(linkItem.conceptoId, linkItem.objectType, linkItem.propertyLabel, linkItem.material)),
+    );
+    const copiedLinks: VinculoConceptoBimDraftOrm[] = [];
+
+    for (const sourceLink of [...this.b5dLinks, ...this.localLinks]) {
+      const sourceConceptId = 'concepto_id' in sourceLink ? sourceLink.concepto_id : sourceLink.conceptoId;
+      if (sourceConceptId == null || !sourceConceptIds.has(sourceConceptId)) continue;
+
+      const sourceConceptKey = sourceKeysById.get(sourceConceptId) ?? '';
+      if (!sourceConceptKey) continue;
+
+      const targetMatches = targetConceptsByKey.get(sourceConceptKey) ?? [];
+      if (!targetMatches.length) continue;
+
+      for (const targetConcept of targetMatches) {
+        const signature = this.buildLinkSignature(
+          targetConcept.id,
+          this.getLinkObjectType(sourceLink),
+          this.getLinkPropertyLabel(sourceLink),
+          this.getLinkMaterial(sourceLink),
+        );
+        if (existingLinkSignatures.has(signature)) continue;
+        existingLinkSignatures.add(signature);
+        copiedLinks.push({
+          id: `copy-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+          identificador_original: null,
+          concepto_id: targetConcept.id,
+          tipo_objeto_bim: this.getLinkObjectType(sourceLink) || null,
+          material_bim: this.getLinkMaterial(sourceLink) || null,
+          propiedad_cantidad_bim: this.getLinkPropertyLabel(sourceLink) || null,
+          factor_conversion: this.getLinkFactor(sourceLink),
+          descripcion: this.getLinkDescription(sourceLink) || null,
+          optimistic_lock_field: 1,
+          gc_record: null,
+        });
+      }
+    }
+
+    return copiedLinks;
+  }
+
+  private buildLinkSignature(conceptId: number | null, objectType: string, propertyLabel: string, material: string): string {
+    return `${conceptId ?? -1}|${this.normalizeText(objectType)}|${this.normalizeText(propertyLabel)}|${this.normalizeText(material)}`;
+  }
+
+  private getLinkObjectType(link: VinculoConceptoBimOrm | VinculoPanel): string {
+    return 'tipo_objeto_bim' in link ? link.tipo_objeto_bim ?? '' : link.objectType;
+  }
+
+  private getLinkPropertyLabel(link: VinculoConceptoBimOrm | VinculoPanel): string {
+    return 'propiedad_cantidad_bim' in link ? link.propiedad_cantidad_bim ?? '' : link.propertyLabel;
+  }
+
+  private getLinkMaterial(link: VinculoConceptoBimOrm | VinculoPanel): string {
+    return 'material_bim' in link ? link.material_bim ?? '' : link.material;
+  }
+
+  private getLinkDescription(link: VinculoConceptoBimOrm | VinculoPanel): string {
+    return 'descripcion' in link ? link.descripcion ?? '' : link.description;
+  }
+
+  private getLinkFactor(link: VinculoConceptoBimOrm | VinculoPanel): number {
+    return 'factor_conversion' in link ? link.factor_conversion ?? 1 : link.conversionFactor ?? 1;
   }
 
   // Creates a new concept or grouping concept in the current concept structure panel.
@@ -911,6 +1218,9 @@ export class LinkingPanel implements OnChanges {
       clave: this.creatingConceptDraft.clave.trim() || `NEW-${Math.abs(newConceptId)}`,
       clave_secundaria: null,
       descripcion: this.creatingConceptDraft.descripcion.trim() || defaultDescription,
+      costo: null,
+      costo_mn: null,
+      costo_me: null,
       es_agrupador: isGroupingConcept,
       agrupador_padre_id: parentConceptId,
       unidad: isGroupingConcept ? null : this.creatingConceptDraft.unidad.trim() || null,

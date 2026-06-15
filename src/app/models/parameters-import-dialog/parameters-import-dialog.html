@@ -1,0 +1,203 @@
+@if (visible) {
+  <div class="b5d-parameters-import-dialog__backdrop" (click)="closeDialog()">
+    <section class="b5d-parameters-import-dialog" (click)="$event.stopPropagation()">
+      <header class="b5d-parameters-import-dialog__header">
+        <strong>Importar parametros desde Excel</strong>
+        @if (activeProject) {
+          <span class="b5d-parameters-import-dialog__project">Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})</span>
+        } @else {
+          <span class="b5d-parameters-import-dialog__project b5d-parameters-import-dialog__muted">Sin proyecto activo</span>
+        }
+      </header>
+
+      <div class="b5d-parameters-import-dialog__body">
+        <label class="b5d-parameters-import-dialog__field">
+          <span>Archivo Excel</span>
+          <div class="b5d-parameters-import-dialog__file-row">
+            <input
+              type="text"
+              class="b5d-parameters-import-dialog__input b5d-parameters-import-dialog__input--file"
+              [value]="workbookFileName || 'Selecciona un archivo .xlsx o .xlsm'"
+              readonly
+            />
+            <label class="b5d-parameters-import-dialog__file-button" [class.b5d-parameters-import-dialog__file-button--disabled]="importInProgress || loading">
+              Elegir archivo
+              <input
+                type="file"
+                accept=".xlsx,.xlsm"
+                [disabled]="importInProgress || loading"
+                (change)="handleFileChange($event)"
+              />
+            </label>
+          </div>
+          <div class="b5d-parameters-import-dialog__hint">
+            El asistente busca encabezados de columnas y permite ajustar el mapeo antes de importar.
+          </div>
+        </label>
+
+        @if (workbookError) {
+          <div class="b5d-parameters-import-dialog__message b5d-parameters-import-dialog__message--error">{{ workbookError }}</div>
+        }
+
+        @if (currentSheet) {
+          <section class="b5d-parameters-import-dialog__section">
+            <div class="b5d-parameters-import-dialog__section-title">Deteccion de tabla</div>
+
+            <div class="b5d-parameters-import-dialog__two-columns">
+              <label class="b5d-parameters-import-dialog__field">
+                <span>Hoja</span>
+                <select
+                  class="b5d-parameters-import-dialog__input"
+                  [ngModel]="selectedSheetIndex"
+                  name="sheetIndex"
+                  (ngModelChange)="selectSheet($event)"
+                >
+                  @for (sheet of sheetStates; track sheet.index) {
+                    <option [ngValue]="sheet.index">{{ sheet.name }}</option>
+                  }
+                </select>
+              </label>
+
+              <label class="b5d-parameters-import-dialog__field">
+                <span>Fila de encabezados</span>
+                <select
+                  class="b5d-parameters-import-dialog__input"
+                  [ngModel]="selectedHeaderCandidateRowNumber"
+                  name="headerRow"
+                  (ngModelChange)="selectHeaderCandidate($event)"
+                >
+                  @if (!selectedHeaderCandidates.length) {
+                    <option [ngValue]="selectedHeaderCandidateRowNumber ?? 1">Fila {{ selectedHeaderCandidateRowNumber ?? 1 }}</option>
+                  }
+                  @for (candidate of selectedHeaderCandidates; track candidate.rowNumber) {
+                    <option [ngValue]="candidate.rowNumber">
+                      Fila {{ candidate.rowNumber }} - {{ getHeaderCandidateSnippet(candidate) || 'Sin encabezado' }}
+                    </option>
+                  }
+                </select>
+              </label>
+            </div>
+
+            <div class="b5d-parameters-import-dialog__hint">
+              {{ mappingSummary }}. La fila seleccionada se usa para detectar las columnas.
+            </div>
+          </section>
+
+          <section class="b5d-parameters-import-dialog__section">
+            <div class="b5d-parameters-import-dialog__section-title">Mapeo de columnas</div>
+            <div class="b5d-parameters-import-dialog__mapping-grid">
+              @for (field of fieldDefinitions; track field.key) {
+                <div class="b5d-parameters-import-dialog__mapping-row">
+                  <div class="b5d-parameters-import-dialog__mapping-label">
+                    <span>{{ field.label }}</span>
+                    @if (field.required) {
+                      <small>Obligatorio</small>
+                    }
+                  </div>
+                  <select
+                    class="b5d-parameters-import-dialog__input"
+                    [ngModel]="fieldMappings[field.key]"
+                    [name]="'mapping-' + field.key"
+                    (ngModelChange)="setFieldMapping(field.key, $event)"
+                  >
+                    <option [ngValue]="null">No usar / valor por defecto</option>
+                    @for (column of selectedColumns; track column.index) {
+                      <option [ngValue]="column.index">
+                        {{ column.letter }} - {{ column.header || 'Sin encabezado' }}
+                      </option>
+                    }
+                  </select>
+                  <small class="b5d-parameters-import-dialog__mapping-sample">
+                    Muestra: {{ getFieldMappingSample(field.key) }}
+                  </small>
+                </div>
+              }
+            </div>
+          </section>
+
+          <section class="b5d-parameters-import-dialog__section">
+            <div class="b5d-parameters-import-dialog__section-title">Columnas detectadas</div>
+            <div class="b5d-parameters-import-dialog__table-wrapper">
+              <table class="b5d-parameters-import-dialog__table">
+                <thead>
+                  <tr>
+                    <th>Columna</th>
+                    <th>Encabezado</th>
+                    <th>Muestra</th>
+                    <th>Sugerencia</th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  @for (column of selectedColumns; track column.index) {
+                    <tr>
+                      <td>{{ column.letter }}</td>
+                      <td>{{ column.header || 'Sin encabezado' }}</td>
+                      <td>{{ column.sample || '-' }}</td>
+                      <td>{{ getFieldDefinitionLabel(column.suggestedField) }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="4" class="b5d-parameters-import-dialog__table-empty">No se detectaron columnas utilizables.</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="b5d-parameters-import-dialog__section">
+            <div class="b5d-parameters-import-dialog__section-title">Vista previa</div>
+            <div class="b5d-parameters-import-dialog__table-wrapper b5d-parameters-import-dialog__table-wrapper--wide">
+              <table class="b5d-parameters-import-dialog__table">
+                <thead>
+                  <tr>
+                    <th>Fila</th>
+                    @for (field of fieldDefinitions; track field.key) {
+                      <th>{{ field.label }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of previewRows; track row.rowNumber) {
+                    <tr>
+                      <td>{{ row.rowNumber }}</td>
+                      @for (field of fieldDefinitions; track field.key) {
+                        <td>{{ row.values[field.key] || '-' }}</td>
+                      }
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td [attr.colspan]="fieldDefinitions.length + 1" class="b5d-parameters-import-dialog__table-empty">
+                        No hay filas de datos después del encabezado seleccionado.
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
+        @if (validationMessage) {
+          <div class="b5d-parameters-import-dialog__message">{{ validationMessage }}</div>
+        }
+
+        @if (importMessage) {
+          <div class="b5d-parameters-import-dialog__message b5d-parameters-import-dialog__message--success">{{ importMessage }}</div>
+        }
+      </div>
+
+      <footer class="b5d-parameters-import-dialog__footer">
+        <button type="button" class="b5d-parameters-import-dialog__button" (click)="closeDialog()" [disabled]="importInProgress">Cancelar</button>
+        <button
+          type="button"
+          class="b5d-parameters-import-dialog__button b5d-parameters-import-dialog__button--primary"
+          (click)="importParameters()"
+          [disabled]="!canImport"
+        >
+          {{ importInProgress ? 'Importando...' : 'Importar parametros' }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}

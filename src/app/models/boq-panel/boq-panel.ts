@@ -1,9 +1,28 @@
-import { ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import { XlsxPreview } from '../xlsx-preview/xlsx-preview';
+import type { ToolbarActionId } from '../toolbar/toolbar';
+import type { HomeToolbarState } from '../../types/home-toolbar';
+import {
+  applyTableFilters,
+  createDefaultTableViewPreferences,
+  ensureTablePreferencesColumns,
+  getFilterModesForKind,
+  getVisibleColumns,
+  loadTableViewPreferences,
+  reorderTableColumn,
+  resetTableViewPreferences,
+  saveTableViewPreferences,
+  setTableFilterMode,
+  setTableFilterValue,
+  toggleTableColumnVisibility,
+  type TableColumnDefinition,
+  type TableViewPreferences,
+} from '../../utils/table-view/table-view';
 import type {
   CuantificacionB5DOrm,
   ProyectoTrabajoOrm,
@@ -15,10 +34,12 @@ type QuantificationGroupRow = {
   items: CuantificacionB5DOrm[];
 };
 
+type QuantificationTableColumnKey = 'tipo' | 'nombre' | 'descripcion' | 'comentarios' | 'fecha';
+
 
 @Component({
   selector: 'app-boq-panel',
-  imports: [ResizableTableDirective, XlsxPreview],
+  imports: [FormsModule, ResizableTableDirective, XlsxPreview],
   templateUrl: './boq-panel.html',
   styleUrl: './boq-panel.scss',
 })
@@ -26,9 +47,66 @@ export class BoqPanel implements OnChanges, OnDestroy {
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() cuantificacionesB5d: CuantificacionB5DOrm[] = [];
   @Input() b5dLoading = false;
+  @Input() tableFiltersVisible = false;
+  @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
+
+  readonly quantificationTableColumns: TableColumnDefinition<CuantificacionB5DOrm>[] = [
+    {
+      key: 'tipo',
+      label: 'Tipo',
+      kind: 'number',
+      widthPx: 120,
+      getValue: (row) => row.tipo,
+    },
+    {
+      key: 'nombre',
+      label: 'Nombre',
+      kind: 'text',
+      widthPx: 200,
+      getValue: (row) => row.nombre ?? '',
+    },
+    {
+      key: 'descripcion',
+      label: 'Descripcion',
+      kind: 'text',
+      widthPx: 260,
+      getValue: (row) => row.descripcion ?? '',
+    },
+    {
+      key: 'comentarios',
+      label: 'Comentarios',
+      kind: 'text',
+      widthPx: 260,
+      getValue: (row) => row.comentarios ?? '',
+    },
+    {
+      key: 'fecha',
+      label: 'Fecha',
+      kind: 'date',
+      widthPx: 170,
+      getValue: (row) => row.fecha ?? '',
+    },
+  ];
+  private readonly quantificationTableDefaults = createDefaultTableViewPreferences(
+    this.quantificationTableColumns.map((column) => ({
+      key: column.key,
+      hiddenByDefault: column.hiddenByDefault,
+    })),
+  );
+  private readonly quantificationTableStorageKey = 'boq-panel';
+  quantificationTablePreferences: TableViewPreferences = loadTableViewPreferences(
+    this.quantificationTableStorageKey,
+    this.quantificationTableDefaults,
+  );
 
   leftPanelWidth = 420;
+  boqTableContextMenuVisible = false;
+  boqTableContextMenuX = 0;
+  boqTableContextMenuY = 0;
+  boqTableRefreshToken = 0;
   cuantificacionSeleccionadaId: number | null = null;
+  workQuantifications: CuantificacionB5DOrm[] = [];
+  savingQuantificationRowById = new Set<number>();
   workbookLoading = false;
   workbookUploadInProgress = false;
   workbookSavingChanges = false;
@@ -58,11 +136,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
   // Keeps selection and workbook preview synchronized when backend rows change.
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['cuantificacionesB5d']) {
+      this.workQuantifications = this.cuantificacionesB5d.map((quantification) => ({ ...quantification }));
       const selectedId = this.cuantificacionSeleccionadaId;
-      const selectedStillExists = selectedId != null && this.cuantificacionesB5d.some((item) => item.id === selectedId);
+      const selectedStillExists = selectedId != null && this.workQuantifications.some((item) => item.id === selectedId);
       if (!selectedStillExists) {
-        this.cuantificacionSeleccionadaId = this.cuantificacionesB5d[0]?.id ?? null;
+        this.cuantificacionSeleccionadaId = this.workQuantifications[0]?.id ?? null;
       }
+      this.syncQuantificationTablePreferences();
       void this.loadSelectedWorkbookPreview();
     }
   }
@@ -72,14 +152,18 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   get cuantificacionSeleccionada(): CuantificacionB5DOrm | null {
     if (this.cuantificacionSeleccionadaId == null) {
-      return this.cuantificacionesB5d[0] ?? null;
+      return this.workQuantifications[0] ?? null;
     }
-    return this.cuantificacionesB5d.find((item) => item.id === this.cuantificacionSeleccionadaId) ?? null;
+    return this.workQuantifications.find((item) => item.id === this.cuantificacionSeleccionadaId) ?? null;
   }
 
   seleccionarCuantificacion(id: number): void {
     this.cuantificacionSeleccionadaId = id;
     void this.loadSelectedWorkbookPreview();
+  }
+
+  triggerHomeAction(_action: ToolbarActionId): void {
+    // The BOQ panel does not have additional Home actions beyond refresh/reset.
   }
 
   // Opens the local file picker to upload a replacement workbook.
@@ -323,9 +407,17 @@ export class BoqPanel implements OnChanges, OnDestroy {
     return this.cuantificacionSeleccionada?.tiene_libro_excel ? 'Si' : 'No';
   }
 
+  get visibleQuantificationColumns(): TableColumnDefinition<CuantificacionB5DOrm>[] {
+    return getVisibleColumns(this.quantificationTableColumns, this.quantificationTablePreferences);
+  }
+
+  get quantificationsForTable(): CuantificacionB5DOrm[] {
+    return applyTableFilters(this.workQuantifications, this.quantificationTableColumns, this.quantificationTablePreferences);
+  }
+
   get groupedQuantifications(): QuantificationGroupRow[] {
     const groupedRows = new Map<string, CuantificacionB5DOrm[]>();
-    for (const quantification of this.cuantificacionesB5d) {
+    for (const quantification of this.quantificationsForTable) {
       const groupName = (quantification.grupo || '').trim() || 'Sin grupo';
       if (!groupedRows.has(groupName)) {
         groupedRows.set(groupName, []);
@@ -385,9 +477,132 @@ export class BoqPanel implements OnChanges, OnDestroy {
     return `${this.leftPanelWidth}px 8px minmax(0, 1fr)`;
   }
 
+  resetTableViews(): void {
+    this.leftPanelWidth = 420;
+    this.resetQuantificationTablePreferences();
+    this.resetQuantificationTableWidths();
+  }
+
+  openBoqTableContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.boqTableContextMenuVisible = true;
+    this.boqTableContextMenuX = event.clientX;
+    this.boqTableContextMenuY = event.clientY;
+  }
+
+  closeBoqTableContextMenu(): void {
+    this.boqTableContextMenuVisible = false;
+  }
+
+  handleBoqTableContextMenuAction(action: 'chooser' | 'filters' | 'best-fit' | 'reset'): void {
+    if (action === 'chooser') {
+      this.toggleQuantificationTableChooser();
+    } else if (action === 'filters') {
+      this.toggleQuantificationFiltersVisible();
+    } else if (action === 'best-fit') {
+      this.resetQuantificationTableWidths();
+    } else if (action === 'reset') {
+      this.resetTableViews();
+    }
+    this.closeBoqTableContextMenu();
+  }
+
+  toggleQuantificationTableChooser(): void {
+    this.quantificationTablePreferences.chooserOpen = !this.quantificationTablePreferences.chooserOpen;
+    this.persistQuantificationTablePreferences();
+  }
+
+  toggleQuantificationFiltersVisible(): void {
+    this.tableFiltersVisible = !this.tableFiltersVisible;
+    this.toolbarStateChange.emit({
+      activeBottomTab: 'boq',
+      activePanel: 'concepts',
+      linksViewVisible: false,
+      conceptsTotal: 0,
+      objectsTotal: 0,
+      linksTotal: 0,
+      selectedConceptIds: [],
+      selectedNonGroupingConceptIds: [],
+      selectedObjectIds: [],
+      selectedLinkIds: [],
+      canPasteConcept: false,
+      selectedCatalogId: null,
+      tableFiltersVisible: this.tableFiltersVisible,
+    });
+  }
+
+  isQuantificationTableColumnVisible(columnKey: string): boolean {
+    return !this.quantificationTablePreferences.hidden.includes(columnKey);
+  }
+
+  toggleQuantificationTableColumnVisibility(columnKey: string): void {
+    toggleTableColumnVisibility(this.quantificationTablePreferences, columnKey);
+    this.persistQuantificationTablePreferences();
+  }
+
+  moveQuantificationTableColumn(columnKey: string, direction: 'left' | 'right'): void {
+    reorderTableColumn(this.quantificationTablePreferences, columnKey, direction);
+    this.persistQuantificationTablePreferences();
+  }
+
+  getQuantificationFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
+    const column = this.quantificationTableColumns.find((columnItem) => columnItem.key === columnKey);
+    return column ? getFilterModesForKind(column.kind) : getFilterModesForKind('text');
+  }
+
+  getQuantificationFilterMode(columnKey: string): string {
+    return this.quantificationTablePreferences.filters[columnKey]?.mode ?? 'contains';
+  }
+
+  getQuantificationFilterValue(columnKey: string): string {
+    return this.quantificationTablePreferences.filters[columnKey]?.value ?? '';
+  }
+
+  setQuantificationFilterMode(columnKey: string, mode: string): void {
+    setTableFilterMode(this.quantificationTablePreferences, columnKey, mode as never);
+    this.persistQuantificationTablePreferences();
+  }
+
+  setQuantificationFilterValue(columnKey: string, value: string): void {
+    setTableFilterValue(this.quantificationTablePreferences, columnKey, value);
+    this.persistQuantificationTablePreferences();
+  }
+
+  isQuantificationTableLastColumn(columnKey: string): boolean {
+    return this.visibleQuantificationColumns.at(-1)?.key === columnKey;
+  }
+
+  async saveQuantificationRow(quantificationRow: CuantificacionB5DOrm): Promise<void> {
+    if (!this.activeProject) return;
+    if (this.savingQuantificationRowById.has(quantificationRow.id)) return;
+    this.savingQuantificationRowById.add(quantificationRow.id);
+    try {
+      const updated = await firstValueFrom(
+        this.backendProyectos.actualizarCuantificacion(this.activeProject.id, quantificationRow.id, {
+          nombre: quantificationRow.nombre ?? null,
+          descripcion: quantificationRow.descripcion ?? null,
+          comentarios: quantificationRow.comentarios ?? null,
+          grupo: quantificationRow.grupo ?? null,
+          tipo: quantificationRow.tipo ?? null,
+          calculada: quantificationRow.calculada,
+        }),
+      );
+      this.workQuantifications = this.workQuantifications.map((quantification) =>
+        quantification.id === updated.id ? { ...quantification, ...updated } : quantification,
+      );
+      this.replaceQuantificationRow(updated);
+      this.workbookPreviewCache.clearQuantification(this.activeProject.id, updated.id);
+    } catch {
+      this.workbookError = 'No se pudo guardar la cuantificacion.';
+    } finally {
+      this.savingQuantificationRowById.delete(quantificationRow.id);
+    }
+  }
+
   // Keeps the quantification list in sync after upload/save operations.
   private replaceQuantificationRow(updatedQuantification: CuantificacionB5DOrm): void {
-    this.cuantificacionesB5d = this.cuantificacionesB5d.map((quantification) =>
+    this.workQuantifications = this.workQuantifications.map((quantification) =>
       quantification.id === updatedQuantification.id
         ? {
             ...quantification,
@@ -395,6 +610,31 @@ export class BoqPanel implements OnChanges, OnDestroy {
           }
         : quantification,
     );
+  }
+
+  private syncQuantificationTablePreferences(): void {
+    ensureTablePreferencesColumns(this.quantificationTablePreferences, this.quantificationTableColumns);
+    this.persistQuantificationTablePreferences();
+  }
+
+  private persistQuantificationTablePreferences(): void {
+    saveTableViewPreferences(this.quantificationTableStorageKey, this.quantificationTablePreferences);
+  }
+
+  get quantificationTableResizableStorageKey(): string {
+    return `${this.quantificationTableStorageKey}:${this.quantificationTablePreferences.order.join('|')}:${this.quantificationTablePreferences.hidden.join('|')}`;
+  }
+
+  resetQuantificationTablePreferences(): void {
+    resetTableViewPreferences(this.quantificationTablePreferences, this.quantificationTableDefaults);
+    this.persistQuantificationTablePreferences();
+  }
+
+  resetQuantificationTableWidths(): void {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`b5d-resizable-table:${this.quantificationTableResizableStorageKey}`);
+    }
+    this.boqTableRefreshToken += 1;
   }
 
   // Recomputes the preview view after zoom controls change the scale.

@@ -4,7 +4,25 @@ import { firstValueFrom } from 'rxjs';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
+import {
+  applyTableFilters,
+  createDefaultTableViewPreferences,
+  ensureTablePreferencesColumns,
+  getFilterModesForKind,
+  getVisibleColumns,
+  loadTableViewPreferences,
+  reorderTableColumn,
+  resetTableViewPreferences,
+  saveTableViewPreferences,
+  setTableFilterMode,
+  setTableFilterValue,
+  toggleTableColumnVisibility,
+  type TableColumnDefinition,
+  type TableViewPreferences,
+} from '../../utils/table-view/table-view';
 import type {
+  CatalogoB5DOrm,
+  ConceptoB5DOrm,
   CuantificacionB5DOrm,
   ParametroB5DOrm,
   ProyectoTrabajoOrm,
@@ -43,6 +61,7 @@ type BoqAnalysisRow = BoqExtractedRow & {
   matchedParameterCode: string;
   matchedParameterDescription: string;
   matchedParameterUnit: string;
+  evaluatedText: string;
   rangeText: string;
   deltaText: string;
   resultText: string;
@@ -56,6 +75,31 @@ type DescriptionMatchCandidateGroup = {
   candidates: BoqExtractedRow[];
 };
 
+type CostMatchCandidateGroup = {
+  parameterId: number;
+  parameterCode: string;
+  parameterDescription: string;
+  candidates: {
+    id: number;
+    clave: string;
+    descripcion: string;
+    unidad: string;
+    costo: number | null;
+  }[];
+};
+
+type ParameterTableColumnKey =
+  | 'activo'
+  | 'clave'
+  | 'descripcion'
+  | 'tipo_comparacion'
+  | 'tipo_parametro'
+  | 'tipo_edificacion'
+  | 'unidad'
+  | 'minimo'
+  | 'maximo'
+  | 'promedio';
+
 @Component({
   selector: 'app-parameters-panel',
   imports: [FormsModule, ResizableTableDirective, XlsxPreview],
@@ -65,11 +109,99 @@ type DescriptionMatchCandidateGroup = {
 export class ParametersPanel implements OnChanges {
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() parameters: ParametroB5DOrm[] = [];
+  @Input() concepts: ConceptoB5DOrm[] = [];
+  @Input() catalogs: CatalogoB5DOrm[] = [];
+  @Input() activeCatalogId: number | null = null;
   @Input() b5dLoading = false;
+  @Input() tableFiltersVisible = false;
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
   @Output() rowsChange = new EventEmitter<ParametroB5DOrm[]>();
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
+
+  readonly parameterTableColumns: TableColumnDefinition<ParametroB5DOrm>[] = [
+    {
+      key: 'activo',
+      label: 'Activo',
+      kind: 'boolean',
+      widthPx: 72,
+      getValue: (row) => row.activo,
+    },
+    {
+      key: 'clave',
+      label: 'Clave',
+      kind: 'text',
+      widthPx: 160,
+      getValue: (row) => row.clave ?? '',
+    },
+    {
+      key: 'descripcion',
+      label: 'Descripcion',
+      kind: 'text',
+      widthPx: 260,
+      getValue: (row) => row.descripcion ?? '',
+    },
+    {
+      key: 'tipo_comparacion',
+      label: 'Comparacion',
+      kind: 'select',
+      widthPx: 150,
+      getValue: (row) => row.tipo_comparacion,
+    },
+    {
+      key: 'tipo_parametro',
+      label: 'Tipo',
+      kind: 'select',
+      widthPx: 120,
+      getValue: (row) => row.tipo_parametro,
+    },
+    {
+      key: 'tipo_edificacion',
+      label: 'Edificacion',
+      kind: 'text',
+      widthPx: 160,
+      getValue: (row) => row.tipo_edificacion ?? '',
+    },
+    {
+      key: 'unidad',
+      label: 'Unidad',
+      kind: 'text',
+      widthPx: 110,
+      getValue: (row) => row.unidad ?? '',
+    },
+    {
+      key: 'minimo',
+      label: 'Minimo',
+      kind: 'number',
+      widthPx: 110,
+      getValue: (row) => row.minimo,
+    },
+    {
+      key: 'maximo',
+      label: 'Maximo',
+      kind: 'number',
+      widthPx: 110,
+      getValue: (row) => row.maximo,
+    },
+    {
+      key: 'promedio',
+      label: 'Promedio',
+      kind: 'number',
+      widthPx: 110,
+      getValue: (row) => row.promedio,
+    },
+  ];
+  private readonly parameterTableDefaults = createDefaultTableViewPreferences(
+    this.parameterTableColumns.map((column) => ({
+      key: column.key,
+      hiddenByDefault: column.hiddenByDefault,
+    })),
+  );
+  private readonly parameterTableStorageKey = 'parameters-panel';
+  parameterTablePreferences: TableViewPreferences = loadTableViewPreferences(
+    this.parameterTableStorageKey,
+    this.parameterTableDefaults,
+  );
 
   selectedParameterType: TipoParametroOrm | 'all' = 'all';
   selectedBuildingType = 'all';
@@ -90,6 +222,8 @@ export class ParametersPanel implements OnChanges {
   boqError = '';
   savingParameterActiveById = new Set<number>();
   descriptionSelectionByParameterId = new Map<number, Set<string>>();
+  costConceptSelectionByParameterId = new Map<number, number>();
+  selectedCostCatalogId: number | null = null;
   parameterListVisible = true;
   boqPreviewVisible = true;
   descriptionMatchesVisible = true;
@@ -97,6 +231,10 @@ export class ParametersPanel implements OnChanges {
   topLeftPaneWidth = 540;
   bottomLeftPaneWidth = 420;
   topWorkspaceHeight = 390;
+  parameterTableContextMenuVisible = false;
+  parameterTableContextMenuX = 0;
+  parameterTableContextMenuY = 0;
+  parameterTableRefreshToken = 0;
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
@@ -108,6 +246,20 @@ export class ParametersPanel implements OnChanges {
         [...this.selectedParameterIds].filter((parameterId) => this.workParameters.some((row) => row.id === parameterId)),
       );
       this.synchronizeDescriptionSelections();
+      this.synchronizeCostSelections();
+      this.syncParameterTablePreferences();
+      this.emitToolbarState();
+    }
+
+    if (changes['activeCatalogId'] || changes['concepts']) {
+      this.syncCostCatalogSelection();
+      this.synchronizeCostSelections();
+      this.emitToolbarState();
+    }
+
+    if (changes['catalogs']) {
+      this.syncCostCatalogSelection();
+      this.synchronizeCostSelections();
       this.emitToolbarState();
     }
 
@@ -148,7 +300,10 @@ export class ParametersPanel implements OnChanges {
   }
 
   get bottomRowTemplateColumns(): string {
-    if (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0 && this.analysisVisible) {
+    const hasMatchPanels =
+      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
+      this.costMatchCandidateGroups.length > 0;
+    if (hasMatchPanels && this.analysisVisible) {
       return `${this.bottomLeftPaneWidth}px 8px minmax(0, 1fr)`;
     }
     return 'minmax(0, 1fr)';
@@ -159,7 +314,11 @@ export class ParametersPanel implements OnChanges {
   }
 
   get bottomWorkspaceVisible(): boolean {
-    return (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) || this.analysisVisible;
+    return (
+      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
+      this.costMatchCandidateGroups.length > 0 ||
+      this.analysisVisible
+    );
   }
 
   get showTopVerticalSplitter(): boolean {
@@ -167,7 +326,10 @@ export class ParametersPanel implements OnChanges {
   }
 
   get showBottomVerticalSplitter(): boolean {
-    return this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0 && this.analysisVisible;
+    const hasMatchPanels =
+      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
+      this.costMatchCandidateGroups.length > 0;
+    return hasMatchPanels && this.analysisVisible;
   }
 
   get showHorizontalSplitter(): boolean {
@@ -184,15 +346,58 @@ export class ParametersPanel implements OnChanges {
   }
 
   get visibleRows(): ParametroB5DOrm[] {
-    return this.workParameters.filter((row) => {
+    const filteredByToolbar = this.workParameters.filter((row) => {
       if (this.selectedParameterType !== 'all' && row.tipo_parametro !== this.selectedParameterType) return false;
       if (this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) return false;
       return true;
     });
+    return applyTableFilters(filteredByToolbar, this.parameterTableColumns, this.parameterTablePreferences);
+  }
+
+  get visibleParameterColumns(): TableColumnDefinition<ParametroB5DOrm>[] {
+    return getVisibleColumns(this.parameterTableColumns, this.parameterTablePreferences);
   }
 
   get activeParametersForAnalysis(): ParametroB5DOrm[] {
     return this.visibleRows.filter((row) => row.activo);
+  }
+
+  get activeConceptsForAnalysis(): ConceptoB5DOrm[] {
+    if (this.activeCatalogId == null) return this.concepts;
+    return this.concepts.filter((row) => row.catalogo_id === this.activeCatalogId);
+  }
+
+  get availableCostCatalogs(): CatalogoB5DOrm[] {
+    if (this.catalogs.length) return this.catalogs;
+
+    const seenCatalogIds = new Set<number>();
+    const fallbackCatalogs: CatalogoB5DOrm[] = [];
+    for (const conceptRow of this.concepts) {
+      const catalogId = conceptRow.catalogo_id;
+      if (catalogId == null || seenCatalogIds.has(catalogId)) continue;
+      seenCatalogIds.add(catalogId);
+      fallbackCatalogs.push({
+        id: catalogId,
+        identificador_original: null,
+        nombre: `Catalogo ${catalogId}`,
+        descripcion: null,
+        grupo_cantidades_bim: null,
+        propiedad_tipo_bim: null,
+        catalogo_externo: null,
+      });
+    }
+    return fallbackCatalogs;
+  }
+
+  get selectedCostCatalogLabel(): string {
+    const selectedCatalog = this.availableCostCatalogs.find((catalog) => catalog.id === this.selectedCostCatalogId);
+    return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? 'Catalogo de costos';
+  }
+
+  private getCostConceptsForSelectedCatalog(): ConceptoB5DOrm[] {
+    const selectedCatalogId = this.selectedCostCatalogId ?? this.activeCatalogId;
+    if (selectedCatalogId == null) return this.concepts;
+    return this.concepts.filter((row) => row.catalogo_id === selectedCatalogId);
   }
 
   get boqAnalysisRows(): BoqAnalysisRow[] {
@@ -202,7 +407,6 @@ export class ParametersPanel implements OnChanges {
   get descriptionMatchCandidateGroups(): DescriptionMatchCandidateGroup[] {
     const groups: DescriptionMatchCandidateGroup[] = [];
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'cantidad') continue;
       if (parameterRow.tipo_comparacion !== 'descripcion_parcial') continue;
       const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
       if (!normalizedDescription) continue;
@@ -215,6 +419,28 @@ export class ParametersPanel implements OnChanges {
         parameterCode: parameterRow.clave ?? '-',
         parameterDescription: parameterRow.descripcion ?? '-',
         candidates,
+      });
+    }
+    return groups;
+  }
+
+  get costMatchCandidateGroups(): CostMatchCandidateGroup[] {
+    const groups: CostMatchCandidateGroup[] = [];
+    for (const parameterRow of this.activeParametersForAnalysis) {
+      if (parameterRow.tipo_parametro !== 'costo') continue;
+      const candidates = this.getCostCandidateConcepts(parameterRow);
+      if (!candidates.length) continue;
+      groups.push({
+        parameterId: parameterRow.id,
+        parameterCode: parameterRow.clave ?? '-',
+        parameterDescription: parameterRow.descripcion ?? '-',
+        candidates: candidates.map((conceptRow) => ({
+          id: conceptRow.id,
+          clave: conceptRow.clave ?? '-',
+          descripcion: conceptRow.descripcion ?? '-',
+          unidad: conceptRow.unidad ?? '-',
+          costo: this.resolveConceptUnitCost(conceptRow),
+        })),
       });
     }
     return groups;
@@ -300,6 +526,127 @@ export class ParametersPanel implements OnChanges {
     this.emitToolbarState();
   }
 
+  resetTableViews(): void {
+    this.selectedParameterType = 'all';
+    this.selectedBuildingType = 'all';
+    this.resetParameterTableViews();
+    this.parameterListVisible = true;
+    this.boqPreviewVisible = true;
+    this.descriptionMatchesVisible = true;
+    this.analysisVisible = true;
+    this.topLeftPaneWidth = 540;
+    this.bottomLeftPaneWidth = 420;
+    this.topWorkspaceHeight = 390;
+    this.emitToolbarState();
+  }
+
+  toggleParameterTableChooser(): void {
+    this.parameterTablePreferences.chooserOpen = !this.parameterTablePreferences.chooserOpen;
+    this.persistParameterTablePreferences();
+  }
+
+  openParameterTableContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.parameterTableContextMenuVisible = true;
+    this.parameterTableContextMenuX = event.clientX;
+    this.parameterTableContextMenuY = event.clientY;
+  }
+
+  closeParameterTableContextMenu(): void {
+    this.parameterTableContextMenuVisible = false;
+  }
+
+  handleParameterTableContextMenuAction(action: 'chooser' | 'filters' | 'best-fit' | 'reset'): void {
+    if (action === 'chooser') {
+      this.toggleParameterTableChooser();
+    } else if (action === 'filters') {
+      this.toggleParameterFiltersVisible();
+    } else if (action === 'best-fit') {
+      this.resetParameterTableWidths();
+    } else if (action === 'reset') {
+      this.resetParameterTableViews();
+    }
+    this.closeParameterTableContextMenu();
+  }
+
+  isParameterTableColumnVisible(columnKey: string): boolean {
+    return !this.parameterTablePreferences.hidden.includes(columnKey);
+  }
+
+  toggleParameterTableColumnVisibility(columnKey: string): void {
+    toggleTableColumnVisibility(this.parameterTablePreferences, columnKey);
+    this.persistParameterTablePreferences();
+  }
+
+  moveParameterTableColumn(columnKey: string, direction: 'left' | 'right'): void {
+    reorderTableColumn(this.parameterTablePreferences, columnKey, direction);
+    this.persistParameterTablePreferences();
+  }
+
+  getParameterFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
+    const column = this.parameterTableColumns.find((columnItem) => columnItem.key === columnKey);
+    return column ? getFilterModesForKind(column.kind) : getFilterModesForKind('text');
+  }
+
+  getParameterFilterMode(columnKey: string): string {
+    return this.parameterTablePreferences.filters[columnKey]?.mode ?? 'contains';
+  }
+
+  getParameterFilterValue(columnKey: string): string {
+    return this.parameterTablePreferences.filters[columnKey]?.value ?? '';
+  }
+
+  isParameterTableLastColumn(columnKey: string): boolean {
+    return this.visibleParameterColumns.at(-1)?.key === columnKey;
+  }
+
+  setParameterFilterMode(columnKey: string, mode: string): void {
+    setTableFilterMode(this.parameterTablePreferences, columnKey, mode as never);
+    this.persistParameterTablePreferences();
+  }
+
+  setParameterFilterValue(columnKey: string, value: string): void {
+    setTableFilterValue(this.parameterTablePreferences, columnKey, value);
+    this.persistParameterTablePreferences();
+  }
+
+  resetParameterTablePreferences(): void {
+    resetTableViewPreferences(this.parameterTablePreferences, this.parameterTableDefaults);
+    this.persistParameterTablePreferences();
+  }
+
+  toggleParameterFiltersVisible(): void {
+    this.tableFiltersVisible = !this.tableFiltersVisible;
+    this.emitToolbarState();
+  }
+
+  resetParameterTableWidths(): void {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`b5d-resizable-table:${this.parameterTableResizableStorageKey}`);
+    }
+    this.parameterTableRefreshToken += 1;
+  }
+
+  resetParameterTableViews(): void {
+    this.resetParameterTablePreferences();
+    this.resetParameterTableWidths();
+  }
+
+  private syncCostCatalogSelection(): void {
+    const availableCatalogIds = new Set(this.availableCostCatalogs.map((catalog) => catalog.id));
+    if (this.selectedCostCatalogId != null && availableCatalogIds.has(this.selectedCostCatalogId)) {
+      return;
+    }
+
+    if (this.activeCatalogId != null && availableCatalogIds.has(this.activeCatalogId)) {
+      this.selectedCostCatalogId = this.activeCatalogId;
+      return;
+    }
+
+    this.selectedCostCatalogId = this.availableCostCatalogs[0]?.id ?? null;
+  }
+
   startInternalResize(
     event: PointerEvent,
     target: 'top-vertical' | 'bottom-vertical' | 'horizontal',
@@ -357,6 +704,12 @@ export class ParametersPanel implements OnChanges {
     this.emitToolbarState();
   }
 
+  onCostCatalogChange(catalogId: number | null): void {
+    this.selectedCostCatalogId = catalogId;
+    this.synchronizeCostSelections();
+    this.emitToolbarState();
+  }
+
   async onParameterActiveToggle(parameterRow: ParametroB5DOrm, nextValue: boolean): Promise<void> {
     if (!this.activeProject) return;
     if (this.savingParameterActiveById.has(parameterRow.id)) return;
@@ -390,6 +743,46 @@ export class ParametersPanel implements OnChanges {
     return this.savingParameterActiveById.has(parameterId);
   }
 
+  async saveParameterRow(parameterRow: ParametroB5DOrm): Promise<void> {
+    if (!this.activeProject) return;
+    if (this.savingParameterActiveById.has(parameterRow.id)) return;
+    this.actionError = '';
+    this.savingParameterActiveById.add(parameterRow.id);
+
+    try {
+      const updated = await firstValueFrom(
+        this.backendProyectos.actualizarParametro(this.activeProject.id, parameterRow.id, {
+          clave: parameterRow.clave ?? null,
+          descripcion: parameterRow.descripcion ?? null,
+          tipo_comparacion: parameterRow.tipo_comparacion,
+          tipo_parametro: parameterRow.tipo_parametro,
+          tipo_edificacion: parameterRow.tipo_edificacion ?? null,
+          unidad: parameterRow.unidad ?? null,
+          minimo: parameterRow.minimo,
+          maximo: parameterRow.maximo,
+          promedio: parameterRow.promedio,
+          activo: parameterRow.activo,
+        }),
+      );
+      this.workParameters = this.workParameters.map((row) => (row.id === updated.id ? { ...updated } : row));
+      this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
+      this.synchronizeDescriptionSelections();
+      this.emitToolbarState();
+    } catch (error) {
+      this.actionError = this.resolveErrorMessage(error, 'No fue posible actualizar el parametro.');
+    } finally {
+      this.savingParameterActiveById.delete(parameterRow.id);
+    }
+  }
+
+  parseOptionalNumber(value: unknown): number | null {
+    if (value == null) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    const numericValue = Number(normalized.replace(',', '.'));
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
   isDescriptionCandidateSelected(parameterId: number, boqRow: BoqExtractedRow): boolean {
     const selectedRows = this.descriptionSelectionByParameterId.get(parameterId);
     if (!selectedRows) return false;
@@ -405,6 +798,15 @@ export class ParametersPanel implements OnChanges {
       selectedRows.delete(rowKey);
     }
     this.descriptionSelectionByParameterId.set(parameterId, selectedRows);
+  }
+
+  isCostConceptSelected(parameterId: number, conceptId: number): boolean {
+    return this.costConceptSelectionByParameterId.get(parameterId) === conceptId;
+  }
+
+  onCostConceptToggle(parameterId: number, conceptId: number): void {
+    this.costConceptSelectionByParameterId.set(parameterId, conceptId);
+    this.emitToolbarState();
   }
 
   startInlineCreate(): void {
@@ -515,8 +917,9 @@ export class ParametersPanel implements OnChanges {
   }
 
   formatValue(value: number | null): string {
-    if (value == null || !Number.isFinite(value)) return '-';
-    return Number(value).toLocaleString('es-MX', { maximumFractionDigits: 4 });
+    const numericValue = this.parseNumericLikeValue(value);
+    if (numericValue == null) return '-';
+    return numericValue.toLocaleString('es-MX', { maximumFractionDigits: 4 });
   }
 
   getAnalysisResultClass(kind: BoqAnalysisRow['resultKind']): string {
@@ -539,14 +942,28 @@ export class ParametersPanel implements OnChanges {
       selectedObjectIds: [],
       selectedLinkIds: [],
       canPasteConcept: false,
-      selectedCatalogId: null,
+      selectedCatalogId: this.activeCatalogId,
       parametersTotal: this.visibleRows.length,
       selectedParameterIds: [...this.selectedParameterIds],
       parameterListVisible: this.parameterListVisible,
       parameterBoqVisible: this.boqPreviewVisible,
       parameterDescriptionMatchesVisible: this.descriptionMatchesVisible,
       parameterAnalysisVisible: this.analysisVisible,
+      tableFiltersVisible: this.tableFiltersVisible,
     });
+  }
+
+  private syncParameterTablePreferences(): void {
+    ensureTablePreferencesColumns(this.parameterTablePreferences, this.parameterTableColumns);
+    this.persistParameterTablePreferences();
+  }
+
+  private persistParameterTablePreferences(): void {
+    saveTableViewPreferences(this.parameterTableStorageKey, this.parameterTablePreferences);
+  }
+
+  get parameterTableResizableStorageKey(): string {
+    return `${this.parameterTableStorageKey}:${this.parameterTablePreferences.order.join('|')}:${this.parameterTablePreferences.hidden.join('|')}`;
   }
 
   private getEmptyDraft(): ParameterDraftRow {
@@ -625,6 +1042,7 @@ export class ParametersPanel implements OnChanges {
       const layers = await this.workbookPreviewCache.getWorkbookSheetLayers(projectId, quantificationId, this.selectedSheetIndex);
       this.boqRows = this.extractBoqRows(layers.cells);
       this.synchronizeDescriptionSelections();
+      this.synchronizeCostSelections();
     } catch (error) {
       this.boqRows = [];
       this.boqError = this.resolveErrorMessage(error, 'No fue posible extraer los datos BOQ.');
@@ -723,11 +1141,16 @@ export class ParametersPanel implements OnChanges {
         matchedParameterCode: '-',
         matchedParameterDescription: '-',
         matchedParameterUnit: '-',
+        evaluatedText: '-',
         rangeText: '-',
         deltaText: '-',
         resultText: 'Sin parametro',
         resultKind: 'none',
       };
+    }
+
+    if (matchedParameter.tipo_parametro === 'costo') {
+      return this.buildCostAnalysisRow(boqRow, matchedParameter);
     }
 
     const rangeMin = matchedParameter.minimo;
@@ -740,6 +1163,7 @@ export class ParametersPanel implements OnChanges {
         matchedParameterCode: matchedParameter.clave ?? '-',
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
         rangeText,
         deltaText: '-',
         resultText: 'Sin cantidad',
@@ -754,6 +1178,7 @@ export class ParametersPanel implements OnChanges {
         matchedParameterCode: matchedParameter.clave ?? '-',
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
         rangeText,
         deltaText: '-',
         resultText: 'Unidad no compatible',
@@ -770,6 +1195,7 @@ export class ParametersPanel implements OnChanges {
         matchedParameterCode: matchedParameter.clave ?? '-',
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: `${this.formatValue(convertedValue)} ${unitLabel}`,
         rangeText,
         deltaText,
         resultText: 'Fuera de rango',
@@ -782,6 +1208,7 @@ export class ParametersPanel implements OnChanges {
       matchedParameterCode: matchedParameter.clave ?? '-',
       matchedParameterDescription: matchedParameter.descripcion ?? '-',
       matchedParameterUnit: matchedParameter.unidad ?? '-',
+      evaluatedText: `${this.formatValue(convertedValue)} ${unitLabel}`,
       rangeText,
       deltaText: '+0',
       resultText: 'En rango',
@@ -798,7 +1225,6 @@ export class ParametersPanel implements OnChanges {
     const partialDescriptionMatches: ParametroB5DOrm[] = [];
 
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'cantidad') continue;
       const code = this.normalizeText(parameterRow.clave ?? '');
       const description = this.normalizeText(parameterRow.descripcion ?? '');
       if (parameterRow.tipo_comparacion === 'clave_exacta' && code && boqCode === code) {
@@ -823,6 +1249,213 @@ export class ParametersPanel implements OnChanges {
     if (partialCodeMatches.length) return partialCodeMatches[0];
     if (partialDescriptionMatches.length) return partialDescriptionMatches[0];
     return null;
+  }
+
+  private buildCostAnalysisRow(boqRow: BoqExtractedRow, matchedParameter: ParametroB5DOrm): BoqAnalysisRow {
+    const rangeMin = matchedParameter.minimo;
+    const rangeMax = matchedParameter.maximo;
+    const rangeText = `${this.formatValue(rangeMin)} - ${this.formatValue(rangeMax)}`;
+    const matchedConcept = this.resolveCostConceptForParameter(matchedParameter, boqRow);
+    if (!matchedConcept) {
+      return {
+        ...boqRow,
+        matchedParameterCode: matchedParameter.clave ?? '-',
+        matchedParameterDescription: matchedParameter.descripcion ?? '-',
+        matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
+        rangeText,
+        deltaText: '-',
+        resultText: 'Sin concepto con costo',
+        resultKind: 'warning',
+      };
+    }
+
+    const boqQuantity = boqRow.cantidad;
+    if (boqQuantity == null) {
+      return {
+        ...boqRow,
+        matchedParameterCode: matchedParameter.clave ?? '-',
+        matchedParameterDescription: matchedParameter.descripcion ?? '-',
+        matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
+        rangeText,
+        deltaText: '-',
+        resultText: 'Sin cantidad',
+        resultKind: 'warning',
+      };
+    }
+
+    const conceptQuantity = this.convertQuantityToUnit(boqQuantity, boqRow.unidad, matchedConcept.unidad ?? '');
+    if (conceptQuantity == null) {
+      return {
+        ...boqRow,
+        matchedParameterCode: matchedParameter.clave ?? '-',
+        matchedParameterDescription: matchedParameter.descripcion ?? '-',
+        matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
+        rangeText,
+        deltaText: '-',
+        resultText: 'Unidad no compatible',
+        resultKind: 'warning',
+      };
+    }
+
+    const unitCost = this.resolveConceptUnitCost(matchedConcept);
+    if (unitCost == null) {
+      return {
+        ...boqRow,
+        matchedParameterCode: matchedParameter.clave ?? '-',
+        matchedParameterDescription: matchedParameter.descripcion ?? '-',
+        matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText: '-',
+        rangeText,
+        deltaText: '-',
+        resultText: 'Sin costo en el catalogo seleccionado',
+        resultKind: 'warning',
+      };
+    }
+
+    const totalCost = conceptQuantity * unitCost;
+    const delta = this.computeRangeDelta(totalCost, rangeMin, rangeMax);
+    const unitLabel = matchedParameter.unidad?.trim() || 'u';
+    const conceptUnitLabel = matchedConcept.unidad?.trim() || boqRow.unidad?.trim() || 'u';
+    const evaluatedText = `${this.formatValue(conceptQuantity)} ${conceptUnitLabel} x ${this.formatValue(unitCost)} = ${this.formatValue(totalCost)} ${unitLabel}`;
+    const deltaText = `${delta >= 0 ? '+' : ''}${this.formatValue(delta)} ${unitLabel}`;
+    if (delta !== 0) {
+      return {
+        ...boqRow,
+        matchedParameterCode: matchedParameter.clave ?? '-',
+        matchedParameterDescription: matchedParameter.descripcion ?? '-',
+        matchedParameterUnit: matchedParameter.unidad ?? '-',
+        evaluatedText,
+        rangeText,
+        deltaText,
+        resultText: 'Fuera de rango',
+        resultKind: 'error',
+      };
+    }
+
+    return {
+      ...boqRow,
+      matchedParameterCode: matchedParameter.clave ?? '-',
+      matchedParameterDescription: matchedParameter.descripcion ?? '-',
+      matchedParameterUnit: matchedParameter.unidad ?? '-',
+      evaluatedText,
+      rangeText,
+      deltaText: '+0',
+      resultText: 'En rango',
+      resultKind: 'ok',
+    };
+  }
+
+  private findMatchingConcept(boqRow: BoqExtractedRow, concepts: ConceptoB5DOrm[] = this.activeConceptsForAnalysis): ConceptoB5DOrm | null {
+    const boqCode = this.normalizeText(boqRow.clave);
+    const boqDescription = this.normalizeText(boqRow.descripcion);
+
+    const exactMatches: ConceptoB5DOrm[] = [];
+    const partialCodeMatches: ConceptoB5DOrm[] = [];
+    const partialDescriptionMatches: ConceptoB5DOrm[] = [];
+
+    for (const conceptRow of concepts) {
+      const code = this.normalizeText(conceptRow.clave ?? '');
+      const description = this.normalizeText(conceptRow.descripcion ?? '');
+      if (code && boqCode === code) {
+        exactMatches.push(conceptRow);
+        continue;
+      }
+      if (code && boqCode.includes(code)) {
+        partialCodeMatches.push(conceptRow);
+        continue;
+      }
+      if (description && boqDescription.includes(description)) {
+        partialDescriptionMatches.push(conceptRow);
+      }
+    }
+
+    if (exactMatches.length) return exactMatches[0];
+    if (partialCodeMatches.length) return partialCodeMatches[0];
+    if (partialDescriptionMatches.length) return partialDescriptionMatches[0];
+    return null;
+  }
+
+  private resolveCostConceptForParameter(matchedParameter: ParametroB5DOrm, boqRow: BoqExtractedRow): ConceptoB5DOrm | null {
+    const selectedConceptId = this.costConceptSelectionByParameterId.get(matchedParameter.id);
+    if (selectedConceptId != null) {
+      const selectedConcept = this.getCostConceptsForSelectedCatalog().find((conceptRow) => conceptRow.id === selectedConceptId) ?? null;
+      if (selectedConcept) return selectedConcept;
+    }
+
+    const selectedCatalogConcepts = this.getCostConceptsForSelectedCatalog();
+    const matchedConcept = this.findMatchingConcept(boqRow, selectedCatalogConcepts);
+    if (matchedConcept) return matchedConcept;
+
+    const candidates = this.getCostCandidateConcepts(matchedParameter);
+    const conceptWithCost = candidates.find((conceptRow) => this.resolveConceptUnitCost(conceptRow) != null);
+    if (conceptWithCost) return conceptWithCost;
+
+    return candidates[0] ?? null;
+  }
+
+  private getCostCandidateConcepts(parameterRow: ParametroB5DOrm): ConceptoB5DOrm[] {
+    const boqCode = this.normalizeText(parameterRow.clave ?? '');
+    const boqDescription = this.normalizeText(parameterRow.descripcion ?? '');
+    const exactMatches: ConceptoB5DOrm[] = [];
+    const partialCodeMatches: ConceptoB5DOrm[] = [];
+    const partialDescriptionMatches: ConceptoB5DOrm[] = [];
+
+    for (const conceptRow of this.getCostConceptsForSelectedCatalog()) {
+      const code = this.normalizeText(conceptRow.clave ?? '');
+      const description = this.normalizeText(conceptRow.descripcion ?? '');
+      if (code && boqCode === code) {
+        exactMatches.push(conceptRow);
+        continue;
+      }
+      if (code && boqCode.includes(code)) {
+        partialCodeMatches.push(conceptRow);
+        continue;
+      }
+      if (description && boqDescription.includes(description)) {
+        partialDescriptionMatches.push(conceptRow);
+      }
+    }
+
+    return [...exactMatches, ...partialCodeMatches, ...partialDescriptionMatches].filter(
+      (conceptRow, index, rows) => rows.findIndex((candidate) => candidate.id === conceptRow.id) === index,
+    );
+  }
+
+  private resolveConceptUnitCost(concept: ConceptoB5DOrm): number | null {
+    const candidates = [concept.costo, concept.costo_mn, concept.costo_me];
+    for (const candidate of candidates) {
+      const numericCandidate = this.parseNumericLikeValue(candidate);
+      if (numericCandidate == null) continue;
+      return numericCandidate;
+    }
+    return null;
+  }
+
+  private parseNumericLikeValue(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+
+    let sanitized = normalized.replace(/[^\d.,-]/g, '');
+    if (sanitized.includes(',') && sanitized.includes('.')) {
+      if (sanitized.lastIndexOf(',') > sanitized.lastIndexOf('.')) {
+        sanitized = sanitized.replace(/\./g, '').replace(',', '.');
+      } else {
+        sanitized = sanitized.replace(/,/g, '');
+      }
+    } else if (sanitized.includes(',')) {
+      sanitized = sanitized.replace(',', '.');
+    }
+
+    const numericValue = Number(sanitized);
+    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   private computeRangeDelta(value: number, minimum: number | null, maximum: number | null): number {
@@ -887,7 +1520,6 @@ export class ParametersPanel implements OnChanges {
   private synchronizeDescriptionSelections(): void {
     const nextSelectionMap = new Map<number, Set<string>>();
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'cantidad') continue;
       if (parameterRow.tipo_comparacion !== 'descripcion_parcial') continue;
       const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
       if (!normalizedDescription) continue;
@@ -915,6 +1547,26 @@ export class ParametersPanel implements OnChanges {
       nextSelectionMap.set(parameterRow.id, selectedKeys);
     }
     this.descriptionSelectionByParameterId = nextSelectionMap;
+  }
+
+  private synchronizeCostSelections(): void {
+    const nextSelectionMap = new Map<number, number>();
+    for (const parameterRow of this.activeParametersForAnalysis) {
+      if (parameterRow.tipo_parametro !== 'costo') continue;
+      const candidateConcepts = this.getCostCandidateConcepts(parameterRow);
+      if (!candidateConcepts.length) continue;
+
+      const previousSelection = this.costConceptSelectionByParameterId.get(parameterRow.id);
+      const selectedConcept =
+        (previousSelection != null &&
+          candidateConcepts.find((conceptRow) => conceptRow.id === previousSelection)) ??
+        candidateConcepts.find((conceptRow) => this.resolveConceptUnitCost(conceptRow) != null) ??
+        candidateConcepts[0];
+      if (selectedConcept) {
+        nextSelectionMap.set(parameterRow.id, selectedConcept.id);
+      }
+    }
+    this.costConceptSelectionByParameterId = nextSelectionMap;
   }
 
   private clamp(value: number, minValue: number, maxValue: number): number {
