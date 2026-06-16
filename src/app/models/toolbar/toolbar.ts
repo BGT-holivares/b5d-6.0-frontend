@@ -10,8 +10,12 @@ import type { HomeToolbarState } from '../../types/home-toolbar';
 import { TOOLBAR_TRANSLATIONS } from './toolbar.translations';
 
 type ToolbarTab = 'home' | 'objects' | 'measurement' | 'tools' | 'view' | 'about';
+type ToolbarLoadingStage = 'reading' | 'processing' | 'drawing';
 type ToolbarButtonVariant = 'small' | 'large' | 'small-dropdown' | 'large-dropdown';
 type ToolbarCategoryLayout = 'vertical' | 'horizontal' | 'grid';
+type ToolbarLoadingStep = {
+  id: 'prepare' | 'drawing';
+};
 
 export type ToolbarActionId =
   | 'home-add-item'
@@ -139,6 +143,7 @@ export class Toolbar {
   readonly toolbarTranslations = TOOLBAR_TRANSLATIONS;
 
   @Input() cargando = false;
+  @Input() loadingStage: ToolbarLoadingStage | null = null;
   @Input() toolbarContentVisible = true;
   @Input() usuarioSesion: UsuarioSesionOrm | null = null;
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
@@ -177,6 +182,11 @@ export class Toolbar {
   @Output() toolbarAction = new EventEmitter<ToolbarActionId>();
   @Output() toggleFloatingPanel = new EventEmitter<FloatingPanelId>();
   @Output() toolbarContentVisibleChange = new EventEmitter<boolean>();
+
+  readonly loadingSteps: ToolbarLoadingStep[] = [
+    { id: 'prepare' },
+    { id: 'drawing' },
+  ];
 
   private openDropdownAction: ToolbarActionId | null = null;
 
@@ -308,6 +318,30 @@ export class Toolbar {
     return this.floatingPanelVisibility[panelId];
   }
 
+  // Returns the visual state used by the loading step indicators.
+  getLoadingStepState(stepId: 'prepare' | 'drawing'): 'completed' | 'active' | 'pending' {
+    if (stepId === 'prepare') {
+      if (this.loadingStage === 'drawing') return 'completed';
+      return 'active';
+    }
+
+    if (this.loadingStage === 'drawing') return 'active';
+    if (this.loadingStage === 'reading' || this.loadingStage === 'processing') return 'pending';
+    return 'pending';
+  }
+
+  // Returns the translated label for a loading step.
+  getLoadingStepLabel(stepId: 'prepare' | 'drawing'): string {
+    if (stepId === 'drawing') {
+      return this.i18n.translateForComponent(this.toolbarTranslations, 'toolbar.loading.drawing');
+    }
+
+    const labelKey = this.loadingStage === 'processing' || this.loadingStage === 'drawing'
+      ? 'toolbar.loading.processing'
+      : 'toolbar.loading.reading';
+    return this.i18n.translateForComponent(this.toolbarTranslations, labelKey);
+  }
+
   private get homeCategories(): ToolbarCategory[] {
     const activeBottomTab = this.homeToolbarState.activeBottomTab;
 
@@ -404,38 +438,9 @@ export class Toolbar {
         ],
       },
       {
-        labelKey: 'toolbar.home.category.view',
-        layout: 'horizontal',
-        visible: true,
-        buttons: [
-          {
-            labelKey: 'toolbar.home.refresh',
-            iconSrc: 'assets/images/CopyLinks_32x32.png',
-            action: 'home-refresh-view',
-            disabled: !this.activeProject, // and the disabled changed based off of the actual needs
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.filter',
-            iconSrc: 'assets/images/Options_32x32.png',
-            action: 'home-toggle-filters',
-            disabled: !this.activeProject,
-            selected: this.homeToolbarState.tableFiltersVisible === true,
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.resetView',
-            iconSrc: 'assets/images/RestoreZoom_32x32.png',
-            action: 'home-reset-view',
-            disabled: !this.activeProject, // and the disabled changed based off of the actual needs
-            variant: 'large',
-          },
-        ],
-      },
-      {
         labelKey: 'toolbar.home.category.concept',
         layout: 'horizontal',
-        visible: true,
+        visible: activeBottomTab === 'links',
         buttons: [
           {
             labelKey: 'toolbar.home.newCoStructure',
@@ -552,6 +557,35 @@ export class Toolbar {
             disabled: this.isHomeActionDisabled('parameter-toggle-analysis'),
             selected: this.homeToolbarState.parameterAnalysisVisible !== false,
             variant: 'small',
+          },
+        ],
+      },
+      {
+        labelKey: 'toolbar.home.category.view',
+        layout: 'horizontal',
+        visible: true,
+        buttons: [
+          {
+            labelKey: 'toolbar.home.refresh',
+            iconSrc: 'assets/images/CopyLinks_32x32.png',
+            action: 'home-refresh-view',
+            disabled: !this.activeProject,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.filter',
+            iconSrc: 'assets/images/Options_32x32.png',
+            action: 'home-toggle-filters',
+            disabled: !this.activeProject,
+            selected: this.homeToolbarState.tableFiltersVisible === true,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.resetView',
+            iconSrc: 'assets/images/RestoreZoom_32x32.png',
+            action: 'home-reset-view',
+            disabled: !this.activeProject,
+            variant: 'large',
           },
         ],
       },

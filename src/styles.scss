@@ -221,9 +221,11 @@ body {
 }
 
 .b5d-floating-panel__body {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   color: #111827;
 }
 

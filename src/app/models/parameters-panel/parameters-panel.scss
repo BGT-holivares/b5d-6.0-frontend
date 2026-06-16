@@ -59,19 +59,21 @@
 
 .b5d-parameters-panel__workspace {
   display: grid;
+  align-content: stretch;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
 
 .b5d-parameters-panel__workspace-row {
-  display: grid;
+  display: contents;
   min-height: 0;
   min-width: 0;
 }
 
 .b5d-parameters-panel__pane {
   display: grid;
+  height: 100%;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
@@ -80,6 +82,10 @@
 }
 
 .b5d-parameters-panel__pane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 5px 8px;
   background: #e5edf8;
   border-bottom: 1px solid #cbd5e1;
@@ -87,6 +93,12 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.b5d-parameters-panel__pane-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .b5d-parameters-panel__pane-content {
@@ -158,6 +170,13 @@
   background: #f8fafc;
   cursor: pointer;
   font-size: 11px;
+}
+
+.b5d-parameters-panel__tool-button--compact {
+  min-width: 28px;
+  min-height: 22px;
+  padding: 2px 6px;
+  line-height: 1;
 }
 
 .b5d-parameters-panel__tool-button:disabled {

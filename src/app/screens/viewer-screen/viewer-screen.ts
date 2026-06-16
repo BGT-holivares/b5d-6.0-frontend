@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { NgStyle } from '@angular/common';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import { Toolbar, type ToolbarActionId } from '../../models/toolbar/toolbar';
 import { TOOLBAR_TRANSLATIONS } from '../../models/toolbar/toolbar.translations';
 import { TreePanel } from '../../models/tree-panel/tree-panel';
@@ -26,6 +26,7 @@ import { ParametersImportDialog } from '../../models/parameters-import-dialog/pa
 import { CatalogStructureDialog, type CatalogStructureDraft } from '../../models/catalog-structure-dialog/catalog-structure-dialog';
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
+import { LocalViewerSyncService, type LocalViewerSyncMessage } from '../../services/local-viewer-sync.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { VisorIfc } from '../../utils/ifc-viewer';
@@ -105,6 +106,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   readonly visorIfc = inject(VisorIfc);
   readonly backendAuth = inject(BackendAuthService);
   readonly backendProyectos = inject(BackendProyectosService);
+  readonly localViewerSync = inject(LocalViewerSyncService);
   readonly i18n = inject(I18nService);
   readonly cuantificacion = signal<NodoCuantificacion | null>(null);
   readonly ifcElements = signal<ElementoIfcB5D[]>([]);
@@ -212,6 +214,9 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private readonly cuantificadorB5D = new CuantificadorB5D();
   private readonly router = inject(Router);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
+  private readonly localViewerSyncSubscription: Subscription = this.localViewerSync.messages$.subscribe((message) => {
+    void this.handleLocalViewerSyncMessage(message);
+  });
   private readonly measurementSelectionEffect = effect(() => {
     const mode = this.activeMeasurementMode();
 
@@ -228,13 +233,29 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     const selectionMap = this.visorIfc.seleccionActual();
     void this.actualizarResumenVolumen(selectionMap);
   });
+  private readonly b5dMessageEffect = effect(() => {
+    this.scheduleB5dMessageClear(this.b5dMensaje());
+  });
+  private readonly localViewerSelectionSyncEffect = effect(() => {
+    const selectionMap = this.visorIfc.seleccionActual();
+    const loadedModelCount = this.visorIfc.modelosIfcCargados().length;
+    if (!this.localViewerSyncReady || this.suppressLocalViewerBroadcast || loadedModelCount === 0) return;
+
+    const localIds = this.extractSelectedLocalIds(selectionMap);
+    this.localViewerSync.broadcastSelection(localIds);
+  });
   private nextFloatingPanelZIndex = 40;
   private autoSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private b5dMessageTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private autoSaveInProgress = false;
   private hasPendingDraftChanges = false;
   private draftChangeVersion = 0;
   private measurementVolumeRequestId = 0;
   private readonly b5dDebugLoggingEnabled = true;
+  private localViewerSyncReady = false;
+  private suppressLocalViewerBroadcast = false;
+  private processingLocalViewerSyncMessages = false;
+  private pendingLocalViewerSyncMessages: LocalViewerSyncMessage[] = [];
 
   async ngAfterViewInit(): Promise<void> {
     if (!this.contenedorVisor?.nativeElement) return;
@@ -242,6 +263,8 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     await this.visorIfc.inicializarVisor(this.contenedorVisor.nativeElement);
     this.debugB5d('ngAfterViewInit: viewer ready, loading B5D panels');
     await this.inicializarPanelesB5d();
+    this.localViewerSyncReady = true;
+    await this.processPendingLocalViewerSyncMessages();
   }
 
   ngOnDestroy(): void {
@@ -249,15 +272,105 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       clearTimeout(this.autoSaveTimeoutId);
       this.autoSaveTimeoutId = null;
     }
+    if (this.b5dMessageTimeoutId) {
+      clearTimeout(this.b5dMessageTimeoutId);
+      this.b5dMessageTimeoutId = null;
+    }
+    this.localViewerSyncSubscription.unsubscribe();
     this.visorIfc.destruirVisor();
   }
 
+  // Loads an IFC file locally and mirrors it to the other browser tabs.
   async cargarArchivo(archivo: File): Promise<void> {
-    this.cuantificacion.set(null);
-    this.ifcElements.set([]);
-    await this.visorIfc.cargarArchivoIfc(archivo);
-    this.ifcElements.set(this.visorIfc.obtenerElementosB5D());
-    await this.actualizarReferenciaIfc(archivo);
+    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+    this.suppressLocalViewerBroadcast = true;
+
+    try {
+      this.cuantificacion.set(null);
+      this.ifcElements.set([]);
+      await this.visorIfc.cargarArchivoIfc(archivo);
+      this.ifcElements.set(this.visorIfc.obtenerElementosB5D());
+      await this.actualizarReferenciaIfc(archivo);
+    } finally {
+      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+    }
+
+    if (!previousBroadcastSuppressed) {
+      this.localViewerSync.broadcastIfcFile(archivo);
+    }
+  }
+
+  // Handles the local broadcast messages shared across browser tabs.
+  private async handleLocalViewerSyncMessage(message: LocalViewerSyncMessage): Promise<void> {
+    if (!this.localViewerSyncReady || this.processingLocalViewerSyncMessages) {
+      this.pendingLocalViewerSyncMessages.push(message);
+      return;
+    }
+
+    this.pendingLocalViewerSyncMessages.push(message);
+    await this.processPendingLocalViewerSyncMessages();
+  }
+
+  // Applies queued local broadcast messages in the order they were received.
+  private async processPendingLocalViewerSyncMessages(): Promise<void> {
+    if (!this.localViewerSyncReady || this.processingLocalViewerSyncMessages) return;
+
+    this.processingLocalViewerSyncMessages = true;
+    try {
+      while (this.pendingLocalViewerSyncMessages.length) {
+        const pendingMessage = this.pendingLocalViewerSyncMessages.shift();
+        if (!pendingMessage) continue;
+
+        if (pendingMessage.kind === 'ifc-file') {
+          await this.applyRemoteIfcFile(pendingMessage.file);
+        } else if (pendingMessage.kind === 'ifc-selection') {
+          await this.applyRemoteIfcSelection(pendingMessage.localIds);
+        }
+      }
+    } finally {
+      this.processingLocalViewerSyncMessages = false;
+    }
+  }
+
+  // Loads an IFC file received from another browser tab without rebroadcasting it.
+  private async applyRemoteIfcFile(file: File): Promise<void> {
+    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+    this.suppressLocalViewerBroadcast = true;
+
+    try {
+      await this.cargarArchivo(file);
+    } finally {
+      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+    }
+  }
+
+  // Replays a remote selection in the current IFC viewer.
+  private async applyRemoteIfcSelection(localIds: number[]): Promise<void> {
+    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+    this.suppressLocalViewerBroadcast = true;
+
+    try {
+      if (!localIds.length) {
+        await this.visorIfc.limpiarSeleccion();
+      } else {
+        await this.visorIfc.seleccionarElementosPorLocalIds(localIds);
+      }
+    } finally {
+      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+    }
+  }
+
+  // Extracts a flat, de-duplicated list of selected local identifiers.
+  private extractSelectedLocalIds(selectionMap: Record<string, Set<number>>): number[] {
+    const localIds = new Set<number>();
+    for (const localIdSet of Object.values(selectionMap)) {
+      for (const localId of localIdSet) {
+        if (Number.isInteger(localId) && localId > 0) {
+          localIds.add(localId);
+        }
+      }
+    }
+    return [...localIds].sort((first, second) => first - second);
   }
 
   async abrirSelectorImportacionB5d(): Promise<void> {
@@ -829,6 +942,23 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       }
     }
     return mensajePredeterminado;
+  }
+
+  // Schedules the upper-right status message to disappear after a short delay.
+  private scheduleB5dMessageClear(message: string): void {
+    if (this.b5dMessageTimeoutId) {
+      clearTimeout(this.b5dMessageTimeoutId);
+      this.b5dMessageTimeoutId = null;
+    }
+
+    if (!message) return;
+
+    this.b5dMessageTimeoutId = setTimeout(() => {
+      if (this.b5dMensaje() === message) {
+        this.b5dMensaje.set('');
+      }
+      this.b5dMessageTimeoutId = null;
+    }, 5000);
   }
 
   private debugB5d(message: string, data?: unknown): void {
@@ -1677,6 +1807,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'home-coStru-remove',
       'home-coStru-dup',
       'home-coStru-info',
+      'parameter-toggle-list',
+      'parameter-toggle-boq',
+      'parameter-toggle-matches',
+      'parameter-toggle-analysis',
       'import-parameters-excel',
     ].includes(action);
   }

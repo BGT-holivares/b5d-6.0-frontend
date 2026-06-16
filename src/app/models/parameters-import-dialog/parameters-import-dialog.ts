@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService, type CrearParametroPayload } from '../../services/backend-proyectos.service';
@@ -41,6 +41,11 @@ type WorkbookColumnOption = {
   header: string;
   sample: string;
   suggestedField: ParameterImportField | null;
+};
+
+type PreviewCellState = {
+  value: string;
+  usesDefaultValue: boolean;
 };
 
 type WorkbookSheetState = {
@@ -107,10 +112,14 @@ export class ParametersImportDialog implements OnChanges {
   @Output() closeRequested = new EventEmitter<void>();
   @Output() importCompleted = new EventEmitter<ParameterImportSummary>();
 
+  @ViewChild('dialogPanel') private readonly dialogPanel?: ElementRef<HTMLElement>;
+
   workbookFileName = '';
   workbookError = '';
   validationMessage = '';
   importMessage = '';
+  processingMessage = '';
+  isWorkbookProcessing = false;
   importInProgress = false;
   selectedSheetIndex = 0;
   selectedHeaderCandidateRowNumber: number | null = null;
@@ -120,6 +129,8 @@ export class ParametersImportDialog implements OnChanges {
   readonly fieldDefinitions = PARAMETER_IMPORT_FIELDS;
 
   private readonly backendProyectos = inject(BackendProyectosService);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
+  private readonly closeDialogThreshold = 24;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['visible'] && !this.visible) {
@@ -128,14 +139,21 @@ export class ParametersImportDialog implements OnChanges {
   }
 
   get canImport(): boolean {
-    return !!this.activeProject && !!this.currentSheet && !this.importInProgress && !this.loading && this.fieldMappings.clave != null;
+    return (
+      !!this.activeProject &&
+      !!this.currentSheet &&
+      !this.importInProgress &&
+      !this.isWorkbookProcessing &&
+      !this.loading &&
+      this.fieldMappings.clave != null
+    );
   }
 
   get currentSheet(): WorkbookSheetState | null {
     return this.sheetStates[this.selectedSheetIndex] ?? null;
   }
 
-  get previewRows(): Array<{ rowNumber: number; values: Record<ParameterImportField, string> }> {
+  get previewRows(): Array<{ rowNumber: number; values: Record<ParameterImportField, PreviewCellState> }> {
     const sheet = this.currentSheet;
     if (!sheet) return [];
 
@@ -146,9 +164,9 @@ export class ParametersImportDialog implements OnChanges {
     return dataRows.slice(0, 12).map((row) => ({
       rowNumber: row.rowNumber,
       values: this.fieldDefinitions.reduce((acc, fieldDefinition) => {
-        acc[fieldDefinition.key] = this.getFieldValueFromRow(row, fieldDefinition.key);
+        acc[fieldDefinition.key] = this.getPreviewCellState(row, fieldDefinition.key);
         return acc;
-      }, {} as Record<ParameterImportField, string>),
+      }, {} as Record<ParameterImportField, PreviewCellState>),
     }));
   }
 
@@ -194,12 +212,16 @@ export class ParametersImportDialog implements OnChanges {
     this.workbookError = '';
     this.validationMessage = '';
     this.importMessage = '';
+    this.processingMessage = '';
 
     if (!file) {
       this.resetWorkbookState();
       return;
     }
 
+    this.isWorkbookProcessing = true;
+    this.processingMessage = 'Preparando archivo...';
+    this.changeDetectorRef.detectChanges();
     void this.loadWorkbook(file);
   }
 
@@ -254,11 +276,13 @@ export class ParametersImportDialog implements OnChanges {
     return this.getCellText(row.values[mappedColumnIndex]) || '-';
   }
 
+  // Closes the dialog when the import flow is not running.
   closeDialog(): void {
     if (this.importInProgress) return;
     this.closeRequested.emit();
   }
 
+  // Imports the selected workbook rows and closes the dialog after a clean import.
   async importParameters(): Promise<void> {
     const project = this.activeProject;
     const sheet = this.currentSheet;
@@ -277,6 +301,8 @@ export class ParametersImportDialog implements OnChanges {
     this.importInProgress = true;
     this.validationMessage = '';
     this.importMessage = '';
+    this.processingMessage = 'Importando parametros...';
+    this.changeDetectorRef.detectChanges();
 
     const summary: ParameterImportSummary = {
       created: 0,
@@ -317,25 +343,42 @@ export class ParametersImportDialog implements OnChanges {
 
       this.importMessage = `Importación terminada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`;
       this.importCompleted.emit(summary);
+      if (summary.failed === 0) {
+        this.closeRequested.emit();
+      }
     } catch (error) {
       this.validationMessage = this.resolveErrorMessage(error, 'No fue posible leer el archivo Excel.');
     } finally {
       this.importInProgress = false;
+      this.processingMessage = '';
+      this.changeDetectorRef.detectChanges();
     }
   }
 
+  // Loads and parses the workbook while giving the UI time to repaint status updates.
   private async loadWorkbook(file: File): Promise<void> {
     this.resetWorkbookState();
     this.workbookFileName = file.name;
 
     try {
+      this.processingMessage = 'Cargando modulo de Excel...';
+      this.changeDetectorRef.detectChanges();
+      await this.yieldToUi();
+
       const xlsxModule = await import('xlsx');
+      this.processingMessage = 'Leyendo archivo Excel...';
+      this.changeDetectorRef.detectChanges();
       const workbookArrayBuffer = await file.arrayBuffer();
+      this.processingMessage = 'Analizando hojas...';
+      this.changeDetectorRef.detectChanges();
+      await this.yieldToUi();
       const workbook = xlsxModule.read(workbookArrayBuffer, {
         type: 'array',
         cellDates: true,
       });
 
+      this.processingMessage = 'Detectando encabezados y vista previa...';
+      this.changeDetectorRef.detectChanges();
       this.sheetStates = workbook.SheetNames.map((sheetName: string, index: number) =>
         this.buildSheetState(xlsxModule, workbook.Sheets[sheetName], sheetName, index),
       );
@@ -354,8 +397,12 @@ export class ParametersImportDialog implements OnChanges {
       this.selectedHeaderCandidateRowNumber = sheet.selectedHeaderRowNumber;
       this.buildSheetColumns(sheet);
       this.applyColumnSuggestions(sheet);
+      this.processingMessage = 'Archivo listo para revisar.';
     } catch (error) {
       this.workbookError = this.resolveErrorMessage(error, 'No fue posible leer el archivo Excel.');
+    } finally {
+      this.isWorkbookProcessing = false;
+      this.changeDetectorRef.detectChanges();
     }
   }
 
@@ -591,9 +638,27 @@ export class ParametersImportDialog implements OnChanges {
     return this.getMappedCellValue(row, field) || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
   }
 
+  // Returns the preview value and marks whether it comes from a default.
+  private getPreviewCellState(row: WorkbookRow, field: ParameterImportField): PreviewCellState {
+    const mappedValue = this.getMappedCellValue(row, field);
+    if (mappedValue) {
+      return {
+        value: mappedValue,
+        usesDefaultValue: false,
+      };
+    }
+
+    const defaultValue = this.fieldDefinitions.find((item) => item.key === field)?.defaultValue ?? '';
+    return {
+      value: defaultValue || '-',
+      usesDefaultValue: !!defaultValue,
+    };
+  }
+
   private guessFieldFromHeader(header: string): ParameterImportField | null {
     const normalizedHeader = this.normalizeText(header);
     if (!normalizedHeader) return null;
+    if (normalizedHeader === 'parameter') return 'clave';
 
     for (const fieldDefinition of this.fieldDefinitions) {
       const aliases = FIELD_HEADER_ALIASES[fieldDefinition.key];
@@ -659,7 +724,36 @@ export class ParametersImportDialog implements OnChanges {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  // Gives the browser a chance to repaint before long synchronous work starts.
+  private async yieldToUi(): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
+  // Handles backdrop clicks with a safer margin around the panel border.
+  handleBackdropClick(event: MouseEvent): void {
+    if (this.importInProgress) return;
+
+    const dialogPanel = this.dialogPanel?.nativeElement;
+    if (!dialogPanel) {
+      this.closeDialog();
+      return;
+    }
+
+    const boundary = dialogPanel.getBoundingClientRect();
+    const pointerInsideSafeArea =
+      event.clientX >= boundary.left - this.closeDialogThreshold &&
+      event.clientX <= boundary.right + this.closeDialogThreshold &&
+      event.clientY >= boundary.top - this.closeDialogThreshold &&
+      event.clientY <= boundary.bottom + this.closeDialogThreshold;
+
+    if (!pointerInsideSafeArea) {
+      this.closeDialog();
+    }
   }
 
   private columnLabelFromIndex(index: number): string {
@@ -693,6 +787,7 @@ export class ParametersImportDialog implements OnChanges {
     this.workbookError = '';
     this.validationMessage = '';
     this.importMessage = '';
+    this.processingMessage = '';
     this.sheetStates = [];
     this.selectedSheetIndex = 0;
     this.selectedHeaderCandidateRowNumber = null;
@@ -702,6 +797,7 @@ export class ParametersImportDialog implements OnChanges {
   private resetState(): void {
     this.resetWorkbookState();
     this.importInProgress = false;
+    this.isWorkbookProcessing = false;
   }
 
   private resolveErrorMessage(error: unknown, fallback: string): string {

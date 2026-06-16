@@ -1,4 +1,4 @@
-<section class="b5d-parameters-panel">
+﻿<section class="b5d-parameters-panel">
   <header class="b5d-parameters-panel__header">
     <strong>Parametros de comparacion</strong>
     @if (activeProject) {
@@ -37,12 +37,42 @@
     <div class="b5d-parameters-panel__error">{{ actionError }}</div>
   }
 
-  <div class="b5d-parameters-panel__workspace" [style.grid-template-rows]="workspaceTemplateRows">
-    @if (topWorkspaceVisible) {
-      <div class="b5d-parameters-panel__workspace-row" [style.grid-template-columns]="topRowTemplateColumns">
+  <div
+    class="b5d-parameters-panel__workspace"
+    [style.grid-template-rows]="workspaceTemplateRows"
+    [style.grid-template-columns]="workspaceTemplateColumns"
+  >
+    @if (topRowPaneIds.length) {
+      <div class="b5d-parameters-panel__workspace-row">
         @if (parameterListVisible) {
-          <section class="b5d-parameters-panel__pane">
-            <div class="b5d-parameters-panel__pane-title">Parametros disponibles</div>
+          <section
+            class="b5d-parameters-panel__pane"
+            [style.grid-row]="getPaneGridRow('parameter-list')"
+            [style.grid-column]="getPaneGridColumn('parameter-list')"
+          >
+            <div class="b5d-parameters-panel__pane-title">
+              <span>Parametros disponibles</span>
+              <span class="b5d-parameters-panel__pane-actions">
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('parameter-list', 'up')"
+                  title="Mover arriba"
+                  (click)="movePaneOrder('parameter-list', 'up')"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('parameter-list', 'down')"
+                  title="Mover abajo"
+                  (click)="movePaneOrder('parameter-list', 'down')"
+                >
+                  ↓
+                </button>
+              </span>
+            </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll" (click)="closeParameterTableContextMenu()">
               @if (parameterTablePreferences.chooserOpen) {
                 <div class="b5d-parameters-panel__column-chooser">
@@ -393,12 +423,43 @@
         }
 
         @if (showTopVerticalSplitter) {
-          <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical" (pointerdown)="startInternalResize($event, 'top-vertical')"></div>
+          <div
+            class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical"
+            [style.grid-row]="1"
+            [style.grid-column]="2"
+            (pointerdown)="startInternalResize($event, 'top-vertical')"
+          ></div>
         }
 
         @if (boqPreviewVisible) {
-          <section class="b5d-parameters-panel__pane">
-            <div class="b5d-parameters-panel__pane-title">Vista BOQ</div>
+          <section
+            class="b5d-parameters-panel__pane"
+            [style.grid-row]="getPaneGridRow('boq-preview')"
+            [style.grid-column]="getPaneGridColumn('boq-preview')"
+          >
+            <div class="b5d-parameters-panel__pane-title">
+              <span>Vista BOQ</span>
+              <span class="b5d-parameters-panel__pane-actions">
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('boq-preview', 'up')"
+                  title="Mover arriba"
+                  (click)="movePaneOrder('boq-preview', 'up')"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('boq-preview', 'down')"
+                  title="Mover abajo"
+                  (click)="movePaneOrder('boq-preview', 'down')"
+                >
+                  ↓
+                </button>
+              </span>
+            </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--stacked">
               <div class="b5d-parameters-panel__boq-controls">
                 <label>
@@ -439,14 +500,45 @@
     }
 
     @if (showHorizontalSplitter) {
-      <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--horizontal" (pointerdown)="startInternalResize($event, 'horizontal')"></div>
+      <div
+        class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--horizontal"
+        [style.grid-row]="2"
+        [style.grid-column]="'1 / 4'"
+        (pointerdown)="startInternalResize($event, 'horizontal')"
+      ></div>
     }
 
-    @if (bottomWorkspaceVisible) {
-      <div class="b5d-parameters-panel__workspace-row" [style.grid-template-columns]="bottomRowTemplateColumns">
+    @if (bottomRowPaneIds.length) {
+      <div class="b5d-parameters-panel__workspace-row">
         @if ((descriptionMatchesVisible && descriptionMatchCandidateGroups.length) || costMatchCandidateGroups.length) {
-          <section class="b5d-parameters-panel__pane">
-            <div class="b5d-parameters-panel__pane-title">Coincidencias</div>
+          <section
+            class="b5d-parameters-panel__pane"
+            [style.grid-row]="getPaneGridRow('description-matches')"
+            [style.grid-column]="getPaneGridColumn('description-matches')"
+          >
+            <div class="b5d-parameters-panel__pane-title">
+              <span>Coincidencias</span>
+              <span class="b5d-parameters-panel__pane-actions">
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('description-matches', 'up')"
+                  title="Mover arriba"
+                  (click)="movePaneOrder('description-matches', 'up')"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('description-matches', 'down')"
+                  title="Mover abajo"
+                  (click)="movePaneOrder('description-matches', 'down')"
+                >
+                  ↓
+                </button>
+              </span>
+            </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
               @if (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) {
                 <div class="b5d-parameters-panel__description-matches">
@@ -517,12 +609,43 @@
         }
 
         @if (showBottomVerticalSplitter) {
-          <div class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical" (pointerdown)="startInternalResize($event, 'bottom-vertical')"></div>
+          <div
+            class="b5d-parameters-panel__splitter b5d-parameters-panel__splitter--vertical"
+            [style.grid-row]="3"
+            [style.grid-column]="2"
+            (pointerdown)="startInternalResize($event, 'bottom-vertical')"
+          ></div>
         }
 
         @if (analysisVisible) {
-          <section class="b5d-parameters-panel__pane">
-            <div class="b5d-parameters-panel__pane-title">Resultados de analisis</div>
+          <section
+            class="b5d-parameters-panel__pane"
+            [style.grid-row]="getPaneGridRow('analysis')"
+            [style.grid-column]="getPaneGridColumn('analysis')"
+          >
+            <div class="b5d-parameters-panel__pane-title">
+              <span>Resultados de analisis</span>
+              <span class="b5d-parameters-panel__pane-actions">
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('analysis', 'up')"
+                  title="Mover arriba"
+                  (click)="movePaneOrder('analysis', 'up')"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  [disabled]="!canMovePane('analysis', 'down')"
+                  title="Mover abajo"
+                  (click)="movePaneOrder('analysis', 'down')"
+                >
+                  ↓
+                </button>
+              </span>
+            </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
               @if (boqLoading) {
                 <div class="b5d-parameters-panel__muted">Extrayendo datos BOQ para analisis...</div>
@@ -576,7 +699,7 @@
       </div>
     }
 
-    @if (!topWorkspaceVisible && !bottomWorkspaceVisible) {
+    @if (!orderedVisiblePaneIds.length) {
       <div class="b5d-parameters-panel__empty-state">
         <div class="b5d-parameters-panel__muted">Activa alguna vista de parametros desde la barra superior.</div>
       </div>

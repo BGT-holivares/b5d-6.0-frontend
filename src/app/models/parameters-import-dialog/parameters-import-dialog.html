@@ -1,6 +1,6 @@
 @if (visible) {
-  <div class="b5d-parameters-import-dialog__backdrop" (click)="closeDialog()">
-    <section class="b5d-parameters-import-dialog" (click)="$event.stopPropagation()">
+  <div class="b5d-parameters-import-dialog__backdrop" (click)="handleBackdropClick($event)">
+    <section #dialogPanel class="b5d-parameters-import-dialog" (click)="$event.stopPropagation()">
       <header class="b5d-parameters-import-dialog__header">
         <strong>Importar parametros desde Excel</strong>
         @if (activeProject) {
@@ -34,6 +34,17 @@
             El asistente busca encabezados de columnas y permite ajustar el mapeo antes de importar.
           </div>
         </label>
+
+        @if (isWorkbookProcessing || importInProgress) {
+          <div class="b5d-parameters-import-dialog__processing">
+            <div class="b5d-parameters-import-dialog__processing-label">
+              {{ processingMessage || (importInProgress ? 'Importando parametros...' : 'Procesando archivo...') }}
+            </div>
+            <div class="b5d-parameters-import-dialog__progress">
+              <span class="b5d-parameters-import-dialog__progress-bar"></span>
+            </div>
+          </div>
+        }
 
         @if (workbookError) {
           <div class="b5d-parameters-import-dialog__message b5d-parameters-import-dialog__message--error">{{ workbookError }}</div>
@@ -115,38 +126,11 @@
             </div>
           </section>
 
-          <section class="b5d-parameters-import-dialog__section">
-            <div class="b5d-parameters-import-dialog__section-title">Columnas detectadas</div>
-            <div class="b5d-parameters-import-dialog__table-wrapper">
-              <table class="b5d-parameters-import-dialog__table">
-                <thead>
-                  <tr>
-                    <th>Columna</th>
-                    <th>Encabezado</th>
-                    <th>Muestra</th>
-                    <th>Sugerencia</th>
-                  </tr>
-                  </thead>
-                  <tbody>
-                  @for (column of selectedColumns; track column.index) {
-                    <tr>
-                      <td>{{ column.letter }}</td>
-                      <td>{{ column.header || 'Sin encabezado' }}</td>
-                      <td>{{ column.sample || '-' }}</td>
-                      <td>{{ getFieldDefinitionLabel(column.suggestedField) }}</td>
-                    </tr>
-                  } @empty {
-                    <tr>
-                      <td colspan="4" class="b5d-parameters-import-dialog__table-empty">No se detectaron columnas utilizables.</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="b5d-parameters-import-dialog__section">
+          <section class="b5d-parameters-import-dialog__section b5d-parameters-import-dialog__section--preview">
             <div class="b5d-parameters-import-dialog__section-title">Vista previa</div>
+            <div class="b5d-parameters-import-dialog__hint">
+              Los valores por defecto se resaltan para que sea mas facil revisarlos antes de importar.
+            </div>
             <div class="b5d-parameters-import-dialog__table-wrapper b5d-parameters-import-dialog__table-wrapper--wide">
               <table class="b5d-parameters-import-dialog__table">
                 <thead>
@@ -162,7 +146,9 @@
                     <tr>
                       <td>{{ row.rowNumber }}</td>
                       @for (field of fieldDefinitions; track field.key) {
-                        <td>{{ row.values[field.key] || '-' }}</td>
+                        <td [class.b5d-parameters-import-dialog__table-cell--default]="row.values[field.key].usesDefaultValue">
+                          {{ row.values[field.key].value || '-' }}
+                        </td>
                       }
                     </tr>
                   } @empty {

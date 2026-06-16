@@ -64,7 +64,7 @@
   } @else if (!selectedQuantificationId) {
     <div class="b5d-report-empty">Selecciona una cuantificacion con libro Excel para generar el resumen.</div>
   } @else if (!hasReportData) {
-    <div class="b5d-report-empty">No se encontraron filas legibles en la hoja seleccionada.</div>
+    <div class="b5d-report-empty">No se encontraron conceptos validos en la hoja seleccionada.</div>
   } @else {
     <section class="b5d-summary-grid">
       <article class="b5d-summary-card">
@@ -229,7 +229,7 @@
         <header class="b5d-report-table-card__header">
           <div>
             <strong>Conceptos sin parametro</strong>
-            <div class="b5d-report-table-card__meta">{{ reportData.unassignedRows.length }} filas</div>
+            <div class="b5d-report-table-card__meta">{{ reportData.unassignedRows.length }} conceptos</div>
           </div>
         </header>
 

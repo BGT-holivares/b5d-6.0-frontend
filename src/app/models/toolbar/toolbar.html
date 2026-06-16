@@ -111,7 +111,25 @@
       }
 
       @if (cargando) {
-        <span class="b5d-toolbar__status">{{ i18n.translateForComponent(toolbarTranslations, 'toolbar.loading') }}</span>
+        <div class="b5d-toolbar__loading">
+          <div class="b5d-toolbar__loading-header">
+            {{ i18n.translateForComponent(toolbarTranslations, 'toolbar.loading.title') }}
+          </div>
+          <div class="b5d-toolbar__loading-steps">
+            @for (step of loadingSteps; track step.id) {
+              <div
+                class="b5d-toolbar__loading-step"
+                [class.b5d-toolbar__loading-step--completed]="getLoadingStepState(step.id) === 'completed'"
+                [class.b5d-toolbar__loading-step--active]="getLoadingStepState(step.id) === 'active'"
+              >
+                <div class="b5d-toolbar__loading-step-label">{{ getLoadingStepLabel(step.id) }}</div>
+                <div class="b5d-toolbar__loading-step-track">
+                  <span class="b5d-toolbar__loading-step-fill"></span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
       }
     </div>
   }

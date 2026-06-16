@@ -96,6 +96,7 @@ export function buildParametersReportData(
   const activeQuantityParameters = parameters.filter((row) => row.activo && row.tipo_parametro === 'cantidad');
   const activeCostParameters = parameters.filter((row) => row.activo && row.tipo_parametro === 'costo');
   const selectedCatalogConcepts = selectedCatalogId == null ? concepts : concepts.filter((row) => row.catalogo_id === selectedCatalogId);
+  const conceptRows = boqRows.filter((row) => isValidConceptRow(row));
 
   const quantityRows: QuantityReportRow[] = [];
   const costRows: CostReportRow[] = [];
@@ -114,7 +115,7 @@ export function buildParametersReportData(
     'without-parameter': 0,
   };
 
-  for (const boqRow of boqRows) {
+  for (const boqRow of conceptRows) {
     const quantityParameter = findMatchingParameter(boqRow, activeQuantityParameters);
     const quantityResult = buildQuantityResult(boqRow, quantityParameter);
     quantityCounts[quantityResult.bucket] += 1;
@@ -144,6 +145,69 @@ export function buildParametersReportData(
     costRows,
     unassignedRows,
   };
+}
+
+function isValidConceptRow(row: BoqExtractedRow): boolean {
+  const description = normalizeText(row.descripcion);
+  const unit = normalizeText(row.unidad);
+  const quantity = row.cantidad;
+
+  if (!description || !unit || quantity == null || !Number.isFinite(quantity)) {
+    return false;
+  }
+
+  if (isHeaderLikeText(description) || isHeaderLikeText(unit)) {
+    return false;
+  }
+
+  if (!hasRealConceptText(description)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isHeaderLikeText(value: string): boolean {
+  const normalizedValue = normalizeText(value);
+  if (!normalizedValue) return true;
+
+  const headerKeywords = new Set([
+    'agrupador padre',
+    'agrupador',
+    'concepto',
+    'descripcion',
+    'descripcion del concepto',
+    'descripción',
+    'descripcion concepto',
+    'clave',
+    'cantidad',
+    'unidad',
+    'proyecto',
+    'elaboro',
+    'reviso',
+    'autorizo',
+    'fecha',
+    'cliente',
+    'recibira',
+    'motivo',
+    'parameter',
+    'parametro',
+    'parámetro',
+  ]);
+
+  return headerKeywords.has(normalizedValue);
+}
+
+function hasRealConceptText(description: string): boolean {
+  const normalizedDescription = normalizeText(description);
+  if (!normalizedDescription) return false;
+  if (normalizedDescription.length < 2) return false;
+
+  const filteredWords = normalizedDescription
+    .split(' ')
+    .filter((word) => !['agrupador', 'padre', 'header', 'concept', 'concepto'].includes(word));
+
+  return filteredWords.length > 0;
 }
 
 function buildQuantityResult(

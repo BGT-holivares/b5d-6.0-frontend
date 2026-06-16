@@ -48,9 +48,15 @@
 }
 
 .b5d-viewer-screen__bottom-content {
-  height: calc(100% - 28px);
+  display: flex;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.b5d-viewer-screen__bottom-content > * {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .b5d-viewer-screen__b5d-status {

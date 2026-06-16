@@ -42,6 +42,7 @@ type RegistroElemento = {
 };
 
 type MovementAxis = 'x' | 'y' | 'z';
+type IfcLoadingStage = 'reading' | 'processing' | 'drawing';
 type FragmentTransform = {
   position: number[];
   xDirection: number[];
@@ -117,6 +118,7 @@ type MeasurementLengthEdgeHit = {
 @Injectable({ providedIn: 'root' })
 export class VisorIfc {
   readonly cargando = signal(false);
+  readonly loadingStage = signal<IfcLoadingStage | null>(null);
   readonly informacionSeleccionada = signal<InformacionElementoSeleccionado | null>(null);
   readonly datosArbol = signal<NodoArbolIfc[]>([]);
   readonly nodosExpandidos = signal<Record<string, boolean>>({});
@@ -135,6 +137,7 @@ export class VisorIfc {
   private contenedorVisor: HTMLElement | null = null;
   private modelGridHelper: any = null;
   private modelAxesOverlay: any = null;
+  private readonly modelEdgeGuides = new Map<string, any>();
   private nombreArchivoPendiente = '';
   private urlTrabajador = '';
   private moduloThree: typeof import('three') | null = null;
@@ -241,6 +244,7 @@ export class VisorIfc {
         modelId: modeloId,
       };
       this.activeModelId = modeloId;
+      this.applyModelEdgeGuides(modelo);
 
       this.modelosIfcCargados.update((modelos) => {
         if (modelos.some((item) => item.id === modeloId)) return modelos;
@@ -353,12 +357,18 @@ export class VisorIfc {
     this.angleMeasurementOverlay = null;
     this.lengthEdgeSelection = null;
     this.lengthEdgePreview = null;
+    this.loadingStage.set(null);
   }
 
   async cargarArchivoIfc(archivo: File): Promise<void> {
-    if (!this.cargadorIfc) return;
+    if (!this.cargadorIfc) {
+      this.cargando.set(false);
+      this.loadingStage.set(null);
+      return;
+    }
 
     this.cargando.set(true);
+    this.loadingStage.set('reading');
     this.nombreArchivoPendiente = archivo.name;
     this.cacheSeleccion.clear();
     this.registrosArbol.clear();
@@ -380,9 +390,11 @@ export class VisorIfc {
     this.clearCountMeasurementSelections();
 
     try {
+      this.loadingStage.set('processing');
       const datos = await archivo.arrayBuffer();
       const buffer = new Uint8Array(datos);
 
+      this.loadingStage.set('drawing');
       await this.cargadorIfc.load(buffer, false, archivo.name);
 
       try {
@@ -400,6 +412,7 @@ export class VisorIfc {
       console.error('Error cargando IFC:', error);
     } finally {
       this.cargando.set(false);
+      this.loadingStage.set(null);
       this.nombreArchivoPendiente = '';
     }
   }
@@ -2829,6 +2842,8 @@ export class VisorIfc {
       this.disposeObject3D(this.modelAxesOverlay);
       this.modelAxesOverlay = null;
     }
+
+    this.removeModelEdgeGuides();
   }
 
   // Creates a finite grid placed slightly below the model base.
@@ -2859,6 +2874,78 @@ export class VisorIfc {
     axisGroup.add(this.createAxisArrow(center, new this.moduloThree!.Vector3(0, 0, 1), axisLength, 0x4da3ff));
 
     return axisGroup;
+  }
+
+  // Applies a subtle edge outline to every mesh within a loaded model.
+  private applyModelEdgeGuides(model: any): void {
+    if (!this.moduloThree || !model?.object) return;
+
+    const modelId = this.getModelId(model);
+    if (!modelId) return;
+
+    this.removeModelEdgeGuide(modelId);
+
+    const edgeGroup = new this.moduloThree!.Group();
+    edgeGroup.name = 'b5d-model-edge-guides';
+    edgeGroup.renderOrder = 25;
+
+    let hasGuides = false;
+    model.object.traverse((child: any) => {
+      if (!child?.isMesh || !child.geometry?.isBufferGeometry) return;
+
+      try {
+        const edgeGeometry = new this.moduloThree!.EdgesGeometry(child.geometry, 30);
+        const edgeMaterial = new this.moduloThree!.LineBasicMaterial({
+          color: 0x7c8798,
+          transparent: true,
+          opacity: 0.42,
+          depthTest: true,
+          depthWrite: false,
+        });
+        const edgeLines = new this.moduloThree!.LineSegments(edgeGeometry, edgeMaterial);
+        edgeLines.name = 'b5d-model-edge-guide';
+        edgeLines.renderOrder = 26;
+        edgeLines.frustumCulled = false;
+        edgeGroup.add(edgeLines);
+        hasGuides = true;
+      } catch (error) {
+        console.warn('No se pudo crear el borde del modelo:', error);
+      }
+    });
+
+    if (!hasGuides) {
+      this.disposeObject3D(edgeGroup);
+      return;
+    }
+
+    model.object.add(edgeGroup);
+    this.modelEdgeGuides.set(modelId, edgeGroup);
+  }
+
+  // Rebuilds the outline overlays for all loaded models.
+  private syncModelEdgeGuides(): void {
+    for (const model of this.getLoadedModels()) {
+      this.applyModelEdgeGuides(model);
+    }
+  }
+
+  // Removes any generated edge guides from the loaded models.
+  private removeModelEdgeGuides(): void {
+    for (const [modelId, edgeGroup] of this.modelEdgeGuides.entries()) {
+      edgeGroup?.parent?.remove?.(edgeGroup);
+      this.disposeObject3D(edgeGroup);
+      this.modelEdgeGuides.delete(modelId);
+    }
+  }
+
+  // Removes a single model outline overlay when a model is refreshed.
+  private removeModelEdgeGuide(modelId: string): void {
+    const edgeGroup = this.modelEdgeGuides.get(modelId);
+    if (!edgeGroup) return;
+
+    edgeGroup.parent?.remove?.(edgeGroup);
+    this.disposeObject3D(edgeGroup);
+    this.modelEdgeGuides.delete(modelId);
   }
 
   // Creates one highlighted axis arrow.

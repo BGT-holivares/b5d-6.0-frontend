@@ -100,6 +100,8 @@ type ParameterTableColumnKey =
   | 'maximo'
   | 'promedio';
 
+type ParameterPaneId = 'parameter-list' | 'boq-preview' | 'description-matches' | 'analysis';
+
 @Component({
   selector: 'app-parameters-panel',
   imports: [FormsModule, ResizableTableDirective, XlsxPreview],
@@ -228,6 +230,7 @@ export class ParametersPanel implements OnChanges {
   boqPreviewVisible = true;
   descriptionMatchesVisible = true;
   analysisVisible = true;
+  paneOrder: ParameterPaneId[] = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
   topLeftPaneWidth = 540;
   bottomLeftPaneWidth = 420;
   topWorkspaceHeight = 390;
@@ -281,59 +284,44 @@ export class ParametersPanel implements OnChanges {
   }
 
   get workspaceTemplateRows(): string {
-    const topVisible = this.topWorkspaceVisible;
-    const bottomVisible = this.bottomWorkspaceVisible;
-    if (topVisible && bottomVisible) {
+    if (this.topRowPaneIds.length && this.bottomRowPaneIds.length) {
       return `${this.topWorkspaceHeight}px 8px minmax(0, 1fr)`;
     }
-    if (topVisible || bottomVisible) {
+    if (this.topRowPaneIds.length || this.bottomRowPaneIds.length) {
       return 'minmax(0, 1fr)';
     }
     return '0px';
   }
 
-  get topRowTemplateColumns(): string {
-    if (this.parameterListVisible && this.boqPreviewVisible) {
+  get workspaceTemplateColumns(): string {
+    if (this.showTopVerticalSplitter || this.showBottomVerticalSplitter) {
       return `${this.topLeftPaneWidth}px 8px minmax(0, 1fr)`;
     }
     return 'minmax(0, 1fr)';
   }
 
-  get bottomRowTemplateColumns(): string {
-    const hasMatchPanels =
-      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
-      this.costMatchCandidateGroups.length > 0;
-    if (hasMatchPanels && this.analysisVisible) {
-      return `${this.bottomLeftPaneWidth}px 8px minmax(0, 1fr)`;
-    }
-    return 'minmax(0, 1fr)';
+  get orderedVisiblePaneIds(): ParameterPaneId[] {
+    return this.paneOrder.filter((paneId) => this.isPaneVisible(paneId));
   }
 
-  get topWorkspaceVisible(): boolean {
-    return this.parameterListVisible || this.boqPreviewVisible;
+  get topRowPaneIds(): ParameterPaneId[] {
+    return this.orderedVisiblePaneIds.slice(0, 2);
   }
 
-  get bottomWorkspaceVisible(): boolean {
-    return (
-      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
-      this.costMatchCandidateGroups.length > 0 ||
-      this.analysisVisible
-    );
+  get bottomRowPaneIds(): ParameterPaneId[] {
+    return this.orderedVisiblePaneIds.slice(2, 4);
   }
 
   get showTopVerticalSplitter(): boolean {
-    return this.parameterListVisible && this.boqPreviewVisible;
-  }
-
-  get showBottomVerticalSplitter(): boolean {
-    const hasMatchPanels =
-      (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
-      this.costMatchCandidateGroups.length > 0;
-    return hasMatchPanels && this.analysisVisible;
+    return this.topRowPaneIds.length === 2;
   }
 
   get showHorizontalSplitter(): boolean {
-    return this.topWorkspaceVisible && this.bottomWorkspaceVisible;
+    return this.topRowPaneIds.length > 0 && this.bottomRowPaneIds.length > 0;
+  }
+
+  get showBottomVerticalSplitter(): boolean {
+    return this.bottomRowPaneIds.length === 2;
   }
 
   get buildingTypeOptions(): string[] {
@@ -526,6 +514,60 @@ export class ParametersPanel implements OnChanges {
     this.emitToolbarState();
   }
 
+  // Moves a pane one step up or down in the shared panel order.
+  movePaneOrder(paneId: ParameterPaneId, direction: 'up' | 'down'): void {
+    const currentIndex = this.paneOrder.indexOf(paneId);
+    if (currentIndex === -1) return;
+
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= this.paneOrder.length) return;
+
+    const nextOrder = [...this.paneOrder];
+    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
+    this.paneOrder = nextOrder;
+    this.emitToolbarState();
+  }
+
+  // Returns the zero-based position of a visible pane in the current order.
+  private getPaneVisibleIndex(paneId: ParameterPaneId): number {
+    return this.orderedVisiblePaneIds.indexOf(paneId);
+  }
+
+  // Returns true when a pane is visible in the workspace.
+  isPaneVisible(paneId: ParameterPaneId): boolean {
+    if (paneId === 'parameter-list') return this.parameterListVisible;
+    if (paneId === 'boq-preview') return this.boqPreviewVisible;
+    if (paneId === 'description-matches') {
+      return (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) || this.costMatchCandidateGroups.length > 0;
+    }
+    return this.analysisVisible;
+  }
+
+  // Returns true when a pane can be moved in the requested direction.
+  canMovePane(paneId: ParameterPaneId, direction: 'up' | 'down'): boolean {
+    const currentIndex = this.paneOrder.indexOf(paneId);
+    if (currentIndex === -1) return false;
+    if (direction === 'up') return currentIndex > 0;
+    return currentIndex < this.paneOrder.length - 1;
+  }
+
+  // Returns the grid row assigned to the pane.
+  getPaneGridRow(paneId: ParameterPaneId): string {
+    if (!this.showHorizontalSplitter) return '1';
+    return this.getPaneVisibleIndex(paneId) < 2 ? '1' : '3';
+  }
+
+  // Returns the grid column assigned to the pane.
+  getPaneGridColumn(paneId: ParameterPaneId): string {
+    const paneIndex = this.getPaneVisibleIndex(paneId);
+    if (paneIndex === -1) return '1 / 4';
+    if (!(this.showTopVerticalSplitter || this.showBottomVerticalSplitter)) return '1 / 2';
+
+    const rowPaneIds = paneIndex < 2 ? this.topRowPaneIds : this.bottomRowPaneIds;
+    if (rowPaneIds.length === 1) return '1 / 4';
+    return rowPaneIds[0] === paneId ? '1 / 2' : '3 / 4';
+  }
+
   resetTableViews(): void {
     this.selectedParameterType = 'all';
     this.selectedBuildingType = 'all';
@@ -534,6 +576,7 @@ export class ParametersPanel implements OnChanges {
     this.boqPreviewVisible = true;
     this.descriptionMatchesVisible = true;
     this.analysisVisible = true;
+    this.paneOrder = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
     this.topLeftPaneWidth = 540;
     this.bottomLeftPaneWidth = 420;
     this.topWorkspaceHeight = 390;
@@ -631,6 +674,7 @@ export class ParametersPanel implements OnChanges {
   resetParameterTableViews(): void {
     this.resetParameterTablePreferences();
     this.resetParameterTableWidths();
+    this.paneOrder = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
   }
 
   private syncCostCatalogSelection(): void {
@@ -664,9 +708,13 @@ export class ParametersPanel implements OnChanges {
       const widthDelta = moveEvent.clientX - startX;
       const heightDelta = moveEvent.clientY - startY;
       if (target === 'top-vertical') {
-        this.topLeftPaneWidth = this.clamp(initialTopWidth + widthDelta, 320, 1200);
+        const nextWidth = this.clamp(initialTopWidth + widthDelta, 320, 1200);
+        this.topLeftPaneWidth = nextWidth;
+        this.bottomLeftPaneWidth = nextWidth;
       } else if (target === 'bottom-vertical') {
-        this.bottomLeftPaneWidth = this.clamp(initialBottomWidth + widthDelta, 260, 1200);
+        const nextWidth = this.clamp(initialBottomWidth + widthDelta, 320, 1200);
+        this.topLeftPaneWidth = nextWidth;
+        this.bottomLeftPaneWidth = nextWidth;
       } else {
         this.topWorkspaceHeight = this.clamp(initialHeight + heightDelta, 260, 900);
       }
