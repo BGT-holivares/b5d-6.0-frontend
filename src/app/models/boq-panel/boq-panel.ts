@@ -100,6 +100,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
   );
 
   leftPanelWidth = 420;
+  panelOrderReversed = false;
   boqTableContextMenuVisible = false;
   boqTableContextMenuX = 0;
   boqTableContextMenuY = 0;
@@ -114,6 +115,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
   workbookInfoMessage = '';
   workbookSheets: string[] = [];
   selectedSheetName = '';
+  listZoomPercent = 100;
   sheetZoomPercent = 100;
   sheetZoomInputValue = '100';
 
@@ -477,10 +479,53 @@ export class BoqPanel implements OnChanges, OnDestroy {
     return `${this.leftPanelWidth}px 8px minmax(0, 1fr)`;
   }
 
+  // Swaps the BOQ list and preview panels.
+  togglePanelOrder(): void {
+    this.panelOrderReversed = !this.panelOrderReversed;
+  }
+
+  // Returns the grid column assigned to the BOQ list panel.
+  getListGridColumn(): string {
+    return this.panelOrderReversed ? '3 / 4' : '1 / 2';
+  }
+
+  // Returns the grid column assigned to the BOQ preview panel.
+  getPreviewGridColumn(): string {
+    return this.panelOrderReversed ? '1 / 2' : '3 / 4';
+  }
+
+  // Returns the grid column assigned to the BOQ splitter.
+  getSplitterGridColumn(): string {
+    return '2';
+  }
+
+  // Returns the zoom factor used by the BOQ list panel.
+  getListZoomFactor(): number {
+    return this.clamp(this.listZoomPercent, 20, 300) / 100;
+  }
+
+  // Increases only the BOQ list zoom level.
+  increaseListZoom(): void {
+    this.listZoomPercent = this.clamp(this.listZoomPercent + 10, 20, 300);
+  }
+
+  // Decreases only the BOQ list zoom level.
+  decreaseListZoom(): void {
+    this.listZoomPercent = this.clamp(this.listZoomPercent - 10, 20, 300);
+  }
+
+  // Restores the BOQ list zoom to default value.
+  resetListZoom(): void {
+    this.listZoomPercent = 100;
+  }
+
   resetTableViews(): void {
     this.leftPanelWidth = 420;
+    this.panelOrderReversed = false;
     this.resetQuantificationTablePreferences();
     this.resetQuantificationTableWidths();
+    this.listZoomPercent = 100;
+    this.resetSheetZoom();
   }
 
   openBoqTableContextMenu(event: MouseEvent): void {

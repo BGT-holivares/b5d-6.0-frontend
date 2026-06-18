@@ -13,8 +13,20 @@
   }
 
   <div class="b5d-boq-panel__layout" [style.grid-template-columns]="layoutTemplateColumns">
-    <aside class="b5d-boq-panel__list">
-      <div class="b5d-boq-panel__table-shell" (click)="closeBoqTableContextMenu()">
+    <aside class="b5d-boq-panel__list" [style.grid-column]="getListGridColumn()">
+      <div class="b5d-boq-panel__list-toolbar">
+        <strong>Lista de cuantificaciones</strong>
+        <span class="b5d-boq-panel__list-toolbar-actions">
+          <button type="button" class="b5d-boq-panel__zoom-button" [title]="'Reordenar paneles'" (click)="togglePanelOrder()">
+            ↔
+          </button>
+          <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseListZoom()">-</button>
+          <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetListZoom()">100%</button>
+          <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseListZoom()">+</button>
+        </span>
+      </div>
+
+      <div class="b5d-boq-panel__table-shell" [style.zoom]="getListZoomFactor()" (click)="closeBoqTableContextMenu()">
         @if (quantificationTablePreferences.chooserOpen) {
           <div class="b5d-boq-panel__column-chooser">
             @for (column of quantificationTableColumns; track column.key) {
@@ -194,9 +206,9 @@
       </div>
     </aside>
 
-    <div class="b5d-boq-panel__splitter" (pointerdown)="startInternalResize($event)"></div>
+    <div class="b5d-boq-panel__splitter" [style.grid-column]="getSplitterGridColumn()" (pointerdown)="startInternalResize($event)"></div>
 
-    <section class="b5d-boq-panel__preview">
+    <section class="b5d-boq-panel__preview" [style.grid-column]="getPreviewGridColumn()">
       @if (cuantificacionSeleccionada; as seleccionada) {
         <header class="b5d-boq-panel__preview-header">
           <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>

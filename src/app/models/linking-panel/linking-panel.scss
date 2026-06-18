@@ -74,12 +74,29 @@
 }
 
 .b5d-linking-panel__box-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 5px 8px;
   background: #e5edf8;
   border-bottom: 1px solid #cbd5e1;
   font-weight: 700;
   overflow: auto;
   white-space: nowrap;
+}
+
+.b5d-linking-panel__box-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.b5d-linking-panel__zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .b5d-linking-panel__box-content {
@@ -107,6 +124,13 @@
   background: #f8fafc;
   cursor: pointer;
   font-size: 11px;
+}
+
+.b5d-linking-panel__tool-button--compact {
+  min-width: 28px;
+  min-height: 22px;
+  padding: 2px 6px;
+  line-height: 1;
 }
 
 .b5d-linking-panel__tool-button:disabled {

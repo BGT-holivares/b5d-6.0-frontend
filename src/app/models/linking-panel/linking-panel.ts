@@ -175,6 +175,10 @@ export class LinkingPanel implements OnChanges {
   localLinks: VinculoPanel[] = [];
   leftPanelWidth = 420;
   topPanelHeight = 260;
+  topPanelOrderReversed = false;
+  conceptPanelZoomPercent = 100;
+  objectPanelZoomPercent = 100;
+  relatedLinksPanelZoomPercent = 100;
   relatedLinksVisible = true;
   activeWorkspacePanel: LinkingWorkspacePanel = 'concepts';
   selectedConceptIds = new Set<number>();
@@ -714,6 +718,55 @@ export class LinkingPanel implements OnChanges {
     }
   }
 
+  // Swaps the two stable panels in the top row of the linking workspace.
+  toggleTopPanelOrder(): void {
+    this.topPanelOrderReversed = !this.topPanelOrderReversed;
+  }
+
+  // Returns the grid column assigned to a top-row panel.
+  getTopPanelGridColumn(panelId: 'concepts' | 'ifc-objects'): string {
+    if (!this.topPanelOrderReversed) {
+      return panelId === 'concepts' ? '1 / 2' : '3 / 4';
+    }
+
+    return panelId === 'concepts' ? '3 / 4' : '1 / 2';
+  }
+
+  // Returns true when the requested top-row panel can move in the provided direction.
+  canMoveTopPanel(panelId: 'concepts' | 'ifc-objects', direction: 'left' | 'right'): boolean {
+    if (panelId === 'concepts') {
+      return direction === 'right' && !this.topPanelOrderReversed;
+    }
+
+    return direction === 'left' && this.topPanelOrderReversed;
+  }
+
+  // Returns the zoom factor for a specific panel content area.
+  getPanelZoomFactor(panelId: 'concepts' | 'ifc-objects' | 'related-links'): number {
+    const zoomPercent =
+      panelId === 'concepts'
+        ? this.conceptPanelZoomPercent
+        : panelId === 'ifc-objects'
+          ? this.objectPanelZoomPercent
+          : this.relatedLinksPanelZoomPercent;
+    return this.clamp(zoomPercent, 20, 300) / 100;
+  }
+
+  // Increases the zoom level for a specific panel content area.
+  increasePanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
+    this.setPanelZoom(panelId, this.getPanelZoomPercent(panelId) + 10);
+  }
+
+  // Decreases the zoom level for a specific panel content area.
+  decreasePanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
+    this.setPanelZoom(panelId, this.getPanelZoomPercent(panelId) - 10);
+  }
+
+  // Restores the zoom level for a specific panel content area.
+  resetPanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
+    this.setPanelZoom(panelId, 100);
+  }
+
   // Returns the current concepts and links draft to persist in the backend project.
   getProjectDraft(): SaveB5DProyectPayloadOrm {
     const copiedLinks = this.buildCopiedLinksForDraft();
@@ -896,6 +949,10 @@ export class LinkingPanel implements OnChanges {
   resetTableViews(): void {
     this.leftPanelWidth = 420;
     this.topPanelHeight = 260;
+    this.topPanelOrderReversed = false;
+    this.conceptPanelZoomPercent = 100;
+    this.objectPanelZoomPercent = 100;
+    this.relatedLinksPanelZoomPercent = 100;
     this.relatedLinksVisible = true;
     this.activeWorkspacePanel = 'concepts';
     this.resetConceptTablePreferences();
@@ -1719,6 +1776,27 @@ export class LinkingPanel implements OnChanges {
 
   private clamp(value: number, minValue: number, maxValue: number): number {
     return Math.min(Math.max(value, minValue), maxValue);
+  }
+
+  // Returns the stored zoom percentage for a specific panel content area.
+  private getPanelZoomPercent(panelId: 'concepts' | 'ifc-objects' | 'related-links'): number {
+    if (panelId === 'concepts') return this.conceptPanelZoomPercent;
+    if (panelId === 'ifc-objects') return this.objectPanelZoomPercent;
+    return this.relatedLinksPanelZoomPercent;
+  }
+
+  // Stores a zoom percentage for a specific panel content area.
+  private setPanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links', zoomPercent: number): void {
+    const nextZoomPercent = this.clamp(zoomPercent, 20, 300);
+    if (panelId === 'concepts') {
+      this.conceptPanelZoomPercent = nextZoomPercent;
+      return;
+    }
+    if (panelId === 'ifc-objects') {
+      this.objectPanelZoomPercent = nextZoomPercent;
+      return;
+    }
+    this.relatedLinksPanelZoomPercent = nextZoomPercent;
   }
 
   private get relatedLinksFromSelectedConcepts(): VinculoPanel[] {

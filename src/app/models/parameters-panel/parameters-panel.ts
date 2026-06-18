@@ -218,6 +218,7 @@ export class ParametersPanel implements OnChanges {
 
   selectedQuantificationId: number | null = null;
   selectedSheetIndex = 0;
+  boqPreviewZoomPercent = 100;
   boqSheets: WorkbookSummarySheetOrm[] = [];
   boqRows: BoqExtractedRow[] = [];
   boqLoading = false;
@@ -580,6 +581,7 @@ export class ParametersPanel implements OnChanges {
     this.topLeftPaneWidth = 540;
     this.bottomLeftPaneWidth = 420;
     this.topWorkspaceHeight = 390;
+    this.boqPreviewZoomPercent = 100;
     this.emitToolbarState();
   }
 
@@ -950,6 +952,35 @@ export class ParametersPanel implements OnChanges {
   async selectBoqSheet(sheetIndex: number): Promise<void> {
     this.selectedSheetIndex = sheetIndex;
     await this.loadBoqExtractedRows();
+  }
+
+  // Returns the zoom factor used by the internal BOQ preview pane.
+  getBoqPreviewZoomFactor(): number {
+    return this.clamp(this.boqPreviewZoomPercent, 20, 300) / 100;
+  }
+
+  // Increases only the internal BOQ preview zoom level.
+  increaseBoqPreviewZoom(): void {
+    this.boqPreviewZoomPercent = this.clamp(this.boqPreviewZoomPercent + 10, 20, 300);
+  }
+
+  // Decreases only the internal BOQ preview zoom level.
+  decreaseBoqPreviewZoom(): void {
+    this.boqPreviewZoomPercent = this.clamp(this.boqPreviewZoomPercent - 10, 20, 300);
+  }
+
+  // Restores the BOQ preview zoom to default value.
+  resetBoqPreviewZoom(): void {
+    this.boqPreviewZoomPercent = 100;
+  }
+
+  // Applies zoom requests emitted by the embedded workbook preview.
+  onBoqPreviewZoomRequested(direction: 'in' | 'out'): void {
+    if (direction === 'in') {
+      this.increaseBoqPreviewZoom();
+      return;
+    }
+    this.decreaseBoqPreviewZoom();
   }
 
   resolveAverage(row: ParametroB5DOrm): number | null {

@@ -458,6 +458,30 @@
                 >
                   ↓
                 </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Reducir zoom"
+                  (click)="decreaseBoqPreviewZoom()"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Restablecer zoom"
+                  (click)="resetBoqPreviewZoom()"
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Aumentar zoom"
+                  (click)="increaseBoqPreviewZoom()"
+                >
+                  +
+                </button>
               </span>
             </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--stacked">
@@ -489,8 +513,10 @@
                   [projectId]="activeProject?.id ?? null"
                   [quantificationId]="selectedQuantificationId"
                   [sheetIndex]="selectedSheetIndex"
+                  [zoomPercent]="boqPreviewZoomPercent"
                   title="Vista previa BOQ"
                   emptyMessage="Selecciona una cuantificacion y esquema para previsualizar."
+                  (zoomRequested)="onBoqPreviewZoomRequested($event)"
                 />
               </div>
             </div>

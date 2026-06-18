@@ -29,10 +29,63 @@
 
   <div class="b5d-linking-panel__workspace" #layoutWorkspace [style.grid-template-rows]="workspaceTemplateRows">
     <div class="b5d-linking-panel__top-row" [style.grid-template-columns]="topRowTemplateColumns">
-      <section class="b5d-linking-panel__box" (click)="selectActivePanel('concepts')">
-        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</div>
+      <section
+        class="b5d-linking-panel__box"
+        [style.grid-column]="getTopPanelGridColumn('concepts')"
+        (click)="selectActivePanel('concepts')"
+      >
+        <div class="b5d-linking-panel__box-title">
+          <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</span>
+          <span class="b5d-linking-panel__box-title-actions">
+            <button
+              type="button"
+              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+              [disabled]="!canMoveTopPanel('concepts', 'left')"
+              title="Mover a la izquierda"
+              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+              [disabled]="!canMoveTopPanel('concepts', 'right')"
+              title="Mover a la derecha"
+              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+            >
+              →
+            </button>
+            <span class="b5d-linking-panel__zoom-controls">
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="decreasePanelZoom('concepts'); $event.stopPropagation()"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="resetPanelZoom('concepts'); $event.stopPropagation()"
+              >
+                100%
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="increasePanelZoom('concepts'); $event.stopPropagation()"
+              >
+                +
+              </button>
+            </span>
+          </span>
+        </div>
 
-        <div class="b5d-linking-panel__box-content" (click)="closeConceptTableContextMenu()">
+        <div
+          class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable"
+          [style.zoom]="getPanelZoomFactor('concepts')"
+          (click)="closeConceptTableContextMenu()"
+        >
           @if (conceptTablePreferences.chooserOpen) {
             <div class="b5d-linking-panel__column-chooser">
               @for (column of conceptTableColumns; track column.key) {
@@ -310,13 +363,63 @@
 
       <div
         class="b5d-linking-panel__splitter b5d-linking-panel__splitter--vertical"
+        [style.grid-column]="'2'"
         (pointerdown)="startInternalResize($event, 'vertical')"
       ></div>
 
-      <section class="b5d-linking-panel__box" (click)="selectActivePanel('ifc-objects')">
-        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</div>
+      <section
+        class="b5d-linking-panel__box"
+        [style.grid-column]="getTopPanelGridColumn('ifc-objects')"
+        (click)="selectActivePanel('ifc-objects')"
+      >
+        <div class="b5d-linking-panel__box-title">
+          <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</span>
+          <span class="b5d-linking-panel__box-title-actions">
+            <button
+              type="button"
+              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+              [disabled]="!canMoveTopPanel('ifc-objects', 'left')"
+              title="Mover a la izquierda"
+              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+              [disabled]="!canMoveTopPanel('ifc-objects', 'right')"
+              title="Mover a la derecha"
+              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+            >
+              →
+            </button>
+            <span class="b5d-linking-panel__zoom-controls">
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="decreasePanelZoom('ifc-objects'); $event.stopPropagation()"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="resetPanelZoom('ifc-objects'); $event.stopPropagation()"
+              >
+                100%
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="increasePanelZoom('ifc-objects'); $event.stopPropagation()"
+              >
+                +
+              </button>
+            </span>
+          </span>
+        </div>
 
-        <div class="b5d-linking-panel__box-content">
+        <div class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable" [style.zoom]="getPanelZoomFactor('ifc-objects')">
           <table class="b5d-linking-panel__table" b5dResizableTable="linking-ifc-objects">
             <thead>
               <tr>
@@ -381,9 +484,36 @@
       ></div>
 
       <section class="b5d-linking-panel__box b5d-linking-panel__bottom" (click)="selectActivePanel('related-links')">
-        <div class="b5d-linking-panel__box-title">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.title') }}</div>
+        <div class="b5d-linking-panel__box-title">
+          <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.title') }}</span>
+          <span class="b5d-linking-panel__box-title-actions">
+            <span class="b5d-linking-panel__zoom-controls">
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="decreasePanelZoom('related-links'); $event.stopPropagation()"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="resetPanelZoom('related-links'); $event.stopPropagation()"
+              >
+                100%
+              </button>
+              <button
+                type="button"
+                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
+                (click)="increasePanelZoom('related-links'); $event.stopPropagation()"
+              >
+                +
+              </button>
+            </span>
+          </span>
+        </div>
 
-        <div class="b5d-linking-panel__box-content">
+        <div class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable" [style.zoom]="getPanelZoomFactor('related-links')">
           <table class="b5d-linking-panel__table" b5dResizableTable="linking-related-links">
             <thead>
               <tr>
