@@ -17,6 +17,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   constructor(private readonly host: ElementRef<HTMLTableElement>) {}
 
   ngAfterViewInit(): void {
+    if (typeof document === 'undefined') return;
     const table = this.host.nativeElement;
     table.classList.add('b5d-resizable-table');
     this.rebindTableStructure();
@@ -43,6 +44,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   }
 
   private rebindTableStructure(): void {
+    if (typeof document === 'undefined') return;
     for (const removeListener of this.boundHandleListenerRemovers) removeListener();
     this.boundHandleListenerRemovers.length = 0;
     this.restoreColumnWidths();
@@ -68,6 +70,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   }
 
   private startResize(event: PointerEvent, columnIndex: number, headerCell: HTMLElement): void {
+    if (typeof window === 'undefined') return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -119,6 +122,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   }
 
   private restoreColumnWidths(): void {
+    if (typeof window === 'undefined') return;
     if (!this.storageKey) return;
     try {
       const raw = window.localStorage.getItem(this.buildStorageKey());
@@ -132,6 +136,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   }
 
   private persistColumnWidths(): void {
+    if (typeof window === 'undefined') return;
     if (!this.storageKey) return;
     try {
       window.localStorage.setItem(this.buildStorageKey(), JSON.stringify(this.columnWidths));

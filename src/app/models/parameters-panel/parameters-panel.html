@@ -71,9 +71,38 @@
                 >
                   ↓
                 </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Reducir zoom"
+                  (click)="decreasePaneZoom('parameter-list')"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Restablecer zoom"
+                  (click)="resetPaneZoom('parameter-list')"
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Aumentar zoom"
+                  (click)="increasePaneZoom('parameter-list')"
+                >
+                  +
+                </button>
               </span>
             </div>
-            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll" (click)="closeParameterTableContextMenu()">
+            <div
+              class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll"
+              [style.zoom]="getPaneZoomFactor('parameter-list')"
+              (wheel)="onPaneZoomWheel($event, 'parameter-list')"
+              (click)="closeParameterTableContextMenu()"
+            >
               @if (parameterTablePreferences.chooserOpen) {
                 <div class="b5d-parameters-panel__column-chooser">
                   @for (column of parameterTableColumns; track column.key) {
@@ -516,6 +545,7 @@
                   [zoomPercent]="boqPreviewZoomPercent"
                   title="Vista previa BOQ"
                   emptyMessage="Selecciona una cuantificacion y esquema para previsualizar."
+                  (cellSelected)="onBoqPreviewCellSelected($event)"
                   (zoomRequested)="onBoqPreviewZoomRequested($event)"
                 />
               </div>
@@ -563,9 +593,37 @@
                 >
                   ↓
                 </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Reducir zoom"
+                  (click)="decreasePaneZoom('description-matches')"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Restablecer zoom"
+                  (click)="resetPaneZoom('description-matches')"
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Aumentar zoom"
+                  (click)="increasePaneZoom('description-matches')"
+                >
+                  +
+                </button>
               </span>
             </div>
-            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
+            <div
+              class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll"
+              [style.zoom]="getPaneZoomFactor('description-matches')"
+              (wheel)="onPaneZoomWheel($event, 'description-matches')"
+            >
               @if (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) {
                 <div class="b5d-parameters-panel__description-matches">
                   @for (group of descriptionMatchCandidateGroups; track group.parameterId) {
@@ -670,15 +728,43 @@
                 >
                   ↓
                 </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Reducir zoom"
+                  (click)="decreasePaneZoom('analysis')"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Restablecer zoom"
+                  (click)="resetPaneZoom('analysis')"
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
+                  title="Aumentar zoom"
+                  (click)="increasePaneZoom('analysis')"
+                >
+                  +
+                </button>
               </span>
             </div>
-            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll">
+            <div
+              class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll"
+              [style.zoom]="getPaneZoomFactor('analysis')"
+              (wheel)="onPaneZoomWheel($event, 'analysis')"
+            >
               @if (boqLoading) {
                 <div class="b5d-parameters-panel__muted">Extrayendo datos BOQ para analisis...</div>
               } @else if (boqError) {
                 <div class="b5d-parameters-panel__error">{{ boqError }}</div>
               } @else {
-                <table class="b5d-parameters-panel__boq-table" b5dResizableTable="parameters-boq-analysis">
+                <table class="b5d-parameters-panel__boq-table" [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey">
                   <thead>
                     <tr>
                       <th>Fila</th>

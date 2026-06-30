@@ -73,6 +73,20 @@
   font-size: 12px;
 }
 
+.b5d-viewer-screen__window-mode-banner {
+  position: fixed;
+  top: 76px;
+  left: 14px;
+  z-index: 1349;
+  max-width: 420px;
+  padding: 8px 10px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: rgba(241, 245, 249, 0.96);
+  color: #334155;
+  font-size: 12px;
+}
+
 .b5d-viewer-screen__measurement-card {
   position: fixed;
   top: 132px;

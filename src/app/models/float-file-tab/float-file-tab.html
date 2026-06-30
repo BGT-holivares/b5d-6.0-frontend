@@ -11,6 +11,11 @@
         <input class="b5d-float-file-tab__file" type="file" accept=".ifc" (change)="manejarCambioArchivo($event)" />
       </label>
 
+      <button class="b5d-float-file-tab__item" type="button" (click)="unloadIfcSolicitado.emit()">
+        <span class="b5d-float-file-tab__icon">X</span>
+        <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.unloadIfc') }}</span>
+      </button>
+
       <button class="b5d-float-file-tab__item" type="button" (click)="abrirB5dSolicitado.emit()">
         <span class="b5d-float-file-tab__icon">B5D</span>
         <span>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.importB5D') }}</span>

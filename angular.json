@@ -38,6 +38,11 @@
                 "glob": "web-ifc*.wasm",
                 "input": "node_modules/web-ifc",
                 "output": "web-ifc"
+              },
+              {
+                "glob": "worker.mjs",
+                "input": "node_modules/@thatopen/fragments/dist/Worker",
+                "output": "fragments-worker"
               }
             ],
             "styles": [
@@ -46,7 +51,9 @@
             "server": "src/main.server.ts",
             "outputMode": "server",
             "security": {
-              "allowedHosts": []
+              "allowedHosts": [
+                  "192.168.2.36"
+                ]
             },
             "ssr": {
               "entry": "src/server.ts"
@@ -85,7 +92,12 @@
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.server.ts"
                 }
-              ]
+              ],
+              "security": {
+                "allowedHosts": [
+                  "192.168.2.36"
+                ]
+              }
             },
             "private-vm": {
               "fileReplacements": [
@@ -108,6 +120,9 @@
               "buildTarget": "frontend:build:development"
             },
             "server": {
+              "allowedHosts": [
+                "192.168.2.36"
+              ],
               "buildTarget": "frontend:build:server"
             },
             "private-vm": {

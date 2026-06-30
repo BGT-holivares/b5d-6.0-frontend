@@ -7,7 +7,7 @@ import { catchError } from 'rxjs/operators';
 import { BackendAuthService } from '../services/backend-auth.service';
 import { logB5dDebug } from '../utils/debug/b5d-debug';
 
-export const authGuard: CanActivateFn = () => {
+export const guestGuard: CanActivateFn = () => {
   const auth = inject(BackendAuthService);
   const router = inject(Router);
   const platformId = inject(PLATFORM_ID);
@@ -16,20 +16,20 @@ export const authGuard: CanActivateFn = () => {
     return true;
   }
 
-  logB5dDebug('authGuard: calling /api/auth/me');
+  logB5dDebug('guestGuard: calling /api/auth/me');
   return auth.me().pipe(
     map((sesion) => {
-      logB5dDebug('authGuard: response received', sesion);
+      logB5dDebug('guestGuard: response received', sesion);
       if (sesion.authenticated) {
-        logB5dDebug('authGuard: authenticated, allowing navigation');
-        return true;
+        logB5dDebug('guestGuard: authenticated, redirecting to /viewer');
+        return router.createUrlTree(['/viewer']);
       }
-      logB5dDebug('authGuard: unauthenticated, redirecting to /login');
-      return router.createUrlTree(['/login']);
+      logB5dDebug('guestGuard: unauthenticated, allowing /login');
+      return true;
     }),
     catchError((error) => {
-      logB5dDebug('authGuard: error, redirecting to /login', error);
-      return of(router.createUrlTree(['/login']));
+      logB5dDebug('guestGuard: error, allowing /login', error);
+      return of(true);
     }),
   );
 };

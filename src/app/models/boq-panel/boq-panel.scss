@@ -34,14 +34,17 @@
 .b5d-boq-panel__layout {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: 420px 8px minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .b5d-boq-panel__list {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -168,6 +171,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   height: 100%;
   padding: 10px;
   gap: 8px;

@@ -7,6 +7,7 @@ import type { FloatingPanelId } from '../../types/floating-panel';
 import type { MeasurementCountMode, MeasurementLengthMode, MeasurementMode } from '../../types/measurement';
 import type { ProyectoTrabajoOrm, UsuarioSesionOrm } from '../../types/b5d-orm';
 import type { HomeToolbarState } from '../../types/home-toolbar';
+import type { ViewerWindowMode } from '../../types/viewer-window';
 import { TOOLBAR_TRANSLATIONS } from './toolbar.translations';
 
 type ToolbarTab = 'home' | 'objects' | 'measurement' | 'tools' | 'view' | 'about';
@@ -40,6 +41,8 @@ export type ToolbarActionId =
   | 'home-refresh-view'
   | 'home-toggle-filters'
   | 'home-reset-view'
+  | 'set-window-viewer'
+  | 'set-window-control'
   | 'measurement-volume'
   | 'measurement-area'
   | 'measurement-length'
@@ -150,6 +153,7 @@ export class Toolbar {
   @Input() activeMeasurementMode: MeasurementMode | null = null;
   @Input() activeLengthMeasurementMode: MeasurementLengthMode = 'edge';
   @Input() activeCountMeasurementMode: MeasurementCountMode = 'selected';
+  @Input() windowMode: ViewerWindowMode = 'viewer';
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
@@ -175,6 +179,7 @@ export class Toolbar {
   };
 
   @Output() archivoSeleccionado = new EventEmitter<File>();
+  @Output() unloadIfcSolicitado = new EventEmitter<void>();
   @Output() abrirB5dSolicitado = new EventEmitter<void>();
   @Output() guardarB5dSolicitado = new EventEmitter<void>();
   @Output() loginSolicitado = new EventEmitter<void>();
@@ -667,38 +672,93 @@ export class Toolbar {
   }
 
   private get objectCategories(): ToolbarCategory[] {
+    const viewerOnlyDisabled = this.isControlWindowMode();
     return [
       {
         labelKey: 'toolbar.objects.category.objects',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.objects.showAll', action: 'show-all-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.restoreZoom', action: 'reset-view', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.regenGeom', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.objects.showAll',
+            action: 'show-all-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.restoreZoom',
+            action: 'reset-view',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.regenGeom',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
         ],
       },
       {
         labelKey: 'toolbar.objects.category.selected',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.objects.sShow', action: 'show-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.sTransparent', action: 'transparent-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.sHide', action: 'hide-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.objects.sShow',
+            action: 'show-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.sTransparent',
+            action: 'transparent-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.sHide',
+            action: 'hide-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
         ],
       },
       {
         labelKey: 'toolbar.objects.category.notSelected',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.objects.nsShow', action: 'show-not-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.nsTransparent', action: 'transparent-not-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.objects.nsHide', action: 'hide-not-selected-objects', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.objects.nsShow',
+            action: 'show-not-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.nsTransparent',
+            action: 'transparent-not-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.objects.nsHide',
+            action: 'hide-not-selected-objects',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
         ],
       },
     ];
   }
 
   private get measurementCategories(): ToolbarCategory[] {
+    const viewerOnlyDisabled = this.isControlWindowMode();
     return [
       {
         labelKey: 'toolbar.measurement.category.mode',
@@ -710,6 +770,7 @@ export class Toolbar {
             action: 'measurement-volume',
             selected: this.activeMeasurementMode === 'volume',
             variant: 'large',
+            disabled: viewerOnlyDisabled,
           },
           {
             labelKey: 'toolbar.measurement.area',
@@ -717,6 +778,7 @@ export class Toolbar {
             action: 'measurement-area',
             selected: this.activeMeasurementMode === 'area',
             variant: 'large',
+            disabled: viewerOnlyDisabled,
           },
           {
             labelKey: 'toolbar.measurement.length',
@@ -724,18 +786,21 @@ export class Toolbar {
             action: 'measurement-length',
             selected: this.activeMeasurementMode === 'length',
             variant: 'large-dropdown',
+            disabled: viewerOnlyDisabled,
             dropdownItems: [
               {
                 labelKey: 'toolbar.measurement.length.edge',
                 action: 'measurement-length-edge',
                 variant: 'large',
                 selected: this.activeMeasurementMode === 'length' && this.activeLengthMeasurementMode === 'edge',
+                disabled: viewerOnlyDisabled,
               },
               {
                 labelKey: 'toolbar.measurement.length.points',
                 action: 'measurement-length-points',
                 variant: 'large',
                 selected: this.activeMeasurementMode === 'length' && this.activeLengthMeasurementMode === 'points',
+                disabled: viewerOnlyDisabled,
               },
             ],
           },
@@ -745,6 +810,7 @@ export class Toolbar {
             action: 'measurement-angle',
             selected: this.activeMeasurementMode === 'angle',
             variant: 'large',
+            disabled: viewerOnlyDisabled,
           },
           {
             labelKey: 'toolbar.measurement.count',
@@ -752,34 +818,26 @@ export class Toolbar {
             action: 'measurement-count',
             selected: this.activeMeasurementMode === 'count',
             variant: 'large-dropdown',
+            disabled: viewerOnlyDisabled,
             dropdownItems: [
               {
                 labelKey: 'toolbar.measurement.count.selected',
                 action: 'measurement-count-selected',
                 variant: 'large',
                 selected: this.activeMeasurementMode === 'count' && this.activeCountMeasurementMode === 'selected',
+                disabled: viewerOnlyDisabled,
               },
               {
                 labelKey: 'toolbar.measurement.count.manual',
                 action: 'measurement-count-manual',
                 variant: 'large',
                 selected: this.activeMeasurementMode === 'count' && this.activeCountMeasurementMode === 'manual',
+                disabled: viewerOnlyDisabled,
               },
             ],
           },
-          {
-            labelKey: 'toolbar.measurement.clearAll',
-            iconText: 'CLR',
-            action: 'clear-measurements',
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.measurement.weight',
-            iconText: 'kg',
-            action: 'measurement-weight',
-            disabled: true,
-            variant: 'large',
-          },
+          { labelKey: 'toolbar.measurement.clearAll', iconText: 'CLR', action: 'clear-measurements', variant: 'large', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.measurement.weight', iconText: 'kg', action: 'measurement-weight', disabled: true, variant: 'large' },
         ],
       },
     ];
@@ -837,46 +895,71 @@ export class Toolbar {
   }
 
   private get viewCategories(): ToolbarCategory[] {
+    const viewerOnlyDisabled = this.isControlWindowMode();
     return [
       {
         labelKey: 'toolbar.view.category.type',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.view.3D', action: 'view-3d', iconSrc: 'assets/images/3D_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.view.2D', action: 'view-2d', iconSrc: 'assets/images/2D_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.view.3D',
+            action: 'view-3d',
+            iconSrc: 'assets/images/3D_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.view.2D',
+            action: 'view-2d',
+            iconSrc: 'assets/images/2D_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
         ],
       },
       {
         labelKey: 'toolbar.view.category.camera',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.view.restoreZoom', action: 'reset-view', iconSrc: 'assets/images/RestoreZoom_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.view.focus', action: 'focus-selection', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
+          {
+            labelKey: 'toolbar.view.restoreZoom',
+            action: 'reset-view',
+            iconSrc: 'assets/images/RestoreZoom_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.view.focus',
+            action: 'focus-selection',
+            iconSrc: 'assets/images/Add_32x32.png',
+            variant: 'large',
+            disabled: viewerOnlyDisabled,
+          },
         ],
       },
       {
         labelKey: 'toolbar.view.category.view',
         layout: 'vertical',
         buttons: [
-          { labelKey: 'toolbar.view.default', action: 'view-default', iconSrc: 'assets/images/Default_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.front', action: 'view-front', iconSrc: 'assets/images/Front_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.back', action: 'view-back', iconSrc: 'assets/images/Back_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.up', action: 'view-up', iconSrc: 'assets/images/Top_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.right', action: 'view-right', iconSrc: 'assets/images/Right_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.left', action: 'view-left', iconSrc: 'assets/images/Left_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.rotateLeft', action: 'rotate-left', iconSrc: 'assets/images/RotateLeft_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.rotateRight', action: 'rotate-right', iconSrc: 'assets/images/RotateRight_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.default', action: 'view-default', iconSrc: 'assets/images/Default_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.front', action: 'view-front', iconSrc: 'assets/images/Front_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.back', action: 'view-back', iconSrc: 'assets/images/Back_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.up', action: 'view-up', iconSrc: 'assets/images/Top_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.right', action: 'view-right', iconSrc: 'assets/images/Right_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.left', action: 'view-left', iconSrc: 'assets/images/Left_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.rotateLeft', action: 'rotate-left', iconSrc: 'assets/images/RotateLeft_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.rotateRight', action: 'rotate-right', iconSrc: 'assets/images/RotateRight_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
         ],
       },
       {
         labelKey: 'toolbar.view.category.movements',
         layout: 'vertical',
         buttons: [
-          { labelKey: 'toolbar.view.xAxis', action: 'movement-axis-x', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.yAxis', action: 'movement-axis-y', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.zAxis', action: 'movement-axis-z', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.cleanSelected', action: 'restore-selected-movement', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
-          { labelKey: 'toolbar.view.cleanAll', action: 'restore-all-movement', iconSrc: 'assets/images/Add_32x32.png', variant: 'small' },
+          { labelKey: 'toolbar.view.xAxis', action: 'movement-axis-x', iconSrc: 'assets/images/Add_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.yAxis', action: 'movement-axis-y', iconSrc: 'assets/images/Add_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.zAxis', action: 'movement-axis-z', iconSrc: 'assets/images/Add_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.cleanSelected', action: 'restore-selected-movement', iconSrc: 'assets/images/Add_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
+          { labelKey: 'toolbar.view.cleanAll', action: 'restore-all-movement', iconSrc: 'assets/images/Add_32x32.png', variant: 'small', disabled: viewerOnlyDisabled },
         ],
       },
       {
@@ -887,9 +970,34 @@ export class Toolbar {
           iconText: panel.icon,
           panelId: panel.id,
           selected: this.isFloatingPanelVisible(panel.id),
+          disabled: viewerOnlyDisabled && panel.id !== 'bottom',
           variant: 'small',
         })),
       },
+      {
+        labelKey: 'toolbar.view.category.windowMode',
+        layout: 'vertical',
+        buttons: [
+          {
+            labelKey: 'toolbar.view.window.viewer',
+            iconText: 'V',
+            action: 'set-window-viewer',
+            selected: this.windowMode === 'viewer',
+            variant: 'small',
+          },
+          {
+            labelKey: 'toolbar.view.window.control',
+            iconText: 'C',
+            action: 'set-window-control',
+            selected: this.windowMode === 'control',
+            variant: 'small',
+          },
+        ],
+      },
     ];
+  }
+
+  private isControlWindowMode(): boolean {
+    return this.windowMode === 'control';
   }
 }

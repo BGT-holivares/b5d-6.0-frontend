@@ -53,6 +53,7 @@ export interface ConceptoB5DOrm {
   costo?: number | null;
   costo_mn?: number | null;
   costo_me?: number | null;
+  porcentaje_padre?: number | null;
   optimistic_lock_field?: number | null;
   gc_record?: number | null;
 }

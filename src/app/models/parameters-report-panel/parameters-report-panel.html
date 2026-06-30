@@ -142,7 +142,7 @@
             </thead>
             <tbody>
               @for (row of reportData.quantityRows; track trackByRow($index, row)) {
-                <tr>
+                <tr (click)="requestConceptSelection(row.clave)">
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>
@@ -197,7 +197,7 @@
             </thead>
             <tbody>
               @for (row of reportData.costRows; track trackByRow($index, row)) {
-                <tr>
+                <tr (click)="requestConceptSelection(row.clave)">
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>
@@ -247,7 +247,7 @@
             </thead>
             <tbody>
               @for (row of reportData.unassignedRows; track trackByRow($index, row)) {
-                <tr>
+                <tr (click)="requestConceptSelection(row.clave)">
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>

@@ -27,6 +27,7 @@ import {
   recolectarLocalIdsEspaciales,
   obtenerValorIfc,
 } from './ifc-spatial-tree';
+import { createRandomId } from './random-id';
 
 type RegistroElemento = {
   localId: number;
@@ -34,6 +35,7 @@ type RegistroElemento = {
   ifcClass: string;
   name: string;
   objectType: string;
+  properties: Record<string, string>;
   project: string;
   site: string;
   building: string;
@@ -139,6 +141,7 @@ export class VisorIfc {
   private modelAxesOverlay: any = null;
   private readonly modelEdgeGuides = new Map<string, any>();
   private nombreArchivoPendiente = '';
+  private lastLoadedFileName = '';
   private urlTrabajador = '';
   private moduloThree: typeof import('three') | null = null;
   private fragsModule: typeof import('@thatopen/fragments') | null = null;
@@ -238,7 +241,7 @@ export class VisorIfc {
       modelo.useCamera(mundo.camera.three);
       mundo.scene.three.add(modelo.object);
 
-      const modeloId = key || modelo.uuid || modelo.id || crypto.randomUUID();
+      const modeloId = key || modelo.uuid || modelo.id || createRandomId('model');
       modelo.userData = {
         ...modelo.userData,
         modelId: modeloId,
@@ -333,6 +336,7 @@ export class VisorIfc {
     this.modeloCargado = null;
     this.contenedorVisor = null;
     this.urlTrabajador = '';
+    this.lastLoadedFileName = '';
     this.selectedModelItems = {};
     this.originalMovedTransforms.clear();
     this.activeMovementAxis = null;
@@ -370,6 +374,7 @@ export class VisorIfc {
     this.cargando.set(true);
     this.loadingStage.set('reading');
     this.nombreArchivoPendiente = archivo.name;
+    this.lastLoadedFileName = archivo.name;
     this.cacheSeleccion.clear();
     this.registrosArbol.clear();
     this.cacheElevacionElementos.clear();
@@ -517,12 +522,6 @@ export class VisorIfc {
   async clearAllMeasurements(): Promise<void> {
     await this.limpiarSeleccion();
     this.clearLengthEdgeMeasurement();
-  }
-
-  // Temporary trace output for measurement debugging; remove once area selection is stable.
-  private debugMeasurement(stage: string, payload: unknown): void {
-    if (!this.measurementDebugEnabled) return;
-    console.log('[measurement-debug]', stage, payload);
   }
 
   alternarVisibilidadIfc(modeloId: string): void {
@@ -754,9 +753,15 @@ export class VisorIfc {
   }
 
   obtenerElementosB5D(): ElementoIfcB5D[] {
+    const modelId = this.getModelId(this.modeloCargado);
+    const sourceFileName = this.lastLoadedFileName || this.modeloCargado?.name || '';
+
     return Array.from(this.registrosArbol.values()).map((elemento) => ({
       localId: elemento.localId,
       expressID: elemento.expressID,
+      modelId,
+      sourceFileName,
+      properties: { ...elemento.properties },
       ifcClass: elemento.ifcClass,
       name: elemento.name,
       objectType: elemento.objectType,
@@ -876,7 +881,6 @@ export class VisorIfc {
 
     try {
       if (this.measurementMode === 'area') {
-        this.debugMeasurement('area pointerdown', { pointerPosition, hasCanvas: !!canvas, hasCamera: !!camera });
         const hit = await this.findClosestAreaMeasurementHit(pointerPosition, camera, canvas);
         if (!hit) return;
 
@@ -888,13 +892,6 @@ export class VisorIfc {
         const hit = await this.findClosestLengthMeasurementHit(pointerPosition, camera, canvas);
         if (!hit) return;
 
-        this.debugMeasurement('angle hit', {
-          modelId: hit.modelId,
-          localId: hit.localId,
-          itemId: hit.itemId,
-          distance: hit.distance,
-          point: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-        });
         this.toggleAngleMeasurementAnchor(hit);
         return;
       }
@@ -911,14 +908,6 @@ export class VisorIfc {
         if (this.measurementLengthMode === 'edge') {
         const edgeHit = await this.findClosestLengthEdgeHit(pointerPosition, camera, canvas);
         if (edgeHit) {
-          this.debugMeasurement('length edge hit', {
-            modelId: edgeHit.modelId,
-            localId: edgeHit.localId,
-            itemId: edgeHit.itemId,
-            distance: edgeHit.distance,
-            start: { x: edgeHit.start.x, y: edgeHit.start.y, z: edgeHit.start.z },
-            end: { x: edgeHit.end.x, y: edgeHit.end.y, z: edgeHit.end.z },
-          });
           this.pinLengthEdgeMeasurement(edgeHit);
           return;
         }
@@ -928,13 +917,6 @@ export class VisorIfc {
         const hit = await this.findClosestLengthMeasurementHit(pointerPosition, camera, canvas);
         if (!hit) return;
 
-        this.debugMeasurement('length hit', {
-          modelId: hit.modelId,
-          localId: hit.localId,
-          itemId: hit.itemId,
-          distance: hit.distance,
-          point: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-        });
         this.clearLengthEdgeMeasurement();
         this.toggleLengthMeasurementAnchor(hit);
       }
@@ -1016,10 +998,6 @@ export class VisorIfc {
         if (!modelId) continue;
 
         const hits = await model.raycastAll(raycastData);
-        this.debugMeasurement('area raycastAll', {
-          modelId,
-          hitCount: Array.isArray(hits) ? hits.length : null,
-        });
         if (!Array.isArray(hits) || !hits.length) continue;
 
         const validHit = this.pickClosestFaceHit(modelId, hits);
@@ -1031,10 +1009,6 @@ export class VisorIfc {
 
     candidates.sort((a, b) => a.distance - b.distance);
     const hit = candidates[0] ?? null;
-    this.debugMeasurement('area hit', {
-      hitCount: candidates.length,
-      hit: !!hit,
-    });
     return hit;
   }
 
@@ -1210,13 +1184,6 @@ export class VisorIfc {
 
     const key = this.getMeasurementLengthAnchorKey(hit);
     const existingAnchor = this.measurementLengthAnchors.get(key);
-    this.debugMeasurement('length anchor before', {
-      modelId: hit.modelId,
-      localId: hit.localId,
-      itemId: hit.itemId,
-      existingAnchor: !!existingAnchor,
-      anchorCount: this.measurementLengthAnchors.size,
-    });
     if (existingAnchor) return;
 
     if (this.measurementLengthAnchors.size >= 2) {
@@ -1233,12 +1200,6 @@ export class VisorIfc {
       z: hit.point.z,
     });
 
-    this.debugMeasurement('length anchor after', {
-      modelId: hit.modelId,
-      localId: hit.localId,
-      itemId: hit.itemId,
-      anchorCount: this.measurementLengthAnchors.size,
-    });
     this.updateLengthMeasurementSummary();
   }
 
@@ -1248,13 +1209,6 @@ export class VisorIfc {
 
     const key = this.getMeasurementLengthAnchorKey(hit);
     const existingAnchor = this.measurementAngleAnchors.get(key);
-    this.debugMeasurement('angle anchor before', {
-      modelId: hit.modelId,
-      localId: hit.localId,
-      itemId: hit.itemId,
-      existingAnchor: !!existingAnchor,
-      anchorCount: this.measurementAngleAnchors.size,
-    });
     if (existingAnchor) return;
 
     if (this.measurementAngleAnchors.size >= 3) {
@@ -1271,12 +1225,6 @@ export class VisorIfc {
       z: hit.point.z,
     });
 
-    this.debugMeasurement('angle anchor after', {
-      modelId: hit.modelId,
-      localId: hit.localId,
-      itemId: hit.itemId,
-      anchorCount: this.measurementAngleAnchors.size,
-    });
     this.updateAngleMeasurementSummary();
   }
 
@@ -1385,9 +1333,6 @@ export class VisorIfc {
 
   // Clears the active angle selection anchors and their overlay.
   private clearAngleMeasurementSelections(): void {
-    this.debugMeasurement('angle anchors cleared', {
-      anchorCount: this.measurementAngleAnchors.size,
-    });
     this.measurementAngleAnchors.clear();
     this.removeAngleMeasurementOverlay();
     this.angleMeasurementSummary.set(null);
@@ -1422,15 +1367,6 @@ export class VisorIfc {
 
     const key = builtSelection.key;
     const existingSelection = this.measurementFaceSelections.get(key);
-    this.debugMeasurement('area selection toggle', {
-      modelId: builtSelection.modelId,
-      localId: builtSelection.localId,
-      key,
-      area: builtSelection.area,
-      triangleCount: builtSelection.triangles.length,
-      hasExistingSelection: !!existingSelection,
-      overlayGroupReady: !!this.measurementOverlayGroup,
-    });
 
     if (existingSelection) {
       this.removeAreaMeasurementFace(existingSelection);
@@ -1441,12 +1377,7 @@ export class VisorIfc {
 
     const area = builtSelection.area;
     const overlay = this.createAreaMeasurementOverlay(builtSelection.triangles);
-    this.debugMeasurement('area overlay', {
-      modelId: builtSelection.modelId,
-      localId: builtSelection.localId,
-      hasOverlay: !!overlay,
-      overlayGroupReady: !!this.measurementOverlayGroup,
-    });
+
     if (!overlay || !this.measurementOverlayGroup) return;
 
     overlay.userData = {
@@ -1487,12 +1418,6 @@ export class VisorIfc {
     try {
       const geometries = await model.getItemsGeometry([hit.localId]);
       const geometryGroups = Array.isArray(geometries) ? geometries : geometries ? [geometries] : [];
-      this.debugMeasurement('area geometry chunks', {
-        modelId: hit.modelId,
-        localId: hit.localId,
-        chunkCount: geometryGroups.length,
-        facePoints: hit.facePoints.length,
-      });
 
       for (let groupIndex = 0; groupIndex < geometryGroups.length; groupIndex += 1) {
         const geometryGroup = geometryGroups[groupIndex];
@@ -1501,34 +1426,15 @@ export class VisorIfc {
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
           const chunk = chunks[chunkIndex];
           const triangles = this.extractMeasurementTriangles(chunk);
-          this.debugMeasurement('area triangles', {
-            modelId: hit.modelId,
-            localId: hit.localId,
-            groupIndex,
-            chunkIndex,
-            triangleCount: triangles.length,
-            chunkKeys: chunk ? Object.keys(chunk) : [],
-          });
+
           if (!triangles.length) continue;
 
           const seedTriangleIndex = this.findMatchingTriangleIndex(triangles, hit.facePoints);
-          this.debugMeasurement('area seed triangle', {
-            modelId: hit.modelId,
-            localId: hit.localId,
-            groupIndex,
-            chunkIndex,
-            seedTriangleIndex,
-          });
+
           if (seedTriangleIndex === null) continue;
 
           const selectedTriangleIndices = this.collectCoplanarTriangleRegion(triangles, seedTriangleIndex);
-          this.debugMeasurement('area selected triangles', {
-            modelId: hit.modelId,
-            localId: hit.localId,
-            groupIndex,
-            chunkIndex,
-            selectedTriangleCount: selectedTriangleIndices.length,
-          });
+
           if (!selectedTriangleIndices.length) continue;
 
           const selectedTriangles = selectedTriangleIndices.map((triangleIndex) =>
@@ -1854,9 +1760,6 @@ export class VisorIfc {
 
   // Clears the active length selection anchors and their overlay.
   private clearLengthMeasurementSelections(): void {
-    this.debugMeasurement('length anchors cleared', {
-      anchorCount: this.measurementLengthAnchors.size,
-    });
     this.measurementLengthAnchors.clear();
     this.removeLengthMeasurementOverlay();
     this.lengthMeasurementSummary.set(null);
@@ -1894,11 +1797,6 @@ export class VisorIfc {
       selectedObjectCount: objectKeys.size,
       selections,
     });
-    this.debugMeasurement('area summary', {
-      selectedFaceCount: this.measurementFaceSelections.size,
-      selectedObjectCount: objectKeys.size,
-      totalArea,
-    });
 
   }
 
@@ -1922,10 +1820,6 @@ export class VisorIfc {
       anchorCount: normalizedAnchors.length,
       anchors: normalizedAnchors,
     });
-    this.debugMeasurement('length summary', {
-      anchorCount: normalizedAnchors.length,
-      distance,
-    });
 
     this.updateLengthMeasurementOverlay(normalizedAnchors);
   }
@@ -1944,12 +1838,6 @@ export class VisorIfc {
         edge: { ...this.lengthEdgeSelection },
         isPinned: true,
       });
-      this.debugMeasurement('length edge summary', {
-        isPinned: true,
-        distance,
-        modelId: this.lengthEdgeSelection.modelId,
-        localId: this.lengthEdgeSelection.localId,
-      });
       this.updateLengthEdgeMeasurementOverlay(this.lengthEdgeSelection);
       return;
     }
@@ -1965,12 +1853,6 @@ export class VisorIfc {
         distance,
         edge: { ...this.lengthEdgePreview },
         isPinned: false,
-      });
-      this.debugMeasurement('length edge summary', {
-        isPinned: false,
-        distance,
-        modelId: this.lengthEdgePreview.modelId,
-        localId: this.lengthEdgePreview.localId,
       });
       this.updateLengthEdgeMeasurementOverlay(this.lengthEdgePreview);
       return;
@@ -1999,10 +1881,6 @@ export class VisorIfc {
       angle: Number.isFinite(angle) ? angle : null,
       anchorCount: normalizedAnchors.length,
       anchors: normalizedAnchors,
-    });
-    this.debugMeasurement('angle summary', {
-      anchorCount: normalizedAnchors.length,
-      angle: Number.isFinite(angle) ? angle : null,
     });
 
     this.updateAngleMeasurementOverlay(normalizedAnchors);
@@ -3234,7 +3112,10 @@ export class VisorIfc {
   }
 
   private async crearUrlTrabajadorFragmentos(): Promise<string> {
-    const respuesta = await fetch('https://thatopen.github.io/engine_fragment/resources/worker.mjs');
+    const respuesta = await fetch('/fragments-worker/worker.mjs');
+    if (!respuesta.ok) {
+      throw new Error(`No se pudo cargar el worker de fragments (${respuesta.status} ${respuesta.statusText}).`);
+    }
     const blob = await respuesta.blob();
     const archivo = new File([blob], 'worker.mjs', { type: 'text/javascript' });
 
@@ -3338,6 +3219,7 @@ export class VisorIfc {
 
           const nombre = obtenerValorIfc(item?.Name) || '-';
           const tipoObjeto = obtenerValorIfc(item?.ObjectType) || '-';
+          const propiedades = this.extraerPropiedadesPlanas(item);
           const ruta = indiceEspacial.get(localId);
           const registro: RegistroElemento = {
             localId,
@@ -3350,6 +3232,7 @@ export class VisorIfc {
             ifcClass: claseIfc,
             name: nombre,
             objectType: tipoObjeto,
+            properties: propiedades,
             project: ruta?.project || 'Proyecto',
             site: ruta?.site || 'Sitio',
             building: ruta?.building || 'Edificio',
@@ -3666,6 +3549,23 @@ export class VisorIfc {
     } catch {
       return 'N/D';
     }
+  }
+
+  private extraerPropiedadesPlanas(item: any): Record<string, string> {
+    const propiedades: Record<string, string> = {};
+    if (!item || typeof item !== 'object') return propiedades;
+
+    for (const [key, value] of Object.entries(item)) {
+      if (value == null) continue;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) propiedades[key] = trimmed;
+      } else if (typeof value === 'number' || typeof value === 'boolean') {
+        propiedades[key] = String(value);
+      }
+    }
+
+    return propiedades;
   }
 
   // Extracts IFC quantities from IsDefinedBy definitions for the selected element.
@@ -4041,5 +3941,3 @@ export class VisorIfc {
     return clase.replace('IFC', '') || nombreNormalizado || 'Elemento';
   }
 }
-
-

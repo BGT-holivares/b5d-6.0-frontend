@@ -4,6 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
+import { handlePanelZoomWheel } from '../../utils/panel-interactions/panel-interactions';
+import { buildScopedStorageKey } from '../../utils/ui-state-storage';
 import {
   applyTableFilters,
   createDefaultTableViewPreferences,
@@ -118,8 +120,11 @@ export class ParametersPanel implements OnChanges {
   @Input() tableFiltersVisible = false;
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
+  @Input() conceptKeys: string[] = [];
+  @Input() storageScopeKey = 'anonymous';
   @Output() rowsChange = new EventEmitter<ParametroB5DOrm[]>();
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
+  @Output() conceptSelectionRequested = new EventEmitter<string>();
 
   readonly parameterTableColumns: TableColumnDefinition<ParametroB5DOrm>[] = [
     {
@@ -199,7 +204,7 @@ export class ParametersPanel implements OnChanges {
       hiddenByDefault: column.hiddenByDefault,
     })),
   );
-  private readonly parameterTableStorageKey = 'parameters-panel';
+  private readonly parameterTableStorageKeyBase = 'parameters-panel';
   parameterTablePreferences: TableViewPreferences = loadTableViewPreferences(
     this.parameterTableStorageKey,
     this.parameterTableDefaults,
@@ -219,6 +224,9 @@ export class ParametersPanel implements OnChanges {
   selectedQuantificationId: number | null = null;
   selectedSheetIndex = 0;
   boqPreviewZoomPercent = 100;
+  parameterListZoomPercent = 100;
+  descriptionMatchesZoomPercent = 100;
+  analysisZoomPercent = 100;
   boqSheets: WorkbookSummarySheetOrm[] = [];
   boqRows: BoqExtractedRow[] = [];
   boqLoading = false;
@@ -239,11 +247,16 @@ export class ParametersPanel implements OnChanges {
   parameterTableContextMenuX = 0;
   parameterTableContextMenuY = 0;
   parameterTableRefreshToken = 0;
+  private lastAppliedStorageScopeKey = '';
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['storageScopeKey'] || !this.lastAppliedStorageScopeKey) {
+      this.restoreParameterTablePreferences();
+    }
+
     if (changes['parameters']) {
       this.workParameters = this.parameters.map((parameterRow) => ({ ...parameterRow }));
       this.selectedParameterIds = new Set(
@@ -581,7 +594,6 @@ export class ParametersPanel implements OnChanges {
     this.topLeftPaneWidth = 540;
     this.bottomLeftPaneWidth = 420;
     this.topWorkspaceHeight = 390;
-    this.boqPreviewZoomPercent = 100;
     this.emitToolbarState();
   }
 
@@ -677,6 +689,10 @@ export class ParametersPanel implements OnChanges {
     this.resetParameterTablePreferences();
     this.resetParameterTableWidths();
     this.paneOrder = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
+    this.parameterListZoomPercent = 100;
+    this.boqPreviewZoomPercent = 100;
+    this.descriptionMatchesZoomPercent = 100;
+    this.analysisZoomPercent = 100;
   }
 
   private syncCostCatalogSelection(): void {
@@ -743,6 +759,13 @@ export class ParametersPanel implements OnChanges {
       this.selectedParameterIds.add(parameterId);
       this.selectedParameterIds = new Set(this.selectedParameterIds);
     }
+
+    const selectedParameter = this.workParameters.find((row) => row.id === parameterId);
+    const conceptKey = selectedParameter?.clave?.trim() ?? '';
+    if (conceptKey && this.isKnownConceptKey(conceptKey)) {
+      this.conceptSelectionRequested.emit(conceptKey);
+    }
+
     this.emitToolbarState();
   }
 
@@ -954,24 +977,71 @@ export class ParametersPanel implements OnChanges {
     await this.loadBoqExtractedRows();
   }
 
+  onBoqPreviewCellSelected(event: {
+    value: string | number | boolean | null;
+    address: string;
+    formula: string;
+    row: number | null;
+    col: number | null;
+    cellClassName: string;
+    cellInlineStyle: string;
+    computedBackgroundColor: string;
+    computedColor: string;
+    computedTextAlign: string;
+    computedFontWeight: string;
+  }): void {
+    const conceptKey = String(event.value ?? '').trim();
+    if (!conceptKey || !this.isKnownConceptKey(conceptKey)) return;
+    this.conceptSelectionRequested.emit(conceptKey);
+  }
+
+  // Returns the zoom factor used by any pane in the parameters workspace.
+  getPaneZoomFactor(paneId: ParameterPaneId): number {
+    return this.clamp(this.getPaneZoomPercent(paneId), 20, 300) / 100;
+  }
+
+  // Increases the zoom level for a specific pane.
+  increasePaneZoom(paneId: ParameterPaneId): void {
+    this.setPaneZoomPercent(paneId, this.getPaneZoomPercent(paneId) + 10);
+  }
+
+  // Decreases the zoom level for a specific pane.
+  decreasePaneZoom(paneId: ParameterPaneId): void {
+    this.setPaneZoomPercent(paneId, this.getPaneZoomPercent(paneId) - 10);
+  }
+
+  // Restores the zoom level for a specific pane.
+  resetPaneZoom(paneId: ParameterPaneId): void {
+    this.setPaneZoomPercent(paneId, 100);
+  }
+
+  // Applies mouse-wheel zoom requests when the pointer is over a pane.
+  onPaneZoomWheel(event: WheelEvent, paneId: ParameterPaneId): void {
+    handlePanelZoomWheel(
+      event,
+      () => this.increasePaneZoom(paneId),
+      () => this.decreasePaneZoom(paneId),
+    );
+  }
+
   // Returns the zoom factor used by the internal BOQ preview pane.
   getBoqPreviewZoomFactor(): number {
-    return this.clamp(this.boqPreviewZoomPercent, 20, 300) / 100;
+    return this.getPaneZoomFactor('boq-preview');
   }
 
   // Increases only the internal BOQ preview zoom level.
   increaseBoqPreviewZoom(): void {
-    this.boqPreviewZoomPercent = this.clamp(this.boqPreviewZoomPercent + 10, 20, 300);
+    this.increasePaneZoom('boq-preview');
   }
 
   // Decreases only the internal BOQ preview zoom level.
   decreaseBoqPreviewZoom(): void {
-    this.boqPreviewZoomPercent = this.clamp(this.boqPreviewZoomPercent - 10, 20, 300);
+    this.decreasePaneZoom('boq-preview');
   }
 
   // Restores the BOQ preview zoom to default value.
   resetBoqPreviewZoom(): void {
-    this.boqPreviewZoomPercent = 100;
+    this.resetPaneZoom('boq-preview');
   }
 
   // Applies zoom requests emitted by the embedded workbook preview.
@@ -981,6 +1051,30 @@ export class ParametersPanel implements OnChanges {
       return;
     }
     this.decreaseBoqPreviewZoom();
+  }
+
+  private getPaneZoomPercent(paneId: ParameterPaneId): number {
+    if (paneId === 'parameter-list') return this.parameterListZoomPercent;
+    if (paneId === 'boq-preview') return this.boqPreviewZoomPercent;
+    if (paneId === 'description-matches') return this.descriptionMatchesZoomPercent;
+    return this.analysisZoomPercent;
+  }
+
+  private setPaneZoomPercent(paneId: ParameterPaneId, zoomPercent: number): void {
+    const nextZoomPercent = this.clamp(zoomPercent, 20, 300);
+    if (paneId === 'parameter-list') {
+      this.parameterListZoomPercent = nextZoomPercent;
+      return;
+    }
+    if (paneId === 'boq-preview') {
+      this.boqPreviewZoomPercent = nextZoomPercent;
+      return;
+    }
+    if (paneId === 'description-matches') {
+      this.descriptionMatchesZoomPercent = nextZoomPercent;
+      return;
+    }
+    this.analysisZoomPercent = nextZoomPercent;
   }
 
   resolveAverage(row: ParametroB5DOrm): number | null {
@@ -1037,12 +1131,29 @@ export class ParametersPanel implements OnChanges {
     this.persistParameterTablePreferences();
   }
 
+  private restoreParameterTablePreferences(): void {
+    const storageKey = this.parameterTableStorageKey;
+    if (storageKey === this.lastAppliedStorageScopeKey) return;
+
+    this.lastAppliedStorageScopeKey = storageKey;
+    this.parameterTablePreferences = loadTableViewPreferences(storageKey, this.parameterTableDefaults);
+    ensureTablePreferencesColumns(this.parameterTablePreferences, this.parameterTableColumns);
+  }
+
   private persistParameterTablePreferences(): void {
     saveTableViewPreferences(this.parameterTableStorageKey, this.parameterTablePreferences);
   }
 
   get parameterTableResizableStorageKey(): string {
     return `${this.parameterTableStorageKey}:${this.parameterTablePreferences.order.join('|')}:${this.parameterTablePreferences.hidden.join('|')}`;
+  }
+
+  get parameterBoqAnalysisResizableStorageKey(): string {
+    return buildScopedStorageKey('parameters-boq-analysis', this.storageScopeKey);
+  }
+
+  private get parameterTableStorageKey(): string {
+    return buildScopedStorageKey(this.parameterTableStorageKeyBase, this.storageScopeKey);
   }
 
   private getEmptyDraft(): ParameterDraftRow {
@@ -1058,6 +1169,12 @@ export class ParametersPanel implements OnChanges {
       promedio: '',
       activo: true,
     };
+  }
+
+  private isKnownConceptKey(conceptKey: string): boolean {
+    const normalizedConceptKey = conceptKey.trim().toLowerCase();
+    if (!normalizedConceptKey) return false;
+    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
   }
 
   private getPrefilledDraft(selectedParameterId: number | null): ParameterDraftRow {

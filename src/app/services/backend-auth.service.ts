@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { CuotaUsuarioOrm, SesionBackendOrm } from '../types/b5d-orm';
+import { logB5dDebug } from '../utils/debug/b5d-debug';
 
 @Injectable({ providedIn: 'root' })
 export class BackendAuthService {
@@ -13,6 +14,9 @@ export class BackendAuthService {
   constructor(private readonly http: HttpClient) {}
 
   login(username: string, password: string): Observable<SesionBackendOrm> {
+    logB5dDebug('backend-auth: login request', {
+      username,
+    });
     return this.http.post<SesionBackendOrm>(
       this.url('/api/auth/login/'),
       { username, password },
@@ -21,6 +25,7 @@ export class BackendAuthService {
   }
 
   logout(): Observable<SesionBackendOrm> {
+    logB5dDebug('backend-auth: logout request');
     return this.http.post<SesionBackendOrm>(
       this.url('/api/auth/logout/'),
       {},
@@ -29,6 +34,7 @@ export class BackendAuthService {
   }
 
   me(): Observable<SesionBackendOrm> {
+    logB5dDebug('backend-auth: me request');
     return this.http.get<SesionBackendOrm>(
       this.url('/api/auth/me/'),
       this.requestOptions,
@@ -36,6 +42,7 @@ export class BackendAuthService {
   }
 
   quota(): Observable<CuotaUsuarioOrm> {
+    logB5dDebug('backend-auth: quota request');
     return this.http.get<CuotaUsuarioOrm>(
       this.url('/api/auth/quota/'),
       this.requestOptions,

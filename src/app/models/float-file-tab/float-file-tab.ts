@@ -13,6 +13,7 @@ export class FloatFileTab {
   @Input() usuarioSesion: UsuarioSesionOrm | null = null;
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Output() archivoSeleccionado = new EventEmitter<File>();
+  @Output() unloadIfcSolicitado = new EventEmitter<void>();
   @Output() abrirB5dSolicitado = new EventEmitter<void>();
   @Output() guardarB5dSolicitado = new EventEmitter<void>();
   @Output() loginSolicitado = new EventEmitter<void>();

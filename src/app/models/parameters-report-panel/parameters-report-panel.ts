@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
 import type {
@@ -31,6 +31,8 @@ export class ParametersReportPanel implements OnChanges {
   @Input() activeCatalogId: number | null = null;
   @Input() b5dLoading = false;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
+  @Input() conceptKeys: string[] = [];
+  @Output() conceptSelectionRequested = new EventEmitter<string>();
 
   workQuantifications: CuantificacionB5DOrm[] = [];
   selectedQuantificationId: number | null = null;
@@ -130,6 +132,12 @@ export class ParametersReportPanel implements OnChanges {
   selectCatalog(value: number | null): void {
     this.selectedCatalogId = value;
     this.rebuildReportData();
+  }
+
+  requestConceptSelection(conceptKey: string | null | undefined): void {
+    const normalizedKey = (conceptKey ?? '').trim();
+    if (!normalizedKey || !this.isKnownConceptKey(normalizedKey)) return;
+    this.conceptSelectionRequested.emit(normalizedKey);
   }
 
   resetView(): void {
@@ -242,5 +250,11 @@ export class ParametersReportPanel implements OnChanges {
       costRows: [],
       unassignedRows: [],
     };
+  }
+
+  private isKnownConceptKey(conceptKey: string): boolean {
+    const normalizedConceptKey = conceptKey.trim().toLowerCase();
+    if (!normalizedConceptKey) return false;
+    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
   }
 }

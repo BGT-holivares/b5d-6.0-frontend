@@ -6,6 +6,7 @@ import type {
   WorkbookStyleOrm,
 } from '../../types/b5d-orm';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
+import { handlePanelZoomWheel } from '../../utils/panel-interactions/panel-interactions';
 
 type XlsxPreviewRenderedColumn = {
   columnNumber: number;
@@ -130,10 +131,11 @@ export class XlsxPreview implements OnChanges, OnDestroy {
   }
 
   onSurfaceWheel(event: WheelEvent): void {
-    if (!event.ctrlKey) return;
-    event.preventDefault();
-    const direction = event.deltaY < 0 ? 'in' : 'out';
-    this.zoomRequested.emit(direction);
+    handlePanelZoomWheel(
+      event,
+      () => this.zoomRequested.emit('in'),
+      () => this.zoomRequested.emit('out'),
+    );
   }
 
   onCellClick(cell: XlsxPreviewRenderedCell, event: MouseEvent): void {

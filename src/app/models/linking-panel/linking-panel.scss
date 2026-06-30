@@ -55,21 +55,40 @@
   display: grid;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .b5d-linking-panel__top-row {
   display: grid;
   min-height: 0;
+  min-width: 0;
+  grid-template-columns: 420px 8px minmax(0, 1fr);
+  grid-template-areas: 'concepts splitter ifc-objects';
+}
+
+.b5d-linking-panel__top-row--reversed {
+  grid-template-areas: 'ifc-objects splitter concepts';
 }
 
 .b5d-linking-panel__box {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
   border: 1px solid #cbd5e1;
 }
 
+.b5d-linking-panel__box--concepts {
+  grid-area: concepts;
+}
+
+.b5d-linking-panel__box--ifc-objects {
+  grid-area: ifc-objects;
+}
+
 .b5d-linking-panel__bottom {
+  min-width: 0;
   border-top: 0;
 }
 
@@ -199,6 +218,7 @@
   width: 8px;
   height: 100%;
   cursor: col-resize;
+  grid-area: splitter;
 }
 
 .b5d-linking-panel__splitter--horizontal {

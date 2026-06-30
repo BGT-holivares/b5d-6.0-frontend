@@ -4,6 +4,14 @@ import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
+import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import {
+  clampPanelPercent,
+  handlePanelZoomWheel,
+  startPointerDrag,
+  stepPanelPercent,
+  swapPanelOrder,
+} from '../../utils/panel-interactions/panel-interactions';
 import { XlsxPreview } from '../xlsx-preview/xlsx-preview';
 import type { ToolbarActionId } from '../toolbar/toolbar';
 import type { HomeToolbarState } from '../../types/home-toolbar';
@@ -48,7 +56,10 @@ export class BoqPanel implements OnChanges, OnDestroy {
   @Input() cuantificacionesB5d: CuantificacionB5DOrm[] = [];
   @Input() b5dLoading = false;
   @Input() tableFiltersVisible = false;
+  @Input() conceptKeys: string[] = [];
+  @Input() storageScopeKey = 'anonymous';
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
+  @Output() conceptSelectionRequested = new EventEmitter<string>();
 
   readonly quantificationTableColumns: TableColumnDefinition<CuantificacionB5DOrm>[] = [
     {
@@ -93,14 +104,14 @@ export class BoqPanel implements OnChanges, OnDestroy {
       hiddenByDefault: column.hiddenByDefault,
     })),
   );
-  private readonly quantificationTableStorageKey = 'boq-panel';
+  private readonly quantificationTableStorageKeyBase = 'boq-panel';
   quantificationTablePreferences: TableViewPreferences = loadTableViewPreferences(
     this.quantificationTableStorageKey,
     this.quantificationTableDefaults,
   );
 
   leftPanelWidth = 420;
-  panelOrderReversed = false;
+  panelOrder: ('list' | 'preview')[] = ['list', 'preview'];
   boqTableContextMenuVisible = false;
   boqTableContextMenuX = 0;
   boqTableContextMenuY = 0;
@@ -134,9 +145,14 @@ export class BoqPanel implements OnChanges, OnDestroy {
   selectedWorkbookColumnNumber: number | null = null;
   selectedWorkbookRowHeightPx = '';
   selectedWorkbookColumnWidthPx = '';
+  private lastAppliedStorageScopeKey = '';
 
   // Keeps selection and workbook preview synchronized when backend rows change.
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['storageScopeKey'] || !this.lastAppliedStorageScopeKey) {
+      this.restoreQuantificationTablePreferences();
+    }
+
     if (changes['cuantificacionesB5d']) {
       this.workQuantifications = this.cuantificacionesB5d.map((quantification) => ({ ...quantification }));
       const selectedId = this.cuantificacionSeleccionadaId;
@@ -240,6 +256,11 @@ export class BoqPanel implements OnChanges, OnDestroy {
     this.selectedWorkbookCellFormula = event.formula;
     this.selectedWorkbookRowNumber = event.row;
     this.selectedWorkbookColumnNumber = event.col;
+
+    const conceptKey = String(event.value ?? '').trim();
+    if (conceptKey && this.isKnownConceptKey(conceptKey)) {
+      this.conceptSelectionRequested.emit(conceptKey);
+    }
   }
 
   onWorkbookZoomRequested(direction: 'in' | 'out'): void {
@@ -475,53 +496,52 @@ export class BoqPanel implements OnChanges, OnDestroy {
     return `${datePart} ${hourValue}:${minuteValue}:${secondValue} ${normalizedPeriod}`;
   }
 
+  // Swaps the BOQ list and preview panels.
+  togglePanelOrder(): void {
+    this.panelOrder = swapPanelOrder([this.panelOrder[0], this.panelOrder[1]] as const);
+    this.changeDetectorRef.detectChanges();
+  }
+
+  // Returns the grid column assigned to the BOQ layout.
   get layoutTemplateColumns(): string {
     return `${this.leftPanelWidth}px 8px minmax(0, 1fr)`;
   }
 
-  // Swaps the BOQ list and preview panels.
-  togglePanelOrder(): void {
-    this.panelOrderReversed = !this.panelOrderReversed;
-  }
-
-  // Returns the grid column assigned to the BOQ list panel.
-  getListGridColumn(): string {
-    return this.panelOrderReversed ? '3 / 4' : '1 / 2';
-  }
-
-  // Returns the grid column assigned to the BOQ preview panel.
-  getPreviewGridColumn(): string {
-    return this.panelOrderReversed ? '1 / 2' : '3 / 4';
-  }
-
-  // Returns the grid column assigned to the BOQ splitter.
-  getSplitterGridColumn(): string {
-    return '2';
-  }
-
   // Returns the zoom factor used by the BOQ list panel.
   getListZoomFactor(): number {
-    return this.clamp(this.listZoomPercent, 20, 300) / 100;
+    return clampPanelPercent(this.listZoomPercent) / 100;
+  }
+
+  // Applies mouse-wheel zoom on the BOQ list pane.
+  onListZoomWheel(event: WheelEvent): void {
+    handlePanelZoomWheel(
+      event,
+      () => this.increaseListZoom(),
+      () => this.decreaseListZoom(),
+    );
   }
 
   // Increases only the BOQ list zoom level.
   increaseListZoom(): void {
-    this.listZoomPercent = this.clamp(this.listZoomPercent + 10, 20, 300);
+    this.listZoomPercent = stepPanelPercent(this.listZoomPercent, 10);
+    this.changeDetectorRef.detectChanges();
   }
 
   // Decreases only the BOQ list zoom level.
   decreaseListZoom(): void {
-    this.listZoomPercent = this.clamp(this.listZoomPercent - 10, 20, 300);
+    this.listZoomPercent = stepPanelPercent(this.listZoomPercent, -10);
+    this.changeDetectorRef.detectChanges();
   }
 
   // Restores the BOQ list zoom to default value.
   resetListZoom(): void {
     this.listZoomPercent = 100;
+    this.changeDetectorRef.detectChanges();
   }
 
   resetTableViews(): void {
     this.leftPanelWidth = 420;
-    this.panelOrderReversed = false;
+    this.panelOrder = ['list', 'preview'];
     this.resetQuantificationTablePreferences();
     this.resetQuantificationTableWidths();
     this.listZoomPercent = 100;
@@ -662,12 +682,25 @@ export class BoqPanel implements OnChanges, OnDestroy {
     this.persistQuantificationTablePreferences();
   }
 
+  private restoreQuantificationTablePreferences(): void {
+    const storageKey = this.quantificationTableStorageKey;
+    if (storageKey === this.lastAppliedStorageScopeKey) return;
+
+    this.lastAppliedStorageScopeKey = storageKey;
+    this.quantificationTablePreferences = loadTableViewPreferences(storageKey, this.quantificationTableDefaults);
+    ensureTablePreferencesColumns(this.quantificationTablePreferences, this.quantificationTableColumns);
+  }
+
   private persistQuantificationTablePreferences(): void {
     saveTableViewPreferences(this.quantificationTableStorageKey, this.quantificationTablePreferences);
   }
 
   get quantificationTableResizableStorageKey(): string {
     return `${this.quantificationTableStorageKey}:${this.quantificationTablePreferences.order.join('|')}:${this.quantificationTablePreferences.hidden.join('|')}`;
+  }
+
+  private get quantificationTableStorageKey(): string {
+    return buildScopedStorageKey(this.quantificationTableStorageKeyBase, this.storageScopeKey);
   }
 
   resetQuantificationTablePreferences(): void {
@@ -689,35 +722,23 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   // Resizes BOQ list and preview panels while dragging the vertical splitter.
   startInternalResize(event: PointerEvent): void {
-    if (event.button !== 0) return;
     const parentElement = (event.currentTarget as HTMLElement | null)?.parentElement;
     if (!parentElement) return;
 
-    event.preventDefault();
     const startX = event.clientX;
     const initialWidth = this.leftPanelWidth;
     const parentWidth = parentElement.clientWidth;
-
-    const onPointerMove = (moveEvent: PointerEvent): void => {
+    startPointerDrag(event, (moveEvent) => {
       const splitterSize = 8;
       const minimumLeftPanelWidth = 260;
       const minimumRightPanelWidth = 360;
       const maximumLeftPanelWidth = parentWidth - minimumRightPanelWidth - splitterSize;
-      this.leftPanelWidth = this.clamp(
-        initialWidth + (moveEvent.clientX - startX),
-        minimumLeftPanelWidth,
+      this.leftPanelWidth = Math.min(
+        Math.max(initialWidth + (moveEvent.clientX - startX), minimumLeftPanelWidth),
         Math.max(minimumLeftPanelWidth, maximumLeftPanelWidth),
       );
       this.changeDetectorRef.detectChanges();
-    };
-
-    const stopResizing = (): void => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', stopResizing);
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', stopResizing, { once: true });
+    });
   }
 
   // Converts a zero-based column index into the Excel-style column label.
@@ -778,6 +799,12 @@ export class BoqPanel implements OnChanges, OnDestroy {
         this.changeDetectorRef.detectChanges();
       }
     }
+  }
+
+  private isKnownConceptKey(conceptKey: string): boolean {
+    const normalizedConceptKey = conceptKey.trim().toLowerCase();
+    if (!normalizedConceptKey) return false;
+    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
   }
 
   private clamp(value: number, minValue: number, maxValue: number): number {

@@ -4,6 +4,8 @@ export const FLOAT_FILE_TAB_TRANSLATIONS: ComponentTranslations = {
   'es-MX': {
     'toolbar.file.title': 'Archivo',
     'toolbar.file.open': 'Abrir IFC',
+    // TODO translation pass: unload action label.
+    'toolbar.file.unloadIfc': 'Quitar IFC',
     'toolbar.file.importB5D': 'Importar base B5D',
     'toolbar.file.exportB5D': 'Exportar B5D',
     'toolbar.file.language': 'Idioma',
@@ -22,6 +24,8 @@ export const FLOAT_FILE_TAB_TRANSLATIONS: ComponentTranslations = {
   'en-US': {
     'toolbar.file.title': 'File',
     'toolbar.file.open': 'Open IFC file',
+    // TODO translation pass: unload action label.
+    'toolbar.file.unloadIfc': 'Unload IFC',
     'toolbar.file.importB5D': 'Import B5D file',
     'toolbar.file.exportB5D': 'Export B5D file',
     'toolbar.file.language': 'Language',

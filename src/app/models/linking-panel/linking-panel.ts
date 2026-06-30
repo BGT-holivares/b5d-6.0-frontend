@@ -39,6 +39,14 @@ import {
   type TableColumnDefinition,
   type TableViewPreferences,
 } from '../../utils/table-view/table-view';
+import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import {
+  clampPanelPercent,
+  handlePanelZoomWheel,
+  startPointerDrag,
+  stepPanelPercent,
+  swapPanelOrder,
+} from '../../utils/panel-interactions/panel-interactions';
 import type {
   HomeToolbarState,
   HomeBottomPanelTab,
@@ -50,10 +58,15 @@ import { LINKING_PANEL_TRANSLATIONS } from './linking-panel.translations';
 
 type ifcObject = {
   id: string;
+  localId: number;
+  localIds: number[];
   objectType: string;
+  objectTypes: string[];
   material: string;
   description: string;
   ifcName: string;
+  catalogPropertyName: string;
+  catalogPropertyValue: string;
   ifcEntity: string;
   propertyKey: string;
   propertyLabel: string;
@@ -83,10 +96,12 @@ type ConceptoFila = {
   descripcion: string;
   unidad: string;
   costo: number | null;
+  porcentajePadre: number | null;
   linked: boolean;
 };
 
-type ConceptTableColumnKey = 'clave' | 'descripcion' | 'unidad' | 'costo';
+type ConceptTableColumnKey = 'clave' | 'descripcion' | 'unidad' | 'costo' | 'porcentaje_padre';
+type IfcObjectTableColumnKey = 'objectType' | 'material' | 'propertyLabel' | 'description' | 'unit' | 'ifcEntity' | 'ifcName' | 'ifcDescription';
 
 type ConceptDraft = {
   clave: string;
@@ -115,6 +130,7 @@ export class LinkingPanel implements OnChanges {
 
   @Input() ifcData: NodoCuantificacion | null = null;
   @Input() ifcElements: ElementoIfcB5D[] = [];
+  @Input() selectedIfcLocalIds: number[] = [];
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() b5dConcepts: ConceptoB5DOrm[] = [];
   @Input() b5dLinks: VinculoConceptoBimOrm[] = [];
@@ -123,6 +139,7 @@ export class LinkingPanel implements OnChanges {
   @Input() b5dLoading = false;
   @Input() activeBottomTab: HomeBottomPanelTab = 'links';
   @Input() tableFiltersVisible = false;
+  @Input() storageScopeKey = 'anonymous';
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
   @Output() ifcObjectSelectionChange = new EventEmitter<number[]>();
   @Output() draftChanged = new EventEmitter<void>();
@@ -156,6 +173,13 @@ export class LinkingPanel implements OnChanges {
       widthPx: 120,
       getValue: (row) => row.costo,
     },
+    {
+      key: 'porcentaje_padre',
+      label: '% Padre',
+      kind: 'number',
+      widthPx: 110,
+      getValue: (row) => row.porcentajePadre,
+    },
   ];
   private readonly conceptTableDefaults = createDefaultTableViewPreferences(
     this.conceptTableColumns.map((column) => ({
@@ -163,10 +187,79 @@ export class LinkingPanel implements OnChanges {
       hiddenByDefault: column.hiddenByDefault,
     })),
   );
-  private readonly conceptTableStorageKey = 'linking-concepts';
+  private readonly conceptTableStorageKeyBase = 'linking-concepts';
   conceptTablePreferences: TableViewPreferences = loadTableViewPreferences(
     this.conceptTableStorageKey,
     this.conceptTableDefaults,
+  );
+  readonly ifcObjectTableColumns: TableColumnDefinition<ifcObject>[] = [
+    {
+      key: 'objectType',
+      label: 'Tipo',
+      kind: 'text',
+      widthPx: 160,
+      getValue: (row) => row.objectType,
+    },
+    {
+      key: 'material',
+      label: 'Material',
+      kind: 'text',
+      widthPx: 160,
+      getValue: (row) => row.material,
+    },
+    {
+      key: 'propertyLabel',
+      label: 'Prop. cantidad',
+      kind: 'text',
+      widthPx: 160,
+      getValue: (row) => row.propertyLabel,
+    },
+    {
+      key: 'description',
+      label: 'Descripcion',
+      kind: 'text',
+      widthPx: 240,
+      getValue: (row) => row.description,
+    },
+    {
+      key: 'unit',
+      label: 'Unidad',
+      kind: 'text',
+      widthPx: 90,
+      getValue: (row) => this.getObjectUnit(row),
+    },
+    {
+      key: 'ifcEntity',
+      label: 'IFC Entity',
+      kind: 'text',
+      widthPx: 130,
+      getValue: (row) => this.getObjectEntity(row),
+    },
+    {
+      key: 'ifcName',
+      label: 'IFC Name',
+      kind: 'text',
+      widthPx: 180,
+      getValue: (row) => this.getObjectName(row),
+    },
+    {
+      key: 'ifcDescription',
+      label: 'IFC Description',
+      kind: 'text',
+      widthPx: 220,
+      getValue: (row) => this.getObjectIfcDescription(row),
+    },
+  ];
+  private readonly ifcObjectTableDefaults = createDefaultTableViewPreferences(
+    this.ifcObjectTableColumns.map((column) => ({
+      key: column.key,
+      hiddenByDefault: column.hiddenByDefault,
+    })),
+  );
+  private readonly ifcObjectTableStorageKeyBase = 'linking-ifc-objects';
+  ifcObjectTablePreferences: TableViewPreferences = loadTableViewPreferences(
+    this.ifcObjectTableStorageKey,
+    this.ifcObjectTableDefaults,
   );
 
   idSelectedConcept: number | null = null;
@@ -175,7 +268,7 @@ export class LinkingPanel implements OnChanges {
   localLinks: VinculoPanel[] = [];
   leftPanelWidth = 420;
   topPanelHeight = 260;
-  topPanelOrderReversed = false;
+  topPanelOrder: ('concepts' | 'ifc-objects')[] = ['concepts', 'ifc-objects'];
   conceptPanelZoomPercent = 100;
   objectPanelZoomPercent = 100;
   relatedLinksPanelZoomPercent = 100;
@@ -183,6 +276,7 @@ export class LinkingPanel implements OnChanges {
   activeWorkspacePanel: LinkingWorkspacePanel = 'concepts';
   selectedConceptIds = new Set<number>();
   selectedObjectIds = new Set<string>();
+  externalSelectedObjectIds = new Set<string>();
   selectedLinkIds = new Set<string>();
   workConcepts: ConceptoB5DOrm[] = [];
   conceptClipboard: ConceptoB5DOrm | null = null;
@@ -197,13 +291,23 @@ export class LinkingPanel implements OnChanges {
   conceptTableContextMenuX = 0;
   conceptTableContextMenuY = 0;
   conceptTableRefreshToken = 0;
+  ifcObjectTableContextMenuVisible = false;
+  ifcObjectTableContextMenuX = 0;
+  ifcObjectTableContextMenuY = 0;
+  ifcObjectTableRefreshToken = 0;
   private temporalConceptId = -1;
   private lastSelectedConceptId: number | null = null;
   private lastSelectedObjectId = '';
   private lastSelectedLinkId = '';
+  private lastAppliedStorageScopeKey = '';
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['storageScopeKey'] || !this.lastAppliedStorageScopeKey) {
+      this.restoreConceptTablePreferences();
+      this.restoreIfcObjectTablePreferences();
+    }
+
     if (changes['b5dConcepts']) {
       this.workConcepts = this.b5dConcepts.map((concepto) => ({ ...concepto }));
       this.selectedConceptIds.clear();
@@ -233,7 +337,11 @@ export class LinkingPanel implements OnChanges {
         this.idSelectedObject = '';
         this.lastSelectedObjectId = '';
       }
+      this.syncExternalSelectedObjects();
       this.emitIfcObjectSelection();
+    }
+    if (changes['selectedIfcLocalIds']) {
+      this.syncExternalSelectedObjects();
     }
     this.emitToolbarState();
   }
@@ -247,117 +355,69 @@ export class LinkingPanel implements OnChanges {
     return this.b5dCatalogs;
   }
 
-  get objetosIfc(): ifcObject[] {
-    const rowsByObjectTypeAndProperty = new Map<string, ifcObject>();
-    const linkedPropertiesByObjectType = this.getLinkedPropertiesByObjectType();
+  get selectedCatalogPropertyName(): string {
+    const selectedCatalog = this.catalogosDisponibles.find((catalog) => catalog.id === this.selectedCatalogId);
+    const propertyName = selectedCatalog?.propiedad_tipo_bim?.trim() ?? '';
+    return propertyName || 'Name';
+  }
 
+  get objetosIfc(): ifcObject[] {
+    const rowsById = new Map<string, ifcObject>();
     for (const ifcElement of this.ifcElements) {
-      const objectType = (ifcElement.objectType || '').trim() || this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.ts.objectType');
+      // The list is driven by the active catalog property, so rows with no value are skipped.
+      const catalogPropertyName = this.selectedCatalogPropertyName;
+      const catalogPropertyValue = this.getIfcElementPropertyValue(ifcElement, catalogPropertyName);
+      if (!catalogPropertyValue) continue;
+
+      const objectType =
+        (ifcElement.objectType || '').trim() || this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.ts.objectType');
       const objectDescription = this.obtenerDescripcionIfcElemento(ifcElement);
       const propertyLabel = this.inferPropertyLabelFromIfcClass(ifcElement.ifcClass ?? '');
-      const rowId = this.buildObjectRowId(objectType, propertyLabel);
-      const existingRow = rowsByObjectTypeAndProperty.get(rowId);
+      const rowId = this.buildObjectRowId(catalogPropertyValue, propertyLabel);
+      const existingRow = rowsById.get(rowId);
 
       if (existingRow) {
-        existingRow.description = this.mergeDescriptions(existingRow.description, objectDescription);
-        if (!existingRow.ifcName && ifcElement.name) existingRow.ifcName = ifcElement.name;
-      } else {
-        rowsByObjectTypeAndProperty.set(rowId, {
-          id: rowId,
-          objectType,
-          material: '',
-          description: objectDescription,
-          ifcName: ifcElement.name || objectType,
-          ifcEntity: ifcElement.ifcClass || '',
-          propertyKey: this.normalizeText(propertyLabel),
-          propertyLabel,
-          properties: [],
-        });
-      }
-
-      const linkedProperties = linkedPropertiesByObjectType.get(this.normalizeText(objectType));
-      if (!linkedProperties?.size) continue;
-
-      for (const linkedProperty of linkedProperties.values()) {
-        const linkedRowId = this.buildObjectRowId(objectType, linkedProperty);
-        if (rowsByObjectTypeAndProperty.has(linkedRowId)) continue;
-        rowsByObjectTypeAndProperty.set(linkedRowId, {
-          id: linkedRowId,
-          objectType,
-          material: '',
-          description: objectDescription,
-          ifcName: ifcElement.name || objectType,
-          ifcEntity: ifcElement.ifcClass || '',
-          propertyKey: this.normalizeText(linkedProperty),
-          propertyLabel: linkedProperty,
-          properties: [],
-        });
-      }
-    }
-
-    if (this.ifcData?.children?.length) {
-      for (const categoria of this.ifcData.children) {
-        for (const tipoNodo of categoria.children) {
-          const nodoConPropiedades = tipoNodo as NodoCuantificacion & {
-            properties?: Record<string, unknown>[];
-          };
-          const propertyLabel = this.inferPropertyLabel(tipoNodo.unit ?? '');
-          const propertyKey = this.normalizeText(propertyLabel);
-          const objectType = tipoNodo.name || this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.ts.objectType');
-          const objectTypeKey = this.normalizeText(objectType);
-          const rowId = this.buildObjectRowId(objectType, propertyLabel);
-          const existing = rowsByObjectTypeAndProperty.get(rowId);
-          const material = this.getMaterialFromProperties(nodoConPropiedades.properties ?? []);
-
-          if (existing) {
-            existing.properties.push(...(nodoConPropiedades.properties ?? []));
-            existing.description = this.mergeDescriptions(existing.description, categoria.name);
-            if (!existing.material && material) existing.material = material;
-          } else {
-            rowsByObjectTypeAndProperty.set(rowId, {
-              id: rowId,
-              objectType,
-              material,
-              description: categoria.name,
-              ifcName: objectType,
-              ifcEntity: '',
-              propertyKey,
-              propertyLabel,
-              properties: [...(nodoConPropiedades.properties ?? [])],
-            });
-          }
-
-          const linkedProperties = linkedPropertiesByObjectType.get(objectTypeKey);
-          if (!linkedProperties?.size) continue;
-
-          for (const linkedProperty of linkedProperties.values()) {
-            const linkedRowId = this.buildObjectRowId(objectType, linkedProperty);
-            if (rowsByObjectTypeAndProperty.has(linkedRowId)) continue;
-            rowsByObjectTypeAndProperty.set(linkedRowId, {
-              id: linkedRowId,
-              objectType,
-              material,
-              description: categoria.name,
-              ifcName: objectType,
-              ifcEntity: '',
-              propertyKey: this.normalizeText(linkedProperty),
-              propertyLabel: linkedProperty,
-              properties: [...(nodoConPropiedades.properties ?? [])],
-            });
-          }
+        if (!existingRow.localIds.includes(ifcElement.localId)) {
+          existingRow.localIds.push(ifcElement.localId);
         }
+        if (!existingRow.objectTypes.includes(objectType)) {
+          existingRow.objectTypes.push(objectType);
+          existingRow.objectType = existingRow.objectTypes.join(' / ');
+        }
+        if (!existingRow.material.trim()) {
+          existingRow.material = this.getMaterialFromIfcElement(ifcElement);
+        }
+        existingRow.description = this.mergeDescriptions(existingRow.description, objectDescription);
+        existingRow.properties.push(ifcElement.properties ?? {});
+        continue;
       }
+
+      rowsById.set(rowId, {
+        id: rowId,
+        localId: ifcElement.localId,
+        localIds: [ifcElement.localId],
+        objectType,
+        objectTypes: [objectType],
+        material: this.getMaterialFromIfcElement(ifcElement),
+        description: objectDescription,
+        ifcName: catalogPropertyValue,
+        catalogPropertyName,
+        catalogPropertyValue,
+        ifcEntity: ifcElement.ifcClass || '',
+        propertyKey: this.normalizeText(propertyLabel),
+        propertyLabel,
+        properties: [ifcElement.properties ?? {}],
+      });
     }
 
-    for (const linkObject of this.objetosDesdeVinculosBackend()) {
-      if (rowsByObjectTypeAndProperty.has(linkObject.id)) continue;
-      rowsByObjectTypeAndProperty.set(linkObject.id, linkObject);
-    }
-
-    return [...rowsByObjectTypeAndProperty.values()].sort((first, second) => {
-      const objectTypeComparison = first.objectType.localeCompare(second.objectType, 'es');
-      if (objectTypeComparison !== 0) return objectTypeComparison;
-      return first.propertyLabel.localeCompare(second.propertyLabel, 'es');
+    return [...rowsById.values()].sort((first, second) => {
+      const nameComparison = first.catalogPropertyValue.localeCompare(second.catalogPropertyValue, 'es');
+      if (nameComparison !== 0) return nameComparison;
+      const propertyComparison = first.propertyLabel.localeCompare(second.propertyLabel, 'es');
+      if (propertyComparison !== 0) return propertyComparison;
+      const typeComparison = first.objectType.localeCompare(second.objectType, 'es');
+      if (typeComparison !== 0) return typeComparison;
+      return (first.localIds[0] ?? first.localId) - (second.localIds[0] ?? second.localId);
     });
   }
 
@@ -365,6 +425,7 @@ export class LinkingPanel implements OnChanges {
     const conceptos = [...this.conceptosActivos];
     const hijosPorPadre = new Map<number | null, ConceptoB5DOrm[]>();
     const ids = new Set<number>(conceptos.map((concepto) => concepto.id));
+    const costosCalculados = this.calcularMetricasConceptos(conceptos);
 
     for (const concepto of conceptos) {
       const parentId =
@@ -391,7 +452,8 @@ export class LinkingPanel implements OnChanges {
           clave: concepto.clave ?? '',
           descripcion: concepto.descripcion ?? '',
           unidad: concepto.unidad ?? '',
-          costo: concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null,
+          costo: costosCalculados.get(concepto.id)?.costo ?? null,
+          porcentajePadre: costosCalculados.get(concepto.id)?.porcentajePadre ?? null,
           linked: linkedIds.has(concepto.id),
         });
         recorrer(concepto.id, level + 1);
@@ -407,7 +469,8 @@ export class LinkingPanel implements OnChanges {
         clave: concepto.clave ?? '',
         descripcion: concepto.descripcion ?? '',
         unidad: concepto.unidad ?? '',
-        costo: concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null,
+        costo: costosCalculados.get(concepto.id)?.costo ?? null,
+        porcentajePadre: costosCalculados.get(concepto.id)?.porcentajePadre ?? null,
         linked: linkedIds.has(concepto.id),
       });
     }
@@ -421,6 +484,14 @@ export class LinkingPanel implements OnChanges {
 
   get conceptosEstructuradosFiltrados(): ConceptoFila[] {
     return applyTableFilters(this.conceptosEstructurados, this.conceptTableColumns, this.conceptTablePreferences);
+  }
+
+  get visibleIfcObjectColumns(): TableColumnDefinition<ifcObject>[] {
+    return getVisibleColumns(this.ifcObjectTableColumns, this.ifcObjectTablePreferences);
+  }
+
+  get objetosIfcFiltrados(): ifcObject[] {
+    return applyTableFilters(this.objetosIfc, this.ifcObjectTableColumns, this.ifcObjectTablePreferences);
   }
 
   get relatedLinks(): VinculoPanel[] {
@@ -498,7 +569,7 @@ export class LinkingPanel implements OnChanges {
     const selectedObjectKeys = new Set(
       this.objetosIfc
         .filter((objectItem) => this.selectedObjectIds.has(objectItem.id))
-        .map((objectItem) => this.buildLinkKey(objectItem.objectType, objectItem.propertyLabel)),
+        .flatMap((objectItem) => this.getObjectTypesForRow(objectItem).map((objectType) => this.buildLinkKey(objectType, objectItem.propertyLabel))),
     );
     const hasObjectFilter = selectedObjectKeys.size > 0;
 
@@ -620,7 +691,12 @@ export class LinkingPanel implements OnChanges {
     this.selectedCatalogId = catalogId;
     this.selectedConceptIds.clear();
     this.idSelectedConcept = null;
+    this.selectedObjectIds.clear();
+    this.externalSelectedObjectIds.clear();
+    this.idSelectedObject = '';
+    this.lastSelectedObjectId = '';
     this.emitToolbarState();
+    this.emitIfcObjectSelection();
     this.emitDraftChanged();
   }
 
@@ -629,7 +705,12 @@ export class LinkingPanel implements OnChanges {
     this.selectedCatalogId = catalogId;
     this.selectedConceptIds.clear();
     this.idSelectedConcept = null;
+    this.selectedObjectIds.clear();
+    this.externalSelectedObjectIds.clear();
+    this.idSelectedObject = '';
+    this.lastSelectedObjectId = '';
     this.emitToolbarState();
+    this.emitIfcObjectSelection();
   }
 
   isSelectedConcept(id: number): boolean {
@@ -637,7 +718,7 @@ export class LinkingPanel implements OnChanges {
   }
 
   isSelectedObject(id: string): boolean {
-    return this.selectedObjectIds.has(id);
+    return this.selectedObjectIds.has(id) || this.externalSelectedObjectIds.has(id);
   }
 
   isSelectedLink(id: string): boolean {
@@ -645,15 +726,44 @@ export class LinkingPanel implements OnChanges {
   }
 
   isLinkedObject(ifcObject: ifcObject): boolean {
-    const objectType = this.normalizeText(ifcObject.objectType);
+    const objectTypes = this.getObjectTypesForRow(ifcObject);
     const quantityProperty = this.normalizeText(ifcObject.propertyLabel);
 
-    return this.relatedLinks.some((vinculo) => {
-      return (
-        this.normalizeText(vinculo.objectType) === objectType &&
-        this.normalizeText(vinculo.propertyLabel) === quantityProperty
-      );
-    });
+    return this.relatedLinks.some((vinculo) =>
+      objectTypes.some(
+        (objectType) =>
+          this.normalizeText(vinculo.objectType) === objectType && this.normalizeText(vinculo.propertyLabel) === quantityProperty,
+      ),
+    );
+  }
+
+  private getIfcElementPropertyValue(ifcElement: ElementoIfcB5D, propertyName: string): string {
+    const normalizedPropertyName = this.normalizeText(propertyName);
+    if (!normalizedPropertyName) return '';
+
+    const properties = ifcElement.properties ?? {};
+    for (const [key, value] of Object.entries(properties)) {
+      if (this.normalizeText(key) !== normalizedPropertyName) continue;
+      const normalizedValue = String(value ?? '').trim();
+      if (normalizedValue) return normalizedValue;
+    }
+
+    if (normalizedPropertyName === 'name') return ifcElement.name?.trim() ?? '';
+    if (normalizedPropertyName === 'objecttype') return ifcElement.objectType?.trim() ?? '';
+    if (normalizedPropertyName === 'globalid') {
+      return properties['GlobalId']?.trim() ?? properties['globalId']?.trim() ?? '';
+    }
+
+    return '';
+  }
+
+  private getMaterialFromIfcElement(ifcElement: ElementoIfcB5D): string {
+    const material =
+      this.getIfcElementPropertyValue(ifcElement, 'Material') ||
+      this.getIfcElementPropertyValue(ifcElement, 'material') ||
+      ifcElement.category?.trim() ||
+      ifcElement.elementType?.trim();
+    return material || '-';
   }
 
   indentation(level: number): string {
@@ -665,6 +775,7 @@ export class LinkingPanel implements OnChanges {
     const objeto = this.objetosIfc.find((item) => item.id === this.idSelectedObject);
 
     if (!concepto || !objeto || !this.selectedPropertyKey) return;
+    const objectType = this.getPrimaryObjectType(objeto);
 
     this.localLinks = [
       ...this.localLinks,
@@ -672,7 +783,7 @@ export class LinkingPanel implements OnChanges {
         concepto.id,
         concepto.clave ?? '',
         concepto.descripcion ?? '',
-        objeto.objectType,
+        objectType,
         objeto.material,
         this.selectedPropertyKey,
         objeto.description,
@@ -720,25 +831,21 @@ export class LinkingPanel implements OnChanges {
 
   // Swaps the two stable panels in the top row of the linking workspace.
   toggleTopPanelOrder(): void {
-    this.topPanelOrderReversed = !this.topPanelOrderReversed;
+    this.topPanelOrder = swapPanelOrder([this.topPanelOrder[0], this.topPanelOrder[1]] as const);
+    this.changeDetectorRef.detectChanges();
   }
 
-  // Returns the grid column assigned to a top-row panel.
-  getTopPanelGridColumn(panelId: 'concepts' | 'ifc-objects'): string {
-    if (!this.topPanelOrderReversed) {
-      return panelId === 'concepts' ? '1 / 2' : '3 / 4';
-    }
-
-    return panelId === 'concepts' ? '3 / 4' : '1 / 2';
+  // Returns true when the IFC objects panel is leading the top row.
+  get isTopPanelOrderReversed(): boolean {
+    return this.topPanelOrder[0] === 'ifc-objects';
   }
 
   // Returns true when the requested top-row panel can move in the provided direction.
   canMoveTopPanel(panelId: 'concepts' | 'ifc-objects', direction: 'left' | 'right'): boolean {
-    if (panelId === 'concepts') {
-      return direction === 'right' && !this.topPanelOrderReversed;
-    }
-
-    return direction === 'left' && this.topPanelOrderReversed;
+    const currentIndex = this.topPanelOrder.indexOf(panelId);
+    if (currentIndex === -1) return false;
+    if (direction === 'left') return currentIndex > 0;
+    return currentIndex < this.topPanelOrder.length - 1;
   }
 
   // Returns the zoom factor for a specific panel content area.
@@ -749,22 +856,31 @@ export class LinkingPanel implements OnChanges {
         : panelId === 'ifc-objects'
           ? this.objectPanelZoomPercent
           : this.relatedLinksPanelZoomPercent;
-    return this.clamp(zoomPercent, 20, 300) / 100;
+    return clampPanelPercent(zoomPercent) / 100;
   }
 
   // Increases the zoom level for a specific panel content area.
   increasePanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
-    this.setPanelZoom(panelId, this.getPanelZoomPercent(panelId) + 10);
+    this.setPanelZoom(panelId, stepPanelPercent(this.getPanelZoomPercent(panelId), 10));
   }
 
   // Decreases the zoom level for a specific panel content area.
   decreasePanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
-    this.setPanelZoom(panelId, this.getPanelZoomPercent(panelId) - 10);
+    this.setPanelZoom(panelId, stepPanelPercent(this.getPanelZoomPercent(panelId), -10));
   }
 
   // Restores the zoom level for a specific panel content area.
   resetPanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
     this.setPanelZoom(panelId, 100);
+  }
+
+  // Applies mouse-wheel zoom on a specific linking panel content area.
+  onPanelZoomWheel(event: WheelEvent, panelId: 'concepts' | 'ifc-objects' | 'related-links'): void {
+    handlePanelZoomWheel(
+      event,
+      () => this.increasePanelZoom(panelId),
+      () => this.decreasePanelZoom(panelId),
+    );
   }
 
   // Returns the current concepts and links draft to persist in the backend project.
@@ -823,10 +939,10 @@ export class LinkingPanel implements OnChanges {
       const selectedTypes = new Set(
         objects
           .filter((objectItem) => this.selectedObjectIds.has(objectItem.id))
-          .map((objectItem) => this.normalizeText(objectItem.objectType)),
+          .flatMap((objectItem) => this.getObjectTypesForRow(objectItem)),
       );
       for (const objectItem of objects) {
-        if (selectedTypes.has(this.normalizeText(objectItem.objectType))) {
+        if (this.getObjectTypesForRow(objectItem).some((objectType) => selectedTypes.has(objectType))) {
           selectedObjectIds.add(objectItem.id);
         }
       }
@@ -840,7 +956,7 @@ export class LinkingPanel implements OnChanges {
         const hasLinkWithSelectedConcept = this.relatedLinks.some((linkItem) => {
           return (
             selectedConceptIds.has(linkItem.conceptoId ?? -1) &&
-            this.normalizeText(linkItem.objectType) === this.normalizeText(objectItem.objectType) &&
+            this.getObjectTypesForRow(objectItem).includes(this.normalizeText(linkItem.objectType)) &&
             this.normalizeText(linkItem.propertyLabel) === this.normalizeText(objectItem.propertyLabel)
           );
         });
@@ -917,9 +1033,50 @@ export class LinkingPanel implements OnChanges {
     });
   }
 
+  private syncExternalSelectedObjects(): void {
+    const selectedLocalIds = new Set(
+      this.selectedIfcLocalIds.filter((localId) => Number.isInteger(localId) && localId > 0),
+    );
+    const selectedObjectIds = new Set<string>();
+
+    if (!selectedLocalIds.size) {
+      this.externalSelectedObjectIds = selectedObjectIds;
+      return;
+    }
+
+    for (const objectItem of this.objetosIfc) {
+      if (!objectItem.localIds.some((localId) => selectedLocalIds.has(localId))) continue;
+      selectedObjectIds.add(objectItem.id);
+    }
+
+    this.externalSelectedObjectIds = selectedObjectIds;
+  }
+
   private syncConceptTablePreferences(): void {
     ensureTablePreferencesColumns(this.conceptTablePreferences, this.conceptTableColumns);
     this.persistConceptTablePreferences();
+  }
+
+  private restoreIfcObjectTablePreferences(): void {
+    const storageKey = this.ifcObjectTableStorageKey;
+    if (storageKey === this.lastAppliedStorageScopeKey) return;
+
+    this.lastAppliedStorageScopeKey = storageKey;
+    this.ifcObjectTablePreferences = loadTableViewPreferences(storageKey, this.ifcObjectTableDefaults);
+    ensureTablePreferencesColumns(this.ifcObjectTablePreferences, this.ifcObjectTableColumns);
+  }
+
+  private persistIfcObjectTablePreferences(): void {
+    saveTableViewPreferences(this.ifcObjectTableStorageKey, this.ifcObjectTablePreferences);
+  }
+
+  private restoreConceptTablePreferences(): void {
+    const storageKey = this.conceptTableStorageKey;
+    if (storageKey === this.lastAppliedStorageScopeKey) return;
+
+    this.lastAppliedStorageScopeKey = storageKey;
+    this.conceptTablePreferences = loadTableViewPreferences(storageKey, this.conceptTableDefaults);
+    ensureTablePreferencesColumns(this.conceptTablePreferences, this.conceptTableColumns);
   }
 
   private persistConceptTablePreferences(): void {
@@ -928,6 +1085,22 @@ export class LinkingPanel implements OnChanges {
 
   get conceptTableResizableStorageKey(): string {
     return `${this.conceptTableStorageKey}:${this.conceptTablePreferences.order.join('|')}:${this.conceptTablePreferences.hidden.join('|')}`;
+  }
+
+  get ifcObjectsTableResizableStorageKey(): string {
+    return `${this.ifcObjectTableStorageKey}:${this.ifcObjectTablePreferences.order.join('|')}:${this.ifcObjectTablePreferences.hidden.join('|')}`;
+  }
+
+  get relatedLinksTableResizableStorageKey(): string {
+    return buildScopedStorageKey('linking-related-links', this.storageScopeKey);
+  }
+
+  private get conceptTableStorageKey(): string {
+    return buildScopedStorageKey(this.conceptTableStorageKeyBase, this.storageScopeKey);
+  }
+
+  private get ifcObjectTableStorageKey(): string {
+    return buildScopedStorageKey(this.ifcObjectTableStorageKeyBase, this.storageScopeKey);
   }
 
   getConceptById(conceptId: number): ConceptoB5DOrm | null {
@@ -946,10 +1119,98 @@ export class LinkingPanel implements OnChanges {
     return Number.isFinite(numericValue) ? numericValue : null;
   }
 
+  formatPercentage(value: number | null | undefined): string {
+    const numericValue = this.parseOptionalNumber(value);
+    if (numericValue == null) {
+      return '-';
+    }
+    return `${numericValue.toFixed(2)}%`;
+  }
+
+  private calcularMetricasConceptos(
+    conceptos: ConceptoB5DOrm[],
+  ): Map<number, { costo: number | null; porcentajePadre: number | null }> {
+    const conceptosPorId = new Map<number, ConceptoB5DOrm>();
+    const hijosPorPadre = new Map<number | null, ConceptoB5DOrm[]>();
+    const conceptosEnProyecto = new Set<number>();
+
+    for (const concepto of conceptos) {
+      conceptosPorId.set(concepto.id, concepto);
+      conceptosEnProyecto.add(concepto.id);
+    }
+
+    for (const concepto of conceptos) {
+      const parentId =
+        concepto.agrupador_padre_id && conceptosEnProyecto.has(concepto.agrupador_padre_id)
+          ? concepto.agrupador_padre_id
+          : null;
+      const hijos = hijosPorPadre.get(parentId) ?? [];
+      hijos.push(concepto);
+      hijosPorPadre.set(parentId, hijos);
+    }
+
+    const cacheCostos = new Map<number, number | null>();
+    const visitados = new Set<number>();
+
+    const obtenerCostoBase = (concepto: ConceptoB5DOrm): number | null =>
+      this.parseOptionalNumber(concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null);
+
+    const resolverCosto = (conceptoId: number): number | null => {
+      if (cacheCostos.has(conceptoId)) {
+        return cacheCostos.get(conceptoId) ?? null;
+      }
+
+      const concepto = conceptosPorId.get(conceptoId);
+      if (!concepto) {
+        return null;
+      }
+
+      if (visitados.has(conceptoId)) {
+        const costoCiclico = obtenerCostoBase(concepto);
+        cacheCostos.set(conceptoId, costoCiclico);
+        return costoCiclico;
+      }
+
+      visitados.add(conceptoId);
+      let costo = obtenerCostoBase(concepto);
+      if (costo == null) {
+        const hijos = hijosPorPadre.get(conceptoId) ?? [];
+        const costosHijos = hijos
+          .map((hijo) => resolverCosto(hijo.id))
+          .filter((valor): valor is number => typeof valor === 'number' && Number.isFinite(valor));
+        if (costosHijos.length) {
+          costo = Number(costosHijos.reduce((acumulado, valor) => acumulado + valor, 0).toFixed(4));
+        }
+      }
+      visitados.delete(conceptoId);
+      cacheCostos.set(conceptoId, costo);
+      return costo;
+    };
+
+    const metricas = new Map<number, { costo: number | null; porcentajePadre: number | null }>();
+    for (const concepto of conceptos) {
+      const costo = resolverCosto(concepto.id);
+      let porcentajePadre = this.parseOptionalNumber(concepto.porcentaje_padre ?? null);
+      const parentId = concepto.agrupador_padre_id;
+      if (porcentajePadre == null && parentId != null && conceptosPorId.has(parentId)) {
+        const costoPadre = resolverCosto(parentId);
+        if (costo != null && costoPadre != null && costoPadre !== 0) {
+          porcentajePadre = Number(((costo / costoPadre) * 100).toFixed(6));
+        }
+      }
+      metricas.set(concepto.id, {
+        costo,
+        porcentajePadre,
+      });
+    }
+
+    return metricas;
+  }
+
   resetTableViews(): void {
     this.leftPanelWidth = 420;
     this.topPanelHeight = 260;
-    this.topPanelOrderReversed = false;
+    this.topPanelOrder = ['concepts', 'ifc-objects'];
     this.conceptPanelZoomPercent = 100;
     this.objectPanelZoomPercent = 100;
     this.relatedLinksPanelZoomPercent = 100;
@@ -957,6 +1218,8 @@ export class LinkingPanel implements OnChanges {
     this.activeWorkspacePanel = 'concepts';
     this.resetConceptTablePreferences();
     this.resetConceptTableWidths();
+    this.resetIfcObjectTablePreferences();
+    this.resetIfcObjectTableWidths();
     this.emitToolbarState();
   }
 
@@ -995,6 +1258,43 @@ export class LinkingPanel implements OnChanges {
       window.localStorage.removeItem(`b5d-resizable-table:${this.conceptTableResizableStorageKey}`);
     }
     this.conceptTableRefreshToken += 1;
+  }
+
+  openIfcObjectTableContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.ifcObjectTableContextMenuVisible = true;
+    this.ifcObjectTableContextMenuX = event.clientX;
+    this.ifcObjectTableContextMenuY = event.clientY;
+  }
+
+  closeIfcObjectTableContextMenu(): void {
+    this.ifcObjectTableContextMenuVisible = false;
+  }
+
+  handleIfcObjectTableContextMenuAction(action: 'chooser' | 'filters' | 'best-fit' | 'reset'): void {
+    if (action === 'chooser') {
+      this.toggleIfcObjectTableChooser();
+    } else if (action === 'filters') {
+      this.toggleIfcObjectTableFiltersVisible();
+    } else if (action === 'best-fit') {
+      this.resetIfcObjectTableWidths();
+    } else if (action === 'reset') {
+      this.resetTableViews();
+    }
+    this.closeIfcObjectTableContextMenu();
+  }
+
+  resetIfcObjectTablePreferences(): void {
+    resetTableViewPreferences(this.ifcObjectTablePreferences, this.ifcObjectTableDefaults);
+    this.persistIfcObjectTablePreferences();
+  }
+
+  resetIfcObjectTableWidths(): void {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`b5d-resizable-table:${this.ifcObjectsTableResizableStorageKey}`);
+    }
+    this.ifcObjectTableRefreshToken += 1;
   }
 
   toggleConceptTableChooser(): void {
@@ -1048,6 +1348,57 @@ export class LinkingPanel implements OnChanges {
     return this.visibleConceptColumns.at(-1)?.key === columnKey;
   }
 
+  toggleIfcObjectTableChooser(): void {
+    this.ifcObjectTablePreferences.chooserOpen = !this.ifcObjectTablePreferences.chooserOpen;
+    this.persistIfcObjectTablePreferences();
+  }
+
+  toggleIfcObjectTableFiltersVisible(): void {
+    this.tableFiltersVisible = !this.tableFiltersVisible;
+    this.emitToolbarState();
+  }
+
+  isIfcObjectTableColumnVisible(columnKey: string): boolean {
+    return !this.ifcObjectTablePreferences.hidden.includes(columnKey);
+  }
+
+  toggleIfcObjectTableColumnVisibility(columnKey: string): void {
+    toggleTableColumnVisibility(this.ifcObjectTablePreferences, columnKey);
+    this.persistIfcObjectTablePreferences();
+  }
+
+  moveIfcObjectTableColumn(columnKey: string, direction: 'left' | 'right'): void {
+    reorderTableColumn(this.ifcObjectTablePreferences, columnKey, direction);
+    this.persistIfcObjectTablePreferences();
+  }
+
+  getIfcObjectFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
+    const column = this.ifcObjectTableColumns.find((columnItem) => columnItem.key === columnKey);
+    return column ? getFilterModesForKind(column.kind) : getFilterModesForKind('text');
+  }
+
+  getIfcObjectFilterMode(columnKey: string): string {
+    return this.ifcObjectTablePreferences.filters[columnKey]?.mode ?? 'contains';
+  }
+
+  getIfcObjectFilterValue(columnKey: string): string {
+    return this.ifcObjectTablePreferences.filters[columnKey]?.value ?? '';
+  }
+
+  setIfcObjectFilterMode(columnKey: string, mode: string): void {
+    setTableFilterMode(this.ifcObjectTablePreferences, columnKey, mode as never);
+    this.persistIfcObjectTablePreferences();
+  }
+
+  setIfcObjectFilterValue(columnKey: string, value: string): void {
+    setTableFilterValue(this.ifcObjectTablePreferences, columnKey, value);
+    this.persistIfcObjectTablePreferences();
+  }
+
+  isIfcObjectTableLastColumn(columnKey: string): boolean {
+    return this.visibleIfcObjectColumns.at(-1)?.key === columnKey;
+  }
+
   // Toggles row selection while keeping single-select mode when Ctrl/Cmd is not pressed.
   private toggleSelectionInSet<T>(selectionSet: Set<T>, itemId: T, additiveSelection: boolean): void {
     if (!additiveSelection) {
@@ -1087,29 +1438,15 @@ export class LinkingPanel implements OnChanges {
     for (const objectRowId of this.selectedObjectIds) {
       const objectRow = objectsById.get(objectRowId);
       if (!objectRow) continue;
-      const localIds = this.resolveLocalIdsForObjectRow(objectRow);
-      for (const localId of localIds) selectedLocalIds.add(localId);
+      for (const localId of objectRow.localIds) selectedLocalIds.add(localId);
     }
 
     this.ifcObjectSelectionChange.emit([...selectedLocalIds]);
   }
 
-  // Resolves IFC local IDs represented by a row grouped by object type and quantity property.
+  // Resolves IFC local IDs represented by a visible IFC object row.
   private resolveLocalIdsForObjectRow(objectRow: ifcObject): number[] {
-    const normalizedObjectType = this.normalizeText(objectRow.objectType);
-    const normalizedProperty = this.normalizeText(objectRow.propertyLabel);
-    const localIds: number[] = [];
-
-    for (const ifcElement of this.ifcElements) {
-      const elementObjectType = this.normalizeText(ifcElement.objectType || this.i18n.translateForComponent(this.linkingPanelTranslations, 'linking.ts.objectType'));
-      if (elementObjectType !== normalizedObjectType) continue;
-
-      const elementProperty = this.normalizeText(this.inferPropertyLabelFromIfcClass(ifcElement.ifcClass ?? ''));
-      if (elementProperty !== normalizedProperty) continue;
-      localIds.push(ifcElement.localId);
-    }
-
-    return localIds;
+    return [...objectRow.localIds];
   }
 
   // Builds a link row with normalized data from concept and IFC object selections.
@@ -1278,6 +1615,7 @@ export class LinkingPanel implements OnChanges {
       costo: null,
       costo_mn: null,
       costo_me: null,
+      porcentaje_padre: null,
       es_agrupador: isGroupingConcept,
       agrupador_padre_id: parentConceptId,
       unidad: isGroupingConcept ? null : this.creatingConceptDraft.unidad.trim() || null,
@@ -1404,6 +1742,7 @@ export class LinkingPanel implements OnChanges {
       agrupador_padre_id: targetParentId,
       catalogo_id: sourceConcept.catalogo_id ?? this.selectedCatalogId ?? null,
       orden: suggestedOrder,
+      porcentaje_padre: null,
       optimistic_lock_field: 1,
       gc_record: null,
     };
@@ -1560,11 +1899,8 @@ export class LinkingPanel implements OnChanges {
 
   // Starts resizing between top panels or between top and bottom sections.
   startInternalResize(event: PointerEvent, axis: 'horizontal' | 'vertical'): void {
-    if (event.button !== 0) return;
     const workspaceElement = this.layoutWorkspace?.nativeElement;
     if (!workspaceElement) return;
-
-    event.preventDefault();
 
     const startX = event.clientX;
     const startY = event.clientY;
@@ -1572,8 +1908,7 @@ export class LinkingPanel implements OnChanges {
     const startTopPanelHeight = this.topPanelHeight;
     const workspaceWidth = workspaceElement.clientWidth;
     const workspaceHeight = workspaceElement.clientHeight;
-
-    const onPointerMove = (moveEvent: PointerEvent): void => {
+    startPointerDrag(event, (moveEvent) => {
       if (axis === 'vertical') {
         const minLeftPanelWidth = 280;
         const minRightPanelWidth = 300;
@@ -1598,15 +1933,7 @@ export class LinkingPanel implements OnChanges {
         Math.max(minTopPanelHeight, maxTopPanelHeight),
       );
       this.changeDetectorRef.detectChanges();
-    };
-
-    const stopResizing = (): void => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', stopResizing);
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', stopResizing, { once: true });
+    });
   }
 
   get topRowTemplateColumns(): string {
@@ -1638,6 +1965,9 @@ export class LinkingPanel implements OnChanges {
 
   // Returns IFC object name from the first available property payload.
   getObjectName(objectItem: ifcObject): string {
+    const catalogValue = objectItem.catalogPropertyValue?.trim();
+    if (catalogValue) return catalogValue;
+
     const firstProperty = objectItem.properties[0];
     const ifcName = firstProperty?.['name'];
     if (typeof ifcName === 'string' && ifcName.trim()) return ifcName.trim();
@@ -1669,16 +1999,18 @@ export class LinkingPanel implements OnChanges {
     return (valor ?? '').trim().toLowerCase();
   }
 
-  private buildObjectRowId(objectType: string, propertyLabel: string): string {
-    return `obj-${this.normalizeText(objectType)}-${this.normalizeText(propertyLabel)}`;
+  private buildObjectRowId(catalogPropertyValue: string, propertyLabel: string): string {
+    return `obj-${this.normalizeText(catalogPropertyValue)}-${this.normalizeText(propertyLabel)}`;
   }
 
-  private inferPropertyLabel(unit: string): string {
-    const normalizedUnit = this.normalizeText(unit);
-    if (normalizedUnit === 'm3') return 'Volumen (Neto)';
-    if (normalizedUnit === 'm2') return 'Area de la Superficie';
-    if (normalizedUnit === 'm') return 'Longitud';
-    return 'Cantidad';
+  private getObjectTypesForRow(objectItem: ifcObject): string[] {
+    const objectTypes = objectItem.objectTypes?.length ? objectItem.objectTypes : [objectItem.objectType];
+    return [...new Set(objectTypes.map((objectType) => this.normalizeText(objectType)).filter((objectType) => !!objectType))];
+  }
+
+  private getPrimaryObjectType(objectItem: ifcObject): string {
+    const objectTypes = objectItem.objectTypes?.length ? objectItem.objectTypes : [objectItem.objectType];
+    return objectTypes.find((objectType) => !!this.normalizeText(objectType))?.trim() ?? objectItem.objectType?.trim() ?? '-';
   }
 
   private inferPropertyLabelFromIfcClass(ifcClass: string): string {
@@ -1693,16 +2025,6 @@ export class LinkingPanel implements OnChanges {
       return 'Volumen (Neto)';
     }
     return 'Cantidad';
-  }
-
-  private getMaterialFromProperties(properties: Record<string, unknown>[]): string {
-    for (const propertyItem of properties) {
-      const material = propertyItem['material'] ?? propertyItem['Material'];
-      if (typeof material === 'string' && material.trim()) {
-        return material.trim();
-      }
-    }
-    return '';
   }
 
   private obtenerDescripcionIfcElemento(ifcElement: ElementoIfcB5D): string {
@@ -1743,37 +2065,6 @@ export class LinkingPanel implements OnChanges {
     return linkedPropertiesByObjectType;
   }
 
-  private objetosDesdeVinculosBackend(): ifcObject[] {
-    const rowsByObjectTypeAndProperty = new Map<string, ifcObject>();
-
-    for (const linkItem of this.b5dLinks) {
-      const objectType = (linkItem.tipo_objeto_bim ?? '').trim();
-      const propertyLabel = (linkItem.propiedad_cantidad_bim ?? '').trim();
-      if (!objectType || !propertyLabel) continue;
-
-      const rowId = this.buildObjectRowId(objectType, propertyLabel);
-      if (rowsByObjectTypeAndProperty.has(rowId)) continue;
-
-      rowsByObjectTypeAndProperty.set(rowId, {
-        id: rowId,
-        objectType,
-        material: (linkItem.material_bim ?? '').trim(),
-        description: '',
-        ifcName: objectType,
-        ifcEntity: '',
-        propertyKey: this.normalizeText(propertyLabel),
-        propertyLabel,
-        properties: [],
-      });
-    }
-
-    return [...rowsByObjectTypeAndProperty.values()].sort((first, second) => {
-      const objectTypeComparison = first.objectType.localeCompare(second.objectType, 'es');
-      if (objectTypeComparison !== 0) return objectTypeComparison;
-      return first.propertyLabel.localeCompare(second.propertyLabel, 'es');
-    });
-  }
-
   private clamp(value: number, minValue: number, maxValue: number): number {
     return Math.min(Math.max(value, minValue), maxValue);
   }
@@ -1787,16 +2078,15 @@ export class LinkingPanel implements OnChanges {
 
   // Stores a zoom percentage for a specific panel content area.
   private setPanelZoom(panelId: 'concepts' | 'ifc-objects' | 'related-links', zoomPercent: number): void {
-    const nextZoomPercent = this.clamp(zoomPercent, 20, 300);
+    const nextZoomPercent = clampPanelPercent(zoomPercent);
     if (panelId === 'concepts') {
       this.conceptPanelZoomPercent = nextZoomPercent;
-      return;
-    }
-    if (panelId === 'ifc-objects') {
+    } else if (panelId === 'ifc-objects') {
       this.objectPanelZoomPercent = nextZoomPercent;
-      return;
+    } else {
+      this.relatedLinksPanelZoomPercent = nextZoomPercent;
     }
-    this.relatedLinksPanelZoomPercent = nextZoomPercent;
+    this.changeDetectorRef.detectChanges();
   }
 
   private get relatedLinksFromSelectedConcepts(): VinculoPanel[] {
@@ -1816,7 +2106,9 @@ export class LinkingPanel implements OnChanges {
     return new Set(
       this.objetosIfc
         .filter((objectItem) => this.selectedObjectIds.has(objectItem.id))
-        .map((objectItem) => this.buildLinkKey(objectItem.objectType, objectItem.propertyLabel)),
+        .flatMap((objectItem) =>
+          this.getObjectTypesForRow(objectItem).map((objectType) => this.buildLinkKey(objectType, objectItem.propertyLabel)),
+        ),
     );
   }
 
@@ -1831,7 +2123,7 @@ export class LinkingPanel implements OnChanges {
   private get selectedObjectSummaryLabel(): string {
     const selectedObjects = this.objetosIfc.filter((objectItem) => this.selectedObjectIds.has(objectItem.id));
     if (!selectedObjects.length) return '-';
-    const labels = selectedObjects.map((objectItem) => `${objectItem.objectType}/${objectItem.propertyLabel}`);
+    const labels = selectedObjects.map((objectItem) => `${objectItem.catalogPropertyValue} / ${objectItem.propertyLabel}`);
     if (labels.length <= 3) return labels.join(', ');
     return `${labels.slice(0, 3).join(', ')} (+${labels.length - 3})`;
   }

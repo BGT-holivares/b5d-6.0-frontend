@@ -10,7 +10,9 @@
     [activeCountMeasurementMode]="activeCountMeasurementMode()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     [homeToolbarState]="homeToolbarState()"
+    [windowMode]="windowMode()"
     (archivoSeleccionado)="cargarArchivo($event)"
+    (unloadIfcSolicitado)="quitarArchivoIfcCargado()"
     (abrirB5dSolicitado)="abrirSelectorImportacionB5d()"
     (guardarB5dSolicitado)="guardarYExportarProyectoB5dActivo()"
     (loginSolicitado)="irALogin()"
@@ -33,7 +35,13 @@
     </div>
   }
 
-  @if (isMeasurementVisible()) {
+  @if (windowMode() === 'control') {
+    <div class="b5d-viewer-screen__window-mode-banner">
+      {{ getWindowModeHint() }}
+    </div>
+  }
+
+  @if (windowMode() === 'viewer' && isMeasurementVisible()) {
     <section class="b5d-viewer-screen__measurement-card">
       <header class="b5d-viewer-screen__measurement-card-header">
         <span class="b5d-viewer-screen__measurement-card-title">{{ getMeasurementPanelTitle() }}</span>
@@ -259,7 +267,7 @@
     </section>
   }
 
-  @if (isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {
+  @if (windowMode() === 'viewer' && isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {
     <section
       class="b5d-floating-panel"
       [class.b5d-floating-panel--docked]="isFloatingPanelDocked('tree')"
@@ -411,58 +419,69 @@
         <div class="b5d-viewer-screen__bottom-content">
           @switch (bottomPanelTab()) {
             @case ('links') {
-              <app-linking-panel
-                [ifcData]="cuantificacion()"
-                [ifcElements]="ifcElements()"
-                [activeProject]="proyectoB5dActivo()"
-                [b5dConcepts]="b5dConcepts()"
-                [b5dLinks]="b5dLinks()"
-                [b5dCatalogs]="b5dCatalogs()"
-                [copyLinksFromCatalogId]="selectedCatalogLinkCopySourceId"
-                [b5dLoading]="b5dCargando()"
-                [activeBottomTab]="bottomPanelTab()"
-                [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-                (toolbarStateChange)="onLinkingToolbarStateChange($event)"
-                (ifcObjectSelectionChange)="onLinkingIfcSelectionChange($event)"
-                (draftChanged)="onLinkingDraftChanged()"
-              />
-            }
-            @case ('boq') {
-              <app-boq-panel
-                [activeProject]="proyectoB5dActivo()"
-                [cuantificacionesB5d]="cuantificacionesB5d()"
-                [b5dLoading]="b5dCargando()"
-                [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-                (toolbarStateChange)="onBoqToolbarStateChange($event)"
-              />
-            }
-            @case ('parameters') {
-              <app-parameters-panel
-                [activeProject]="proyectoB5dActivo()"
-                [parameters]="parametrosB5d()"
-                [concepts]="b5dConcepts()"
-                [catalogs]="b5dCatalogs()"
-                [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
-                [b5dLoading]="b5dCargando()"
-                [quantifications]="cuantificacionesB5d()"
-                [informacionSeleccionada]="visorIfc.informacionSeleccionada()"
-                [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-                (toolbarStateChange)="onParametersToolbarStateChange($event)"
-                (rowsChange)="onParametersRowsChange($event)"
-              />
-            }
-            @case ('report') {
-              <app-parameters-report-panel
-                [activeProject]="proyectoB5dActivo()"
-                [parameters]="parametrosB5d()"
-                [concepts]="b5dConcepts()"
-                [catalogs]="b5dCatalogs()"
-                [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
-                [b5dLoading]="b5dCargando()"
-                [quantifications]="cuantificacionesB5d()"
-              />
-            }
+            <app-linking-panel
+              [ifcData]="cuantificacion()"
+              [ifcElements]="ifcElements()"
+              [selectedIfcLocalIds]="sharedIfcSelectionLocalIds()"
+              [activeProject]="proyectoB5dActivo()"
+              [b5dConcepts]="b5dConcepts()"
+              [b5dLinks]="b5dLinks()"
+              [b5dCatalogs]="b5dCatalogs()"
+              [copyLinksFromCatalogId]="selectedCatalogLinkCopySourceId"
+              [b5dLoading]="b5dCargando()"
+              [activeBottomTab]="bottomPanelTab()"
+              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+              [storageScopeKey]="uiStorageScopeKey"
+              (toolbarStateChange)="onLinkingToolbarStateChange($event)"
+              (ifcObjectSelectionChange)="onLinkingIfcSelectionChange($event)"
+              (draftChanged)="onLinkingDraftChanged()"
+            />
           }
+          @case ('boq') {
+            <app-boq-panel
+              #boqPanel
+              [activeProject]="proyectoB5dActivo()"
+              [cuantificacionesB5d]="cuantificacionesB5d()"
+              [b5dLoading]="b5dCargando()"
+              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+              [conceptKeys]="b5dConceptKeys()"
+              [storageScopeKey]="uiStorageScopeKey"
+              (toolbarStateChange)="onBoqToolbarStateChange($event)"
+              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
+            />
+          }
+          @case ('parameters') {
+            <app-parameters-panel
+              [activeProject]="proyectoB5dActivo()"
+              [parameters]="parametrosB5d()"
+              [concepts]="b5dConcepts()"
+              [catalogs]="b5dCatalogs()"
+              [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
+              [b5dLoading]="b5dCargando()"
+              [quantifications]="cuantificacionesB5d()"
+              [conceptKeys]="b5dConceptKeys()"
+              [informacionSeleccionada]="sharedSelectionInfo()"
+              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+              [storageScopeKey]="uiStorageScopeKey"
+              (toolbarStateChange)="onParametersToolbarStateChange($event)"
+              (rowsChange)="onParametersRowsChange($event)"
+              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
+            />
+          }
+          @case ('report') {
+            <app-parameters-report-panel
+              [activeProject]="proyectoB5dActivo()"
+              [parameters]="parametrosB5d()"
+              [concepts]="b5dConcepts()"
+              [catalogs]="b5dCatalogs()"
+              [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
+              [b5dLoading]="b5dCargando()"
+              [quantifications]="cuantificacionesB5d()"
+              [conceptKeys]="b5dConceptKeys()"
+              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
+            />
+          }
+        }
         </div>
       </div>
       <app-catalog-structure-dialog
@@ -517,7 +536,7 @@
     </section>
   }
 
-  @if (isFloatingPanelVisible('models') && visorIfc.modelosIfcCargados().length) {
+  @if (windowMode() === 'viewer' && isFloatingPanelVisible('models') && visorIfc.modelosIfcCargados().length) {
     <section
       class="b5d-floating-panel"
       [class.b5d-floating-panel--docked]="isFloatingPanelDocked('models')"
@@ -594,5 +613,7 @@
     </section>
   }
 
-  <div #contenedorVisor class="b5d-viewer-screen__canvas"></div>
+  @if (windowMode() === 'viewer') {
+    <div #contenedorVisor class="b5d-viewer-screen__canvas"></div>
+  }
 </main>

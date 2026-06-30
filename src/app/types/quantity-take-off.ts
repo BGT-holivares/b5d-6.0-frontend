@@ -24,6 +24,9 @@ export interface NodoCuantificacion {
 export type ElementoIfcB5D = {
   localId: number;
   expressID?: number;
+  modelId?: string | null;
+  sourceFileName?: string | null;
+  properties?: Record<string, string>;
   ifcClass: string;
   name: string;
   objectType: string;

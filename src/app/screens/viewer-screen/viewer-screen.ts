@@ -1,4 +1,5 @@
 import {
+  AfterViewChecked,
   AfterViewInit,
   ChangeDetectorRef,
   Component,
@@ -6,10 +7,13 @@ import {
   ElementRef,
   effect,
   OnDestroy,
+  OnInit,
+  PLATFORM_ID,
   ViewChild,
   inject,
   signal,
 } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { NgStyle } from '@angular/common';
 import { Router } from '@angular/router';
 import { firstValueFrom, Subscription } from 'rxjs';
@@ -26,10 +30,16 @@ import { ParametersImportDialog } from '../../models/parameters-import-dialog/pa
 import { CatalogStructureDialog, type CatalogStructureDraft } from '../../models/catalog-structure-dialog/catalog-structure-dialog';
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
+import { IfcFileCacheService } from '../../services/ifc-file-cache.service';
 import { LocalViewerSyncService, type LocalViewerSyncMessage } from '../../services/local-viewer-sync.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
+import { logB5dDebug } from '../../utils/debug/b5d-debug';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { VisorIfc } from '../../utils/ifc-viewer';
+import { resolveIfcSelectionFromConceptKey } from '../../utils/ifc-selection/ifc-selection';
+import { startPointerDrag } from '../../utils/panel-interactions/panel-interactions';
+import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type {
   CatalogoB5DOrm,
   ConceptoB5DOrm,
@@ -49,6 +59,7 @@ import type {
 } from '../../types/measurement';
 import type { FloatingPanelId } from '../../types/floating-panel';
 import type { ElementoIfcB5D, NodoCuantificacion } from '../../types/quantity-take-off';
+import type { ViewerWindowMode } from '../../types/viewer-window';
 
 type DockSide = 'left' | 'right' | 'bottom';
 type BottomPanelTab = HomeBottomPanelTab;
@@ -73,6 +84,50 @@ type FloatingPanelState = {
   zIndex: number;
 };
 
+type ViewerUiState = {
+  bottomPanelTab?: BottomPanelTab;
+  treeSectionHeight?: number;
+  toolbarContentVisible?: boolean;
+  selectedCatalogId?: number | null;
+  tableFiltersVisible?: boolean;
+  floatingPanels?: Record<FloatingPanelId, FloatingPanelState>;
+  linkingPanel?: {
+    leftPanelWidth?: number;
+    topPanelHeight?: number;
+    topPanelOrder?: ('concepts' | 'ifc-objects')[];
+    conceptPanelZoomPercent?: number;
+    objectPanelZoomPercent?: number;
+    relatedLinksPanelZoomPercent?: number;
+    relatedLinksVisible?: boolean;
+    activeWorkspacePanel?: 'concepts' | 'ifc-objects' | 'related-links';
+    selectedCatalogId?: number | null;
+  };
+  boqPanel?: {
+    leftPanelWidth?: number;
+    panelOrder?: ('list' | 'preview')[];
+    listZoomPercent?: number;
+    sheetZoomPercent?: number;
+  };
+  parametersPanel?: {
+    parameterListVisible?: boolean;
+    boqPreviewVisible?: boolean;
+    descriptionMatchesVisible?: boolean;
+    analysisVisible?: boolean;
+    paneOrder?: ('parameter-list' | 'boq-preview' | 'description-matches' | 'analysis')[];
+    topLeftPaneWidth?: number;
+    bottomLeftPaneWidth?: number;
+    topWorkspaceHeight?: number;
+    parameterListZoomPercent?: number;
+    boqPreviewZoomPercent?: number;
+    descriptionMatchesZoomPercent?: number;
+    analysisZoomPercent?: number;
+  };
+  propertiesPanel?: {
+    activeTab?: 'properties' | 'location' | 'classification' | 'relations' | 'quantities';
+    seccionesAbiertas?: Record<string, boolean>;
+  };
+};
+
 @Component({
   selector: 'app-viewer-screen',
   imports: [
@@ -91,9 +146,10 @@ type FloatingPanelState = {
   templateUrl: './viewer-screen.html',
   styleUrl: './viewer-screen.scss',
 })
-export class ViewerScreen implements AfterViewInit, OnDestroy {
-  @ViewChild('contenedorVisor', { static: true }) private readonly contenedorVisor?: ElementRef<HTMLElement>;
+export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy, OnInit {
+  @ViewChild('contenedorVisor') private readonly contenedorVisor?: ElementRef<HTMLElement>;
   @ViewChild('inputB5d') private readonly inputB5d?: ElementRef<HTMLInputElement>;
+  @ViewChild(PropertiesPanel) private readonly propertiesPanel?: PropertiesPanel;
   @ViewChild(LinkingPanel) private readonly linkingPanel?: LinkingPanel;
   @ViewChild(ParametersPanel) private readonly parametersPanel?: ParametersPanel;
   @ViewChild(ParametersReportPanel) private readonly parametersReportPanel?: ParametersReportPanel;
@@ -102,16 +158,28 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private readonly defaultDockedTopWithoutToolbar = 34;
   private readonly defaultTreeDockedWidth = 360;
   private readonly defaultBottomDockedHeight = 280;
+  private readonly projectImportPollIntervalMs = 2000;
+  private readonly projectImportTimeoutMs = 20 * 60 * 1000;
 
   readonly visorIfc = inject(VisorIfc);
   readonly backendAuth = inject(BackendAuthService);
   readonly backendProyectos = inject(BackendProyectosService);
+  readonly ifcFileCache = inject(IfcFileCacheService);
   readonly localViewerSync = inject(LocalViewerSyncService);
   readonly i18n = inject(I18nService);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly isBrowser = isPlatformBrowser(this.platformId);
   readonly cuantificacion = signal<NodoCuantificacion | null>(null);
   readonly ifcElements = signal<ElementoIfcB5D[]>([]);
+  readonly sharedIfcSelectionLocalIds = signal<number[]>([]);
+  readonly sharedSelectionInfo = signal<InformacionElementoSeleccionado | null>(null);
   readonly proyectoB5dActivo = signal<ProyectoTrabajoOrm | null>(null);
   readonly b5dConcepts = signal<ConceptoB5DOrm[]>([]);
+  readonly b5dConceptKeys = computed(() =>
+    this.b5dConcepts()
+      .map((conceptItem) => (conceptItem.clave ?? '').trim())
+      .filter((conceptKey) => !!conceptKey),
+  );
   readonly b5dLinks = signal<VinculoConceptoBimOrm[]>([]);
   readonly b5dCatalogs = signal<CatalogoB5DOrm[]>([]);
   readonly cuantificacionesB5d = signal<CuantificacionB5DOrm[]>([]);
@@ -203,6 +271,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     };
   });
   readonly toolbarContentVisible = signal(true);
+  readonly windowMode = signal<ViewerWindowMode>(this.restoreWindowMode());
   readonly bottomPanelTab = signal<BottomPanelTab>('links');
   readonly bottomPanelTabs: { id: BottomPanelTab; label: string }[] = [
     { id: 'links', label: 'Estructura de conceptos' },
@@ -238,11 +307,13 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   });
   private readonly localViewerSelectionSyncEffect = effect(() => {
     const selectionMap = this.visorIfc.seleccionActual();
-    const loadedModelCount = this.visorIfc.modelosIfcCargados().length;
-    if (!this.localViewerSyncReady || this.suppressLocalViewerBroadcast || loadedModelCount === 0) return;
+    if (this.windowMode() !== 'viewer' || !this.localViewerSyncReady || this.suppressLocalViewerBroadcast || !this.ifcElements().length) return;
 
     const localIds = this.extractSelectedLocalIds(selectionMap);
-    this.localViewerSync.broadcastSelection(localIds);
+    const selectedElementInfo = this.visorIfc.informacionSeleccionada();
+    this.sharedIfcSelectionLocalIds.set(localIds);
+    this.sharedSelectionInfo.set(selectedElementInfo ? { ...selectedElementInfo } : null);
+    this.localViewerSync.broadcastSelection(localIds, selectedElementInfo);
   });
   private nextFloatingPanelZIndex = 40;
   private autoSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -251,23 +322,89 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   private hasPendingDraftChanges = false;
   private draftChangeVersion = 0;
   private measurementVolumeRequestId = 0;
-  private readonly b5dDebugLoggingEnabled = true;
   private localViewerSyncReady = false;
   private suppressLocalViewerBroadcast = false;
   private processingLocalViewerSyncMessages = false;
   private pendingLocalViewerSyncMessages: LocalViewerSyncMessage[] = [];
+  private readonly viewerWindowModeStorageKey = 'b5d-viewer-window-mode';
+  private lastPersistedViewerUiState = '';
+  private pendingViewerUiState: ViewerUiState | null = null;
+  private persistedLinkingPanelUiStateApplied = false;
+  private persistedBoqPanelUiStateApplied = false;
+  private persistedParametersPanelUiStateApplied = false;
+  private persistedPropertiesPanelUiStateApplied = false;
+  private lastLoadedIfcFile: File | null = null;
+
+  get uiStorageScopeKey(): string {
+    const userId = this.usuarioSesion()?.id;
+    return userId != null ? `user-${userId}` : 'anonymous';
+  }
+
+  private get viewerUiStateStorageKey(): string {
+    return buildScopedStorageKey('b5d-viewer-ui-state', this.uiStorageScopeKey);
+  }
+
+  ngOnInit(): void {
+    this.debugB5d('ngOnInit: start', {
+      windowMode: this.windowMode(),
+    });
+    this.restoreViewerUiState();
+    this.debugB5d('ngOnInit: ui state restored', {
+      bottomPanelTab: this.bottomPanelTab(),
+      treeSectionHeight: this.treeSectionHeight,
+      pendingViewerUiState: !!this.pendingViewerUiState,
+    });
+  }
 
   async ngAfterViewInit(): Promise<void> {
-    if (!this.contenedorVisor?.nativeElement) return;
-    this.debugB5d('ngAfterViewInit: initializing viewer');
-    await this.visorIfc.inicializarVisor(this.contenedorVisor.nativeElement);
-    this.debugB5d('ngAfterViewInit: viewer ready, loading B5D panels');
-    await this.inicializarPanelesB5d();
-    this.localViewerSyncReady = true;
-    await this.processPendingLocalViewerSyncMessages();
+    this.debugB5d('ngAfterViewInit: start', {
+      isBrowser: this.isBrowser,
+      windowMode: this.windowMode(),
+      hasContainer: !!this.contenedorVisor?.nativeElement,
+      localViewerSyncReady: this.localViewerSyncReady,
+    });
+    if (!this.isBrowser) return;
+
+    try {
+      if (this.windowMode() === 'viewer' && this.contenedorVisor?.nativeElement) {
+        this.debugB5d('ngAfterViewInit: initializing viewer canvas');
+        await this.initializeViewerCanvas();
+      }
+
+      this.debugB5d('ngAfterViewInit: initializing panels');
+      await this.withTimeout(
+        this.inicializarPanelesB5d(),
+        30000,
+        'La carga de paneles B5D no termino en 30 segundos.',
+      );
+
+      this.localViewerSyncReady = true;
+      this.debugB5d('ngAfterViewInit: localViewerSyncReady true');
+      await this.processPendingLocalViewerSyncMessages();
+      this.applyPersistedViewerUiState();
+    } catch {
+      // Mantiene la pantalla limpia; el estado de carga del visor ya refleja el fallo.
+    } finally {
+      if (this.windowMode() === 'viewer' || this.visorIfc.mundoActual) {
+        this.visorIfc.cargando.set(false);
+        this.visorIfc.loadingStage.set(null);
+      }
+    }
+  }
+
+  ngAfterViewChecked(): void {
+    if (!this.isBrowser) return;
+    this.applyPersistedViewerUiState();
+    this.persistViewerUiState();
   }
 
   ngOnDestroy(): void {
+    this.debugB5d('ngOnDestroy: start', {
+      autoSavePending: !!this.autoSaveTimeoutId,
+      messageClearPending: !!this.b5dMessageTimeoutId,
+      localViewerSyncReady: this.localViewerSyncReady,
+      pendingSyncMessages: this.pendingLocalViewerSyncMessages.length,
+    });
     if (this.autoSaveTimeoutId) {
       clearTimeout(this.autoSaveTimeoutId);
       this.autoSaveTimeoutId = null;
@@ -282,14 +419,47 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Loads an IFC file locally and mirrors it to the other browser tabs.
   async cargarArchivo(archivo: File): Promise<void> {
+    const projectId = this.proyectoB5dActivo()?.id ?? null;
+    this.debugB5d('cargarArchivo: start', {
+      fileName: archivo.name,
+      fileType: archivo.type,
+      fileSize: archivo.size,
+      projectId,
+      windowMode: this.windowMode(),
+      suppressLocalViewerBroadcast: this.suppressLocalViewerBroadcast,
+    });
+    if (projectId != null) {
+      void this.ifcFileCache.save(projectId, archivo);
+    }
+
+    if (this.windowMode() === 'control' && !this.visorIfc.mundoActual) {
+      this.lastLoadedIfcFile = archivo;
+      this.sharedIfcSelectionLocalIds.set([]);
+      this.sharedSelectionInfo.set(null);
+      if (!this.suppressLocalViewerBroadcast) {
+        this.localViewerSync.broadcastIfcFile(archivo);
+      }
+      return;
+    }
+
+    if (!this.visorIfc.mundoActual) {
+      const initialized = await this.initializeViewerCanvas();
+      if (!initialized) return;
+    }
+
     const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
     this.suppressLocalViewerBroadcast = true;
 
     try {
+      this.lastLoadedIfcFile = archivo;
       this.cuantificacion.set(null);
       this.ifcElements.set([]);
+      this.sharedIfcSelectionLocalIds.set([]);
+      this.sharedSelectionInfo.set(null);
       await this.visorIfc.cargarArchivoIfc(archivo);
-      this.ifcElements.set(this.visorIfc.obtenerElementosB5D());
+      const ifcElements = this.visorIfc.obtenerElementosB5D();
+      this.ifcElements.set(ifcElements);
+      this.localViewerSync.broadcastIfcElements(ifcElements);
       await this.actualizarReferenciaIfc(archivo);
     } finally {
       this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
@@ -298,10 +468,36 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     if (!previousBroadcastSuppressed) {
       this.localViewerSync.broadcastIfcFile(archivo);
     }
+    this.debugB5d('cargarArchivo: end', {
+      fileName: archivo.name,
+      projectId,
+      windowMode: this.windowMode(),
+    });
   }
 
   // Handles the local broadcast messages shared across browser tabs.
   private async handleLocalViewerSyncMessage(message: LocalViewerSyncMessage): Promise<void> {
+    this.debugB5d('handleLocalViewerSyncMessage: received', {
+      kind: message.kind,
+      windowMode: this.windowMode(),
+      ready: this.localViewerSyncReady,
+      processing: this.processingLocalViewerSyncMessages,
+      detail:
+        message.kind === 'ifc-file'
+          ? {
+              fileName: message.file.name,
+              fileType: message.file.type,
+              fileSize: message.file.size,
+            }
+          : message.kind === 'ifc-clear'
+            ? {}
+          : message.kind === 'ifc-elements'
+            ? { count: message.ifcElements.length }
+            : {
+                count: message.localIds.length,
+                hasSelectedElementInfo: !!message.selectedElementInfo,
+              },
+    });
     if (!this.localViewerSyncReady || this.processingLocalViewerSyncMessages) {
       this.pendingLocalViewerSyncMessages.push(message);
       return;
@@ -317,14 +513,24 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
     this.processingLocalViewerSyncMessages = true;
     try {
+      this.debugB5d('processPendingLocalViewerSyncMessages: start', {
+        pending: this.pendingLocalViewerSyncMessages.length,
+      });
       while (this.pendingLocalViewerSyncMessages.length) {
         const pendingMessage = this.pendingLocalViewerSyncMessages.shift();
         if (!pendingMessage) continue;
+        this.debugB5d('processPendingLocalViewerSyncMessages: applying message', {
+          kind: pendingMessage.kind,
+        });
 
         if (pendingMessage.kind === 'ifc-file') {
           await this.applyRemoteIfcFile(pendingMessage.file);
+        } else if (pendingMessage.kind === 'ifc-clear') {
+          await this.applyRemoteIfcClear();
+        } else if (pendingMessage.kind === 'ifc-elements') {
+          this.applyRemoteIfcElements(pendingMessage.ifcElements);
         } else if (pendingMessage.kind === 'ifc-selection') {
-          await this.applyRemoteIfcSelection(pendingMessage.localIds);
+          await this.applyRemoteIfcSelection(pendingMessage.localIds, pendingMessage.selectedElementInfo);
         }
       }
     } finally {
@@ -334,6 +540,30 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Loads an IFC file received from another browser tab without rebroadcasting it.
   private async applyRemoteIfcFile(file: File): Promise<void> {
+    const projectId = this.proyectoB5dActivo()?.id ?? null;
+    this.debugB5d('applyRemoteIfcFile: start', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      projectId,
+      windowMode: this.windowMode(),
+    });
+    if (projectId != null) {
+      void this.ifcFileCache.save(projectId, file);
+    }
+    this.lastLoadedIfcFile = file;
+
+    if (this.windowMode() === 'control' && !this.visorIfc.mundoActual) {
+      this.sharedIfcSelectionLocalIds.set([]);
+      this.sharedSelectionInfo.set(null);
+      return;
+    }
+
+    if (!this.visorIfc.mundoActual) {
+      const initialized = await this.initializeViewerCanvas();
+      if (!initialized) return;
+    }
+
     const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
     this.suppressLocalViewerBroadcast = true;
 
@@ -342,10 +572,65 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     } finally {
       this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
     }
+    this.debugB5d('applyRemoteIfcFile: end', {
+      fileName: file.name,
+      projectId,
+      windowMode: this.windowMode(),
+    });
+  }
+
+  // Clears the current IFC file and mirrored IFC state in the active window.
+  private async applyRemoteIfcClear(): Promise<void> {
+    this.debugB5d('applyRemoteIfcClear: start', {
+      windowMode: this.windowMode(),
+      hasWorld: !!this.visorIfc.mundoActual,
+      hasLastLoadedFile: !!this.lastLoadedIfcFile,
+    });
+    this.lastLoadedIfcFile = null;
+    this.cuantificacion.set(null);
+    this.ifcElements.set([]);
+    this.sharedIfcSelectionLocalIds.set([]);
+    this.sharedSelectionInfo.set(null);
+
+    if (this.visorIfc.mundoActual) {
+      this.visorIfc.destruirVisor();
+    }
+
+    this.debugB5d('applyRemoteIfcClear: end', {
+      windowMode: this.windowMode(),
+      hasWorld: !!this.visorIfc.mundoActual,
+    });
+  }
+
+  // Stores mirrored IFC rows from another window without forcing the viewer canvas to load.
+  private applyRemoteIfcElements(ifcElements: ElementoIfcB5D[]): void {
+    this.debugB5d('applyRemoteIfcElements: update', {
+      count: ifcElements.length,
+      windowMode: this.windowMode(),
+    });
+    this.ifcElements.set([...ifcElements]);
   }
 
   // Replays a remote selection in the current IFC viewer.
-  private async applyRemoteIfcSelection(localIds: number[]): Promise<void> {
+  private async applyRemoteIfcSelection(localIds: number[], selectedElementInfo: InformacionElementoSeleccionado | null): Promise<void> {
+    this.debugB5d('applyRemoteIfcSelection: start', {
+      count: localIds.length,
+      hasSelectedElementInfo: !!selectedElementInfo,
+      windowMode: this.windowMode(),
+      hasWorld: !!this.visorIfc.mundoActual,
+    });
+    this.sharedIfcSelectionLocalIds.set([...new Set(localIds)]);
+    this.sharedSelectionInfo.set(selectedElementInfo ? { ...selectedElementInfo } : null);
+
+    if (this.windowMode() === 'control' && !this.visorIfc.mundoActual) {
+      return;
+    }
+
+    if (!this.visorIfc.mundoActual) {
+      const initialized = await this.initializeViewerCanvas();
+      if (!initialized) return;
+    }
+
     const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
     this.suppressLocalViewerBroadcast = true;
 
@@ -358,6 +643,10 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     } finally {
       this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
     }
+    this.debugB5d('applyRemoteIfcSelection: end', {
+      count: localIds.length,
+      windowMode: this.windowMode(),
+    });
   }
 
   // Extracts a flat, de-duplicated list of selected local identifiers.
@@ -378,6 +667,40 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.inputB5d?.nativeElement.click();
   }
 
+  async quitarArchivoIfcCargado(): Promise<void> {
+    this.debugB5d('quitarArchivoIfcCargado: start', {
+      projectId: this.proyectoB5dActivo()?.id ?? null,
+      hasWorld: !!this.visorIfc.mundoActual,
+      hasLastLoadedFile: !!this.lastLoadedIfcFile,
+    });
+
+    const projectId = this.proyectoB5dActivo()?.id ?? null;
+    if (projectId != null) {
+      await this.ifcFileCache.clear(projectId);
+    }
+
+    this.lastLoadedIfcFile = null;
+    this.cuantificacion.set(null);
+    this.ifcElements.set([]);
+    this.sharedIfcSelectionLocalIds.set([]);
+    this.sharedSelectionInfo.set(null);
+
+    if (this.visorIfc.mundoActual) {
+      this.visorIfc.destruirVisor();
+    }
+
+    if (this.localViewerSyncReady) {
+      this.localViewerSync.broadcastIfcClear();
+    }
+
+    this.b5dMensaje.set('Archivo IFC descargado.');
+    this.debugB5d('quitarArchivoIfcCargado: end', {
+      projectId,
+      hasWorld: !!this.visorIfc.mundoActual,
+      hasLastLoadedFile: !!this.lastLoadedIfcFile,
+    });
+  }
+
   async procesarArchivoB5dSeleccionado(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const archivo = input.files?.[0];
@@ -388,6 +711,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   async irALogin(): Promise<void> {
+    this.debugB5d('irALogin: navigating to /login');
     if (this.usuarioSesion()) {
       try {
         await firstValueFrom(this.backendAuth.logout());
@@ -396,13 +720,15 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       }
       this.usuarioSesion.set(null);
     }
-    await this.router.navigate(['/login']);
+    await this.router.navigate(['/login'], { replaceUrl: true });
   }
 
   async cerrarSesionBackend(): Promise<void> {
+    this.debugB5d('cerrarSesionBackend: start');
     try {
       await firstValueFrom(this.backendAuth.logout());
     } finally {
+      this.debugB5d('cerrarSesionBackend: session cleared and redirecting');
       this.usuarioSesion.set(null);
       this.proyectoB5dActivo.set(null);
       this.b5dConcepts.set([]);
@@ -411,12 +737,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       this.cuantificacionesB5d.set([]);
       this.parametrosB5d.set([]);
       this.b5dMensaje.set('Sesion cerrada.');
-      await this.router.navigate(['/login']);
+      await this.router.navigate(['/login'], { replaceUrl: true });
     }
   }
 
   cuantificarB5D(): void {
-    const elementos = this.visorIfc.obtenerElementosB5D();
+    const elementos = this.ifcElements();
 
     if (!elementos.length) {
       window.alert('Primero carga un archivo IFC.');
@@ -431,11 +757,25 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.debugB5d('inicializarPanelesB5d: checking backend session');
     if (!(await this.asegurarSesionBackend())) {
       this.debugB5d('inicializarPanelesB5d: session check failed, redirecting to login');
-      await this.router.navigate(['/login']);
+      await this.router.navigate(['/login'], { replaceUrl: true });
       return;
     }
     this.debugB5d('inicializarPanelesB5d: session OK, loading recent project');
     await this.cargarProyectoReciente();
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 
   private async asegurarSesionBackend(): Promise<boolean> {
@@ -444,13 +784,16 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       const sesion = await firstValueFrom(this.backendAuth.me());
       this.debugB5d('asegurarSesionBackend: response received', sesion);
       if (!sesion.authenticated || !sesion.user) {
+        this.debugB5d('asegurarSesionBackend: unauthenticated response, redirect expected');
         this.usuarioSesion.set(null);
         this.b5dMensaje.set('Sesion no iniciada.');
         return false;
       }
       this.usuarioSesion.set(sesion.user);
+      this.restoreViewerUiState();
       return true;
     } catch (error) {
+      this.debugB5d('asegurarSesionBackend: error', error);
       this.usuarioSesion.set(null);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No fue posible validar la sesion backend.'));
       return false;
@@ -462,10 +805,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
     try {
-      this.debugB5d('cargarProyectoReciente: requesting project list');
       const proyectos = await firstValueFrom(this.backendProyectos.listarProyectos());
-      this.debugB5d('cargarProyectoReciente: project list received', proyectos);
       const proyecto = proyectos.resultados[0] ?? null;
+      this.debugB5d('cargarProyectoReciente: active project selected', {
+        projectId: proyecto?.id ?? null,
+        projectName: proyecto?.nombre ?? null,
+      });
       this.proyectoB5dActivo.set(proyecto);
       if (!proyecto) {
         this.b5dConcepts.set([]);
@@ -477,8 +822,14 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
         return;
       }
 
+      if (proyecto.estado === 'importando') {
+        this.debugB5d('cargarProyectoReciente: waiting for importing project', proyecto.id);
+        await this.esperarProyectoImportado(proyecto.id);
+      }
+
       this.debugB5d('cargarProyectoReciente: loading active project data', proyecto.id);
       await this.cargarDatosProyectoB5d(proyecto.id);
+      await this.restorePersistedIfcFileForProject(proyecto.id);
       this.debugB5d('cargarProyectoReciente: project data loaded');
     } catch (error) {
       this.debugB5d('cargarProyectoReciente: error', error);
@@ -489,24 +840,519 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     }
   }
 
+  private restoreViewerUiState(): void {
+    if (!this.isBrowser || typeof window === 'undefined') return;
+
+    this.lastPersistedViewerUiState = '';
+    this.persistedLinkingPanelUiStateApplied = false;
+    this.persistedBoqPanelUiStateApplied = false;
+    this.persistedParametersPanelUiStateApplied = false;
+    this.persistedPropertiesPanelUiStateApplied = false;
+
+    try {
+      const raw = window.localStorage.getItem(this.viewerUiStateStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ViewerUiState | null;
+      if (!parsed || typeof parsed !== 'object') return;
+
+      this.pendingViewerUiState = parsed;
+      this.debugB5d('restoreViewerUiState: parsed', parsed);
+      const restoredBottomPanelTab = parsed.bottomPanelTab;
+      if (
+        restoredBottomPanelTab === 'links' ||
+        restoredBottomPanelTab === 'boq' ||
+        restoredBottomPanelTab === 'parameters' ||
+        restoredBottomPanelTab === 'report'
+      ) {
+        this.bottomPanelTab.set(restoredBottomPanelTab);
+        this.homeToolbarState.update((state) => ({
+          ...state,
+          activeBottomTab: restoredBottomPanelTab,
+        }));
+      }
+      if (typeof parsed.treeSectionHeight === 'number' && Number.isFinite(parsed.treeSectionHeight)) {
+        this.treeSectionHeight = parsed.treeSectionHeight;
+      }
+      if (typeof parsed.toolbarContentVisible === 'boolean') {
+        this.toolbarContentVisible.set(parsed.toolbarContentVisible);
+      }
+      if (typeof parsed.selectedCatalogId === 'number' && Number.isFinite(parsed.selectedCatalogId)) {
+        this.homeToolbarState.update((state) => ({
+          ...state,
+          selectedCatalogId: parsed.selectedCatalogId ?? null,
+        }));
+      } else if (parsed.selectedCatalogId === null) {
+        this.homeToolbarState.update((state) => ({
+          ...state,
+          selectedCatalogId: null,
+        }));
+      }
+      if (typeof parsed.tableFiltersVisible === 'boolean') {
+        this.homeToolbarState.update((state) => ({
+          ...state,
+          tableFiltersVisible: parsed.tableFiltersVisible,
+        }));
+      }
+      const linkingPanelState = parsed.linkingPanel;
+      if (
+        linkingPanelState &&
+        (linkingPanelState.activeWorkspacePanel === 'concepts' ||
+          linkingPanelState.activeWorkspacePanel === 'ifc-objects' ||
+          linkingPanelState.activeWorkspacePanel === 'related-links')
+      ) {
+        const restoredActiveWorkspacePanel = linkingPanelState.activeWorkspacePanel;
+        this.homeToolbarState.update((state) => ({
+          ...state,
+          activePanel: restoredActiveWorkspacePanel,
+        }));
+      }
+      const floatingPanels = this.restoreFloatingPanelsState(parsed.floatingPanels);
+      if (floatingPanels) {
+        this.floatingPanels.set(floatingPanels);
+      }
+    } catch {
+      this.pendingViewerUiState = null;
+    }
+  }
+
+  private restoreFloatingPanelsState(
+    persistedPanels: ViewerUiState['floatingPanels'],
+  ): Record<FloatingPanelId, FloatingPanelState> | null {
+    if (!persistedPanels || typeof persistedPanels !== 'object') return null;
+
+    const nextPanels = { ...this.floatingPanels() };
+    const panelIds: FloatingPanelId[] = ['tree', 'models', 'properties', 'bottom'];
+
+    for (const panelId of panelIds) {
+      const rawPanel = (persistedPanels as Partial<Record<FloatingPanelId, Partial<FloatingPanelState>>>)[panelId];
+      if (!rawPanel || typeof rawPanel !== 'object') continue;
+
+      const currentPanel = nextPanels[panelId];
+      nextPanels[panelId] = {
+        visible: typeof rawPanel.visible === 'boolean' ? rawPanel.visible : currentPanel.visible,
+        docked: typeof rawPanel.docked === 'boolean' ? rawPanel.docked : currentPanel.docked,
+        dockSide:
+          rawPanel.dockSide === 'left' || rawPanel.dockSide === 'right' || rawPanel.dockSide === 'bottom'
+            ? rawPanel.dockSide
+            : currentPanel.dockSide,
+        left: typeof rawPanel.left === 'number' && Number.isFinite(rawPanel.left) ? rawPanel.left : currentPanel.left,
+        top: typeof rawPanel.top === 'number' && Number.isFinite(rawPanel.top) ? rawPanel.top : currentPanel.top,
+        width: typeof rawPanel.width === 'number' && Number.isFinite(rawPanel.width) ? rawPanel.width : currentPanel.width,
+        height: typeof rawPanel.height === 'number' && Number.isFinite(rawPanel.height) ? rawPanel.height : currentPanel.height,
+        zIndex: typeof rawPanel.zIndex === 'number' && Number.isFinite(rawPanel.zIndex) ? rawPanel.zIndex : currentPanel.zIndex,
+      };
+    }
+
+    return nextPanels;
+  }
+
+  private restoreWindowMode(): ViewerWindowMode {
+    if (!this.isBrowser || typeof window === 'undefined') return 'viewer';
+
+    try {
+      const raw = window.sessionStorage.getItem('b5d-viewer-window-mode');
+      this.debugB5d('restoreWindowMode: raw value', { raw });
+      return raw === 'control' ? 'control' : 'viewer';
+    } catch {
+      return 'viewer';
+    }
+  }
+
+  private async initializeViewerCanvas(): Promise<boolean> {
+    if (!this.isBrowser || !this.contenedorVisor?.nativeElement) return false;
+    if (this.visorIfc.mundoActual) return true;
+
+    this.debugB5d('initializeViewerCanvas: start', {
+      hasContainer: !!this.contenedorVisor?.nativeElement,
+      hasWorld: !!this.visorIfc.mundoActual,
+      hasLastLoadedFile: !!this.lastLoadedIfcFile,
+      windowMode: this.windowMode(),
+    });
+    this.visorIfc.cargando.set(true);
+    this.visorIfc.loadingStage.set('reading');
+
+    try {
+      await this.withTimeout(
+        this.visorIfc.inicializarVisor(this.contenedorVisor.nativeElement),
+        30000,
+        'El visor IFC no termino de inicializarse en 30 segundos.',
+      );
+
+      if (this.lastLoadedIfcFile && this.windowMode() === 'viewer' && !this.visorIfc.modelosIfcCargados().length) {
+        const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+        this.suppressLocalViewerBroadcast = true;
+        try {
+          await this.cargarArchivo(this.lastLoadedIfcFile);
+        } finally {
+          this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+        }
+      }
+
+      return true;
+    } catch {
+      this.debugB5d('initializeViewerCanvas: failed');
+      return false;
+    } finally {
+      this.visorIfc.cargando.set(false);
+      this.visorIfc.loadingStage.set(null);
+    }
+  }
+
+  private async restoreViewerCanvas(): Promise<void> {
+    this.debugB5d('restoreViewerCanvas: start', {
+      hasLastLoadedFile: !!this.lastLoadedIfcFile,
+      hasWorld: !!this.visorIfc.mundoActual,
+      loadedModels: this.visorIfc.modelosIfcCargados().length,
+    });
+    if (!this.lastLoadedIfcFile) return;
+    if (!this.visorIfc.mundoActual) {
+      await this.initializeViewerCanvas();
+      return;
+    }
+
+    if (this.visorIfc.modelosIfcCargados().length) return;
+
+    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+    this.suppressLocalViewerBroadcast = true;
+    try {
+      await this.cargarArchivo(this.lastLoadedIfcFile);
+    } finally {
+      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+    }
+  }
+
+  private async restorePersistedIfcFileForProject(projectId: number): Promise<void> {
+    if (this.windowMode() !== 'viewer') return;
+    if (this.lastLoadedIfcFile) return;
+
+    this.debugB5d('restorePersistedIfcFileForProject: loading cache', { projectId });
+    const cachedFile = await this.ifcFileCache.load(projectId);
+    if (!cachedFile) {
+      this.debugB5d('restorePersistedIfcFileForProject: no cached file found', { projectId });
+      return;
+    }
+
+    this.lastLoadedIfcFile = cachedFile;
+    await this.restoreViewerCanvas();
+  }
+
+  private applyPersistedViewerUiState(): void {
+    let shouldDetectChanges = false;
+    const linkingState = this.pendingViewerUiState?.linkingPanel ?? null;
+    if (!this.persistedLinkingPanelUiStateApplied && this.linkingPanel && linkingState) {
+      if (typeof linkingState.leftPanelWidth === 'number' && Number.isFinite(linkingState.leftPanelWidth)) {
+        this.linkingPanel.leftPanelWidth = linkingState.leftPanelWidth;
+        shouldDetectChanges = true;
+      }
+      if (typeof linkingState.topPanelHeight === 'number' && Number.isFinite(linkingState.topPanelHeight)) {
+        this.linkingPanel.topPanelHeight = linkingState.topPanelHeight;
+        shouldDetectChanges = true;
+      }
+      if (
+        Array.isArray(linkingState.topPanelOrder) &&
+        linkingState.topPanelOrder.length === 2 &&
+        linkingState.topPanelOrder.includes('concepts') &&
+        linkingState.topPanelOrder.includes('ifc-objects')
+      ) {
+        this.linkingPanel.topPanelOrder = [...linkingState.topPanelOrder] as ('concepts' | 'ifc-objects')[];
+        shouldDetectChanges = true;
+      }
+      if (typeof linkingState.conceptPanelZoomPercent === 'number' && Number.isFinite(linkingState.conceptPanelZoomPercent)) {
+        this.linkingPanel.conceptPanelZoomPercent = linkingState.conceptPanelZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (typeof linkingState.objectPanelZoomPercent === 'number' && Number.isFinite(linkingState.objectPanelZoomPercent)) {
+        this.linkingPanel.objectPanelZoomPercent = linkingState.objectPanelZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (
+        typeof linkingState.relatedLinksPanelZoomPercent === 'number' &&
+        Number.isFinite(linkingState.relatedLinksPanelZoomPercent)
+      ) {
+        this.linkingPanel.relatedLinksPanelZoomPercent = linkingState.relatedLinksPanelZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (typeof linkingState.relatedLinksVisible === 'boolean') {
+        this.linkingPanel.relatedLinksVisible = linkingState.relatedLinksVisible;
+        shouldDetectChanges = true;
+      }
+      if (typeof linkingState.selectedCatalogId === 'number' && Number.isFinite(linkingState.selectedCatalogId)) {
+        this.linkingPanel.setCatalogSelectionFromHost(linkingState.selectedCatalogId);
+        shouldDetectChanges = true;
+      } else if (linkingState.selectedCatalogId === null) {
+        this.linkingPanel.setCatalogSelectionFromHost(null);
+        shouldDetectChanges = true;
+      }
+      if (
+        linkingState.activeWorkspacePanel === 'concepts' ||
+        linkingState.activeWorkspacePanel === 'ifc-objects' ||
+        linkingState.activeWorkspacePanel === 'related-links'
+      ) {
+        this.linkingPanel.selectActivePanel(linkingState.activeWorkspacePanel);
+        shouldDetectChanges = true;
+      }
+      this.persistedLinkingPanelUiStateApplied = true;
+    }
+
+    const boqState = this.pendingViewerUiState?.boqPanel ?? null;
+    if (!this.persistedBoqPanelUiStateApplied && this.boqPanel && boqState) {
+      if (typeof boqState.leftPanelWidth === 'number' && Number.isFinite(boqState.leftPanelWidth)) {
+        this.boqPanel.leftPanelWidth = boqState.leftPanelWidth;
+        shouldDetectChanges = true;
+      }
+      if (
+        Array.isArray(boqState.panelOrder) &&
+        boqState.panelOrder.length === 2 &&
+        boqState.panelOrder.includes('list') &&
+        boqState.panelOrder.includes('preview')
+      ) {
+        this.boqPanel.panelOrder = [...boqState.panelOrder] as ('list' | 'preview')[];
+        shouldDetectChanges = true;
+      }
+      if (typeof boqState.listZoomPercent === 'number' && Number.isFinite(boqState.listZoomPercent)) {
+        this.boqPanel.listZoomPercent = boqState.listZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (typeof boqState.sheetZoomPercent === 'number' && Number.isFinite(boqState.sheetZoomPercent)) {
+        this.boqPanel.sheetZoomPercent = boqState.sheetZoomPercent;
+        this.boqPanel.sheetZoomInputValue = String(boqState.sheetZoomPercent);
+        shouldDetectChanges = true;
+      }
+      this.persistedBoqPanelUiStateApplied = true;
+    }
+
+    const parametersState = this.pendingViewerUiState?.parametersPanel ?? null;
+    if (!this.persistedParametersPanelUiStateApplied && this.parametersPanel && parametersState) {
+      if (typeof parametersState.parameterListVisible === 'boolean') {
+        this.parametersPanel.parameterListVisible = parametersState.parameterListVisible;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.boqPreviewVisible === 'boolean') {
+        this.parametersPanel.boqPreviewVisible = parametersState.boqPreviewVisible;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.descriptionMatchesVisible === 'boolean') {
+        this.parametersPanel.descriptionMatchesVisible = parametersState.descriptionMatchesVisible;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.analysisVisible === 'boolean') {
+        this.parametersPanel.analysisVisible = parametersState.analysisVisible;
+        shouldDetectChanges = true;
+      }
+      if (
+        Array.isArray(parametersState.paneOrder) &&
+        parametersState.paneOrder.length === 4 &&
+        parametersState.paneOrder.includes('parameter-list') &&
+        parametersState.paneOrder.includes('boq-preview') &&
+        parametersState.paneOrder.includes('description-matches') &&
+        parametersState.paneOrder.includes('analysis')
+      ) {
+        this.parametersPanel.paneOrder = [...parametersState.paneOrder] as (
+          | 'parameter-list'
+          | 'boq-preview'
+          | 'description-matches'
+          | 'analysis'
+        )[];
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.topLeftPaneWidth === 'number' && Number.isFinite(parametersState.topLeftPaneWidth)) {
+        this.parametersPanel.topLeftPaneWidth = parametersState.topLeftPaneWidth;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.bottomLeftPaneWidth === 'number' && Number.isFinite(parametersState.bottomLeftPaneWidth)) {
+        this.parametersPanel.bottomLeftPaneWidth = parametersState.bottomLeftPaneWidth;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.topWorkspaceHeight === 'number' && Number.isFinite(parametersState.topWorkspaceHeight)) {
+        this.parametersPanel.topWorkspaceHeight = parametersState.topWorkspaceHeight;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.parameterListZoomPercent === 'number' && Number.isFinite(parametersState.parameterListZoomPercent)) {
+        this.parametersPanel.parameterListZoomPercent = parametersState.parameterListZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.boqPreviewZoomPercent === 'number' && Number.isFinite(parametersState.boqPreviewZoomPercent)) {
+        this.parametersPanel.boqPreviewZoomPercent = parametersState.boqPreviewZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (
+        typeof parametersState.descriptionMatchesZoomPercent === 'number' &&
+        Number.isFinite(parametersState.descriptionMatchesZoomPercent)
+      ) {
+        this.parametersPanel.descriptionMatchesZoomPercent = parametersState.descriptionMatchesZoomPercent;
+        shouldDetectChanges = true;
+      }
+      if (typeof parametersState.analysisZoomPercent === 'number' && Number.isFinite(parametersState.analysisZoomPercent)) {
+        this.parametersPanel.analysisZoomPercent = parametersState.analysisZoomPercent;
+        shouldDetectChanges = true;
+      }
+      this.persistedParametersPanelUiStateApplied = true;
+    }
+
+    const propertiesState = this.pendingViewerUiState?.propertiesPanel ?? null;
+    if (!this.persistedPropertiesPanelUiStateApplied && this.propertiesPanel && propertiesState) {
+      if (
+        propertiesState.activeTab === 'properties' ||
+        propertiesState.activeTab === 'location' ||
+        propertiesState.activeTab === 'classification' ||
+        propertiesState.activeTab === 'relations' ||
+        propertiesState.activeTab === 'quantities'
+      ) {
+        this.propertiesPanel.activeTab = propertiesState.activeTab;
+        shouldDetectChanges = true;
+      }
+      if (propertiesState.seccionesAbiertas && typeof propertiesState.seccionesAbiertas === 'object') {
+        this.propertiesPanel.seccionesAbiertas = { ...this.propertiesPanel.seccionesAbiertas, ...propertiesState.seccionesAbiertas };
+        shouldDetectChanges = true;
+      }
+      this.persistedPropertiesPanelUiStateApplied = true;
+    }
+
+    if (shouldDetectChanges) {
+      this.changeDetectorRef.detectChanges();
+    }
+  }
+
+  private persistViewerUiState(): void {
+    if (!this.isBrowser || typeof window === 'undefined') return;
+
+    const snapshot: ViewerUiState = {
+      bottomPanelTab: this.bottomPanelTab(),
+      treeSectionHeight: this.treeSectionHeight,
+      toolbarContentVisible: this.toolbarContentVisible(),
+      selectedCatalogId: this.homeToolbarState().selectedCatalogId ?? null,
+      tableFiltersVisible: this.homeToolbarState().tableFiltersVisible ?? false,
+      floatingPanels: this.floatingPanels(),
+      linkingPanel: this.linkingPanel
+        ? {
+            leftPanelWidth: this.linkingPanel.leftPanelWidth,
+            topPanelHeight: this.linkingPanel.topPanelHeight,
+            topPanelOrder: [...this.linkingPanel.topPanelOrder],
+            conceptPanelZoomPercent: this.linkingPanel.conceptPanelZoomPercent,
+            objectPanelZoomPercent: this.linkingPanel.objectPanelZoomPercent,
+            relatedLinksPanelZoomPercent: this.linkingPanel.relatedLinksPanelZoomPercent,
+            relatedLinksVisible: this.linkingPanel.relatedLinksVisible,
+            activeWorkspacePanel: this.homeToolbarState().activePanel,
+            selectedCatalogId: this.homeToolbarState().selectedCatalogId ?? null,
+          }
+        : this.pendingViewerUiState?.linkingPanel,
+      boqPanel: this.boqPanel
+        ? {
+            leftPanelWidth: this.boqPanel.leftPanelWidth,
+            panelOrder: [...this.boqPanel.panelOrder],
+            listZoomPercent: this.boqPanel.listZoomPercent,
+            sheetZoomPercent: this.boqPanel.sheetZoomPercent,
+          }
+        : this.pendingViewerUiState?.boqPanel,
+      parametersPanel: this.parametersPanel
+        ? {
+            parameterListVisible: this.parametersPanel.parameterListVisible,
+            boqPreviewVisible: this.parametersPanel.boqPreviewVisible,
+            descriptionMatchesVisible: this.parametersPanel.descriptionMatchesVisible,
+            analysisVisible: this.parametersPanel.analysisVisible,
+            paneOrder: [...this.parametersPanel.paneOrder],
+            topLeftPaneWidth: this.parametersPanel.topLeftPaneWidth,
+            bottomLeftPaneWidth: this.parametersPanel.bottomLeftPaneWidth,
+            topWorkspaceHeight: this.parametersPanel.topWorkspaceHeight,
+            parameterListZoomPercent: this.parametersPanel.parameterListZoomPercent,
+            boqPreviewZoomPercent: this.parametersPanel.boqPreviewZoomPercent,
+            descriptionMatchesZoomPercent: this.parametersPanel.descriptionMatchesZoomPercent,
+            analysisZoomPercent: this.parametersPanel.analysisZoomPercent,
+          }
+        : this.pendingViewerUiState?.parametersPanel,
+      propertiesPanel: this.propertiesPanel
+        ? {
+            activeTab: this.propertiesPanel.activeTab,
+            seccionesAbiertas: { ...this.propertiesPanel.seccionesAbiertas },
+          }
+        : this.pendingViewerUiState?.propertiesPanel,
+    };
+
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === this.lastPersistedViewerUiState) return;
+
+    try {
+      window.localStorage.setItem(this.viewerUiStateStorageKey, serialized);
+      this.lastPersistedViewerUiState = serialized;
+    } catch {
+      // Ignore persistence errors.
+    }
+  }
+
   private async importarProyectoB5d(archivo: File): Promise<void> {
+    const inicioImportacion = performance.now();
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
+    this.debugB5d('importarProyectoB5d: request start', {
+      fileName: archivo.name,
+      fileSize: archivo.size,
+    });
     try {
       const proyecto = await firstValueFrom(
         this.backendProyectos.importarProyecto({
           archivo,
           nombre: archivo.name,
-          sincrono: true,
+          sincrono: false,
         }),
       );
-      this.proyectoB5dActivo.set(proyecto);
-      await this.cargarDatosProyectoB5d(proyecto.id);
-      this.b5dMensaje.set(`Proyecto importado: ${proyecto.nombre} (ID ${proyecto.id}).`);
+      this.debugB5d('importarProyectoB5d: upload request resolved', {
+        projectId: proyecto.id,
+        elapsedMs: Math.round(performance.now() - inicioImportacion),
+      });
+      const proyectoImportado = await this.esperarProyectoImportado(proyecto.id);
+      this.proyectoB5dActivo.set(proyectoImportado);
+      await this.cargarDatosProyectoB5d(proyectoImportado.id);
+      this.debugB5d('importarProyectoB5d: import completed', {
+        projectId: proyectoImportado.id,
+        elapsedMs: Math.round(performance.now() - inicioImportacion),
+      });
+      this.b5dMensaje.set(`Proyecto importado: ${proyectoImportado.nombre} (ID ${proyectoImportado.id}).`);
     } catch (error) {
+      this.debugB5d('importarProyectoB5d: import failed', {
+        elapsedMs: Math.round(performance.now() - inicioImportacion),
+        error,
+      });
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar el archivo B5D.'));
     } finally {
       this.b5dCargando.set(false);
+    }
+  }
+
+  private async esperarProyectoImportado(proyectoId: number): Promise<ProyectoTrabajoOrm> {
+    return this.withTimeout(
+      this.esperarProyectoImportadoSinTimeout(proyectoId),
+      this.projectImportTimeoutMs,
+      'La importacion del proyecto esta tardando demasiado. Vuelve a intentarlo en unos minutos.',
+    );
+  }
+
+  private async esperarProyectoImportadoSinTimeout(proyectoId: number): Promise<ProyectoTrabajoOrm> {
+    const inicioEspera = performance.now();
+    while (true) {
+      const proyecto = await firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId));
+      this.proyectoB5dActivo.set(proyecto);
+      this.debugB5d('esperarProyectoImportado: poll', {
+        projectId: proyectoId,
+        estado: proyecto.estado,
+        registrosImportados: proyecto.registros_importados,
+        totalRegistros: proyecto.total_registros,
+        elapsedMs: Math.round(performance.now() - inicioEspera),
+      });
+
+      if (proyecto.estado !== 'importando') {
+        const mensajeError = proyecto.mensaje_error?.trim();
+        if (mensajeError) {
+          throw new Error(mensajeError);
+        }
+        return proyecto;
+      }
+
+      const progreso =
+        proyecto.total_registros > 0
+          ? ` (${proyecto.registros_importados}/${proyecto.total_registros})`
+          : '';
+      this.b5dMensaje.set(`Importando proyecto B5D${progreso}...`);
+      await new Promise<void>((resolve) => setTimeout(resolve, this.projectImportPollIntervalMs));
     }
   }
 
@@ -925,23 +1771,62 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   private obtenerMensajeError(error: unknown, mensajePredeterminado: string): string {
-    if (typeof error === 'object' && error !== null && 'error' in error) {
+    if (typeof error === 'object' && error !== null) {
       const errorHttp = error as {
-        error?: {
-          error?: string;
-          proyecto?: { mensaje_error?: string | null };
-        };
+        status?: number;
+        message?: string;
       };
-      const mensaje = errorHttp.error?.error;
-      if (typeof mensaje === 'string' && mensaje.trim()) {
-        return mensaje;
-      }
-      const mensajeProyecto = errorHttp.error?.proyecto?.mensaje_error;
-      if (typeof mensajeProyecto === 'string' && mensajeProyecto.trim()) {
-        return mensajeProyecto;
+      const mensajeError = typeof errorHttp.message === 'string' ? errorHttp.message.trim() : '';
+      if (
+        errorHttp.status === 0 &&
+        (mensajeError === 'Failed to fetch' || mensajeError === 'Http failure response for (unknown url): 0 Unknown Error')
+      ) {
+        return 'No se pudo conectar con el backend para importar el archivo. Revisa la red, CORS o si el servidor cerró la conexión.';
       }
     }
-    return mensajePredeterminado;
+
+    const extraerMensaje = (valor: unknown): string | null => {
+      if (typeof valor === 'string') {
+        const mensaje = valor.trim();
+        return mensaje || null;
+      }
+
+      if (Array.isArray(valor)) {
+        for (const item of valor) {
+          const mensaje = extraerMensaje(item);
+          if (mensaje) {
+            return mensaje;
+          }
+        }
+        return null;
+      }
+
+      if (typeof valor === 'object' && valor !== null) {
+        const objeto = valor as Record<string, unknown>;
+        const clavesPrioritarias = ['error', 'detail', 'message', 'mensaje', 'mensaje_error'];
+        for (const clave of clavesPrioritarias) {
+          const mensaje = extraerMensaje(objeto[clave]);
+          if (mensaje) {
+            return mensaje;
+          }
+        }
+
+        const proyecto = objeto['proyecto'] as Record<string, unknown> | undefined;
+        const mensajeProyecto = extraerMensaje(proyecto?.['mensaje_error']);
+        if (mensajeProyecto) {
+          return mensajeProyecto;
+        }
+
+        const mensajeSinCampo = extraerMensaje(objeto['non_field_errors']);
+        if (mensajeSinCampo) {
+          return mensajeSinCampo;
+        }
+      }
+
+      return null;
+    };
+
+    return extraerMensaje(error) ?? mensajePredeterminado;
   }
 
   // Schedules the upper-right status message to disappear after a short delay.
@@ -962,12 +1847,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   }
 
   private debugB5d(message: string, data?: unknown): void {
-    if (!this.b5dDebugLoggingEnabled) return;
-    if (data === undefined) {
-      console.debug(`[B5D] ${message}`);
-      return;
-    }
-    console.debug(`[B5D] ${message}`, data);
+    logB5dDebug(message, data);
   }
 
   private normalizarConceptosB5d(conceptos: ConceptoB5DOrm[]): ConceptoB5DOrm[] {
@@ -976,6 +1856,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       costo: this.parseNumericLikeValue(concepto.costo),
       costo_mn: this.parseNumericLikeValue(concepto.costo_mn),
       costo_me: this.parseNumericLikeValue(concepto.costo_me),
+      porcentaje_padre: this.parseNumericLikeValue(concepto.porcentaje_padre),
     }));
   }
 
@@ -1165,6 +2046,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       'movement-axis-z': () => this.visorIfc.setMovementAxis('z'),
       'restore-selected-movement': () => this.visorIfc.restoreSelectedElementMovements(),
       'restore-all-movement': () => this.visorIfc.restoreAllElementMovements(),
+      'set-window-viewer': () => {
+        void this.setWindowMode('viewer');
+      },
+      'set-window-control': () => {
+        void this.setWindowMode('control');
+      },
     };
 
     actionMap[action]?.();
@@ -1219,6 +2106,36 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     this.activeMeasurementMode.set(this.activeMeasurementMode() === mode ? null : mode);
   }
 
+  // Switches the current window between viewer and control roles.
+  async setWindowMode(mode: ViewerWindowMode): Promise<void> {
+    if (this.windowMode() === mode) return;
+
+    this.debugB5d('setWindowMode: requested', {
+      previousMode: this.windowMode(),
+      nextMode: mode,
+    });
+    this.windowMode.set(mode);
+    if (this.isBrowser && typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem(this.viewerWindowModeStorageKey, mode);
+      } catch {
+        // Ignore session storage errors.
+      }
+    }
+
+    if (mode === 'control') {
+      if (this.visorIfc.mundoActual) {
+        this.debugB5d('setWindowMode: destroying viewer for control mode');
+        this.visorIfc.destruirVisor();
+      }
+      return;
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    this.debugB5d('setWindowMode: restoring viewer canvas after mode switch');
+    await this.restoreViewerCanvas();
+  }
+
   // Stores linking panel state used to toggle Home toolbar actions.
   onLinkingToolbarStateChange(state: HomeToolbarState): void {
     this.homeToolbarState.set({
@@ -1248,6 +2165,12 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   // Syncs parameter rows returned from CRUD operations in the parameter panel.
   onParametersRowsChange(rows: ParametroB5DOrm[]): void {
     this.parametrosB5d.set(rows);
+  }
+
+  // Returns the message shown when the control window is active.
+  getWindowModeHint(): string {
+    const key = this.windowMode() === 'control' ? 'toolbar.view.window.controlHint' : 'toolbar.view.window.viewerHint';
+    return this.i18n.translateForComponent(TOOLBAR_TRANSLATIONS, key);
   }
 
   // Returns the current measurement panel title.
@@ -1458,7 +2381,68 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
   // Mirrors IFC object-table selection into the 3D model selection.
   onLinkingIfcSelectionChange(localIds: number[]): void {
+    if (this.windowMode() === 'control') {
+      this.sharedIfcSelectionLocalIds.set([...new Set(localIds)]);
+      this.sharedSelectionInfo.set(null);
+      this.localViewerSync.broadcastSelection(localIds, null);
+      return;
+    }
+
     void this.visorIfc.seleccionarElementosPorLocalIds(localIds);
+  }
+
+  // Resolves a selected concept key against the loaded IFC and mirrors the selection.
+  async onConceptSelectionRequested(conceptKey: string): Promise<void> {
+    const activeProject = this.proyectoB5dActivo();
+    const resolution = resolveIfcSelectionFromConceptKey(
+      conceptKey,
+      this.b5dConcepts(),
+      this.b5dLinks(),
+      this.ifcElements(),
+      activeProject?.ifc_nombre_archivo ?? null,
+    );
+
+    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
+    this.suppressLocalViewerBroadcast = true;
+
+    try {
+      if (!resolution.localIds.length) {
+        this.sharedIfcSelectionLocalIds.set([]);
+        this.sharedSelectionInfo.set(null);
+        if (this.visorIfc.mundoActual) {
+          await this.visorIfc.limpiarSeleccion();
+        }
+        if (this.localViewerSyncReady) {
+          this.localViewerSync.broadcastSelection([], null);
+        }
+        if (resolution.reason) {
+          this.b5dMensaje.set(resolution.reason);
+        }
+        return;
+      }
+
+      this.sharedIfcSelectionLocalIds.set([...resolution.localIds]);
+
+      if (this.windowMode() === 'control' && !this.visorIfc.mundoActual) {
+        this.sharedSelectionInfo.set(null);
+        this.localViewerSync.broadcastSelection(resolution.localIds, null);
+        return;
+      }
+
+      if (!this.visorIfc.mundoActual) {
+        const initialized = await this.initializeViewerCanvas();
+        if (!initialized) return;
+      }
+
+      await this.visorIfc.seleccionarElementosPorLocalIds(resolution.localIds);
+      const selectedElementInfo = this.visorIfc.informacionSeleccionada();
+      this.sharedSelectionInfo.set(selectedElementInfo ? { ...selectedElementInfo } : null);
+      if (this.localViewerSyncReady) {
+        this.localViewerSync.broadcastSelection(resolution.localIds, selectedElementInfo ?? null);
+      }
+    } finally {
+      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
+    }
   }
 
   // Schedules draft autosave when the linking workspace mutates concepts or links.
@@ -1482,7 +2466,6 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     const panelElement = (event.currentTarget as HTMLElement).closest<HTMLElement>('.b5d-floating-panel');
     if (!panelElement) return;
 
-    event.preventDefault();
     this.updateFloatingPanel(resolvedPanelId, { zIndex: this.nextFloatingPanelZIndex++ });
 
     const panel = this.floatingPanels()[resolvedPanelId];
@@ -1491,7 +2474,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     const startLeft = panel.left;
     const startTop = panel.top;
 
-    const movePanel = (moveEvent: PointerEvent): void => {
+    startPointerDrag(event, (moveEvent) => {
       const position = this.constrainFloatingPanelPosition(
         panelElement,
         startLeft + moveEvent.clientX - startX,
@@ -1499,9 +2482,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       );
 
       this.updateFloatingPanel(resolvedPanelId, position);
-    };
-
-    this.registerPointerDrag(movePanel);
+    });
   }
 
   // Starts resizing a panel from the selected border or corner handle.
@@ -1512,10 +2493,6 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   ): void {
     const resolvedPanelId = this.resolvePanelId(panelId);
     if (event.button !== 0) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
     const initialPanel = this.floatingPanels()[resolvedPanelId];
     if (!this.canResizeFromHandle(initialPanel, handle)) return;
 
@@ -1528,7 +2505,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
 
     this.updateFloatingPanel(resolvedPanelId, { zIndex: this.nextFloatingPanelZIndex++ });
 
-    const resizePanel = (moveEvent: PointerEvent): void => {
+    startPointerDrag(event, (moveEvent) => {
       const latestPanel = this.floatingPanels()[resolvedPanelId];
       const dimensions = this.getResizedPanelDimensions(
         latestPanel,
@@ -1542,9 +2519,7 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
       );
 
       this.updateFloatingPanel(resolvedPanelId, dimensions);
-    };
-
-    this.registerPointerDrag(resizePanel);
+    });
   }
 
   // Changes the active tab shown inside the bottom docked panel.
@@ -1572,9 +2547,6 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
   // Resizes the split between IFC tree and properties in the unified panel.
   startTreePropertiesResize(event: PointerEvent): void {
     if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-
     const panel = this.floatingPanels().tree;
     const panelHeight = panel.docked ? Math.max(140, window.innerHeight - this.getDockedPanelTop()) : panel.height;
     const splitterHeight = 8;
@@ -1584,33 +2556,16 @@ export class ViewerScreen implements AfterViewInit, OnDestroy {
     const startY = event.clientY;
     const startHeight = this.treeSectionHeight;
 
-    const resizeSections = (moveEvent: PointerEvent): void => {
+    startPointerDrag(event, (moveEvent) => {
       const nextHeight = startHeight + (moveEvent.clientY - startY);
       this.treeSectionHeight = Math.min(Math.max(nextHeight, minTreeHeight), maxTreeHeight);
-    };
-
-    this.registerPointerDrag(resizeSections);
+      this.changeDetectorRef.detectChanges();
+    });
   }
 
   // Returns CSS row tracks for the unified IFC panel split layout.
   get unifiedIfcPanelRowsTemplate(): string {
     return `${this.treeSectionHeight}px 8px minmax(0, 1fr)`;
-  }
-
-  // Reuses a single pointer drag registration with immediate UI refresh for all panel interactions.
-  private registerPointerDrag(onPointerMove: (event: PointerEvent) => void): void {
-    const handlePointerMove = (moveEvent: PointerEvent): void => {
-      onPointerMove(moveEvent);
-      this.changeDetectorRef.detectChanges();
-    };
-
-    const stopPointerDrag = (): void => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', stopPointerDrag);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', stopPointerDrag, { once: true });
   }
 
   // Keeps enough of the title bar visible so the panel can always be moved back.

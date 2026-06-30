@@ -1,9 +1,11 @@
-import { Component, signal } from '@angular/core';
+import { Component, Inject, PLATFORM_ID, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { BackendAuthService } from '../../services/backend-auth.service';
+import { logB5dDebug } from '../../utils/debug/b5d-debug';
 
 @Component({
   selector: 'app-login-screen',
@@ -20,15 +22,21 @@ export class LoginScreen {
   constructor(
     private readonly auth: BackendAuthService,
     private readonly router: Router,
+    @Inject(PLATFORM_ID) private readonly platformId: object,
   ) {}
 
   async ngOnInit(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId)) return;
+
     try {
+      logB5dDebug('login-screen: checking session on init');
       const sesion = await firstValueFrom(this.auth.me());
       if (sesion.authenticated) {
-        await this.router.navigate(['/viewer']);
+        logB5dDebug('login-screen: authenticated, replacing history with /viewer');
+        await this.replaceWithViewer();
       }
     } catch {
+      logB5dDebug('login-screen: session check failed, staying on /login');
       // Ignora errores de sesion y permite iniciar sesion manualmente.
     }
   }
@@ -38,13 +46,18 @@ export class LoginScreen {
     this.mensajeError.set('');
 
     try {
+      logB5dDebug('login-screen: submitting login', {
+        username: this.username.trim(),
+      });
       const respuesta = await firstValueFrom(this.auth.login(this.username.trim(), this.password));
       if (respuesta.authenticated) {
-        await this.router.navigate(['/viewer']);
+        logB5dDebug('login-screen: login successful, replacing history with /viewer');
+        await this.replaceWithViewer();
         return;
       }
       this.mensajeError.set('No se pudo iniciar sesion.');
     } catch (error) {
+      logB5dDebug('login-screen: login failed', error);
       const mensaje = this.extraerMensajeError(error);
       this.mensajeError.set(mensaje || 'Credenciales invalidas.');
     } finally {
@@ -56,5 +69,11 @@ export class LoginScreen {
     if (typeof error !== 'object' || error === null) return '';
     const value = error as { error?: { error?: string } };
     return value.error?.error ?? '';
+  }
+
+  private async replaceWithViewer(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId)) return;
+
+    await this.router.navigateByUrl('/viewer', { replaceUrl: true });
   }
 }

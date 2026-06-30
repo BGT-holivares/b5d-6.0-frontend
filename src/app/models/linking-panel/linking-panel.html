@@ -28,10 +28,13 @@
   }
 
   <div class="b5d-linking-panel__workspace" #layoutWorkspace [style.grid-template-rows]="workspaceTemplateRows">
-    <div class="b5d-linking-panel__top-row" [style.grid-template-columns]="topRowTemplateColumns">
+    <div
+      class="b5d-linking-panel__top-row"
+      [class.b5d-linking-panel__top-row--reversed]="isTopPanelOrderReversed"
+      [style.grid-template-columns]="topRowTemplateColumns"
+    >
       <section
-        class="b5d-linking-panel__box"
-        [style.grid-column]="getTopPanelGridColumn('concepts')"
+        class="b5d-linking-panel__box b5d-linking-panel__box--concepts"
         (click)="selectActivePanel('concepts')"
       >
         <div class="b5d-linking-panel__box-title">
@@ -84,6 +87,7 @@
         <div
           class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable"
           [style.zoom]="getPanelZoomFactor('concepts')"
+          (wheel)="onPanelZoomWheel($event, 'concepts')"
           (click)="closeConceptTableContextMenu()"
         >
           @if (conceptTablePreferences.chooserOpen) {
@@ -216,6 +220,15 @@
                                 placeholder="Costo"
                               />
                             }
+                            @case ('porcentaje_padre') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [value]="formatPercentage(concepto.porcentajePadre)"
+                                readonly
+                                tabindex="-1"
+                              />
+                            }
                           }
                         </td>
                       }
@@ -269,6 +282,14 @@
                                 </div>
                               }
                             }
+                            @case ('porcentaje_padre') {
+                              @if (isConceptTableLastColumn(column.key)) {
+                                <div class="b5d-linking-panel__concept-editor-actions">
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                </div>
+                              }
+                            }
                           }
                         </td>
                       }
@@ -305,6 +326,18 @@
                               />
                             }
                             @case ('costo') {
+                              @if (isConceptTableLastColumn(column.key)) {
+                                <div class="b5d-linking-panel__concept-editor-actions">
+                                  <label class="b5d-linking-panel__checkbox-label">
+                                    <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
+                                    Agrupador
+                                  </label>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                </div>
+                              }
+                            }
+                            @case ('porcentaje_padre') {
                               @if (isConceptTableLastColumn(column.key)) {
                                 <div class="b5d-linking-panel__concept-editor-actions">
                                   <label class="b5d-linking-panel__checkbox-label">
@@ -361,15 +394,10 @@
         </div>
       </section>
 
-      <div
-        class="b5d-linking-panel__splitter b5d-linking-panel__splitter--vertical"
-        [style.grid-column]="'2'"
-        (pointerdown)="startInternalResize($event, 'vertical')"
-      ></div>
+      <div class="b5d-linking-panel__splitter b5d-linking-panel__splitter--vertical" (pointerdown)="startInternalResize($event, 'vertical')"></div>
 
       <section
-        class="b5d-linking-panel__box"
-        [style.grid-column]="getTopPanelGridColumn('ifc-objects')"
+        class="b5d-linking-panel__box b5d-linking-panel__box--ifc-objects"
         (click)="selectActivePanel('ifc-objects')"
       >
         <div class="b5d-linking-panel__box-title">
@@ -419,60 +447,175 @@
           </span>
         </div>
 
-        <div class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable" [style.zoom]="getPanelZoomFactor('ifc-objects')">
-          <table class="b5d-linking-panel__table" b5dResizableTable="linking-ifc-objects">
-            <thead>
-              <tr>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.type') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.material') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.propQuantity') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.description') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.unit') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcEntity') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcName') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.ifcDescription') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (objeto of objetosIfc; track objeto.id) {
-                <tr
-                  class="b5d-linking-panel__selectable"
-                  [class.b5d-linking-panel__selectable--active]="isSelectedObject(objeto.id)"
-                  (click)="selectObject(objeto.id, $event)"
-                >
-                  <td [class.b5d-linking-panel__linked]="isLinkedObject(objeto)">
-                    {{ objeto.objectType }}
-                  </td>
-                  <td>{{ objeto.material || '-' }}</td>
-                  <td>
-                    @if (idSelectedObject === objeto.id) {
-                      <select
-                        class="b5d-linking-panel__select"
-                        [(ngModel)]="selectedPropertyKey"
-                        (click)="$event.stopPropagation()"
-                      >
-                        <option value="">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.select') }}</option>
-                        @for (opcion of opcionesPropiedad; track opcion) {
-                          <option [value]="opcion">{{ opcion }}</option>
-                        }
-                      </select>
-                    } @else {
-                      {{ objeto.propertyLabel || '-' }}
-                    }
-                  </td>
-                  <td>{{ objeto.description || '-' }}</td>
-                  <td>{{ getObjectUnit(objeto) }}</td>
-                  <td>{{ getObjectEntity(objeto) }}</td>
-                  <td>{{ getObjectName(objeto) }}</td>
-                  <td>{{ getObjectIfcDescription(objeto) }}</td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td class="b5d-linking-panel__muted" colspan="8">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.none') }}</td>
-                </tr>
+        <div
+          class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable"
+          [style.zoom]="getPanelZoomFactor('ifc-objects')"
+          (wheel)="onPanelZoomWheel($event, 'ifc-objects')"
+          (click)="closeIfcObjectTableContextMenu()"
+        >
+          @if (ifcObjectTablePreferences.chooserOpen) {
+            <div class="b5d-linking-panel__column-chooser">
+              @for (column of ifcObjectTableColumns; track column.key) {
+                <div class="b5d-linking-panel__column-chooser-row">
+                  <label class="b5d-linking-panel__column-chooser-label">
+                    <input
+                      type="checkbox"
+                      [checked]="isIfcObjectTableColumnVisible(column.key)"
+                      (change)="toggleIfcObjectTableColumnVisibility(column.key)"
+                    />
+                    <span>{{ column.label }}</span>
+                  </label>
+                  <div class="b5d-linking-panel__column-chooser-actions">
+                    <button
+                      type="button"
+                      class="b5d-linking-panel__tool-button"
+                      [disabled]="ifcObjectTablePreferences.order.indexOf(column.key) <= 0"
+                      (click)="moveIfcObjectTableColumn(column.key, 'left')"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      class="b5d-linking-panel__tool-button"
+                      [disabled]="ifcObjectTablePreferences.order.indexOf(column.key) >= ifcObjectTablePreferences.order.length - 1"
+                      (click)="moveIfcObjectTableColumn(column.key, 'right')"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
               }
-            </tbody>
-          </table>
+            </div>
+          }
+
+          @if (visibleIfcObjectColumns.length) {
+            <table
+              class="b5d-linking-panel__table"
+              [b5dResizableTable]="ifcObjectsTableResizableStorageKey"
+              [b5dResizableRefreshToken]="ifcObjectTableRefreshToken"
+              (contextmenu)="openIfcObjectTableContextMenu($event)"
+            >
+              <thead>
+                <tr>
+                  @for (column of visibleIfcObjectColumns; track column.key) {
+                    <th>{{ column.label }}</th>
+                  }
+                </tr>
+                @if (tableFiltersVisible) {
+                  <tr class="b5d-linking-panel__filter-row">
+                    @for (column of visibleIfcObjectColumns; track column.key) {
+                      <th>
+                        <div class="b5d-linking-panel__filter-cell">
+                          <select
+                            class="b5d-linking-panel__filter-mode"
+                            [ngModel]="getIfcObjectFilterMode(column.key)"
+                            (ngModelChange)="setIfcObjectFilterMode(column.key, $event)"
+                          >
+                            @for (mode of getIfcObjectFilterModes(column.key); track mode.value) {
+                              <option [value]="mode.value">{{ mode.label }}</option>
+                            }
+                          </select>
+                          <input
+                            class="b5d-linking-panel__filter-input"
+                            type="text"
+                            [ngModel]="getIfcObjectFilterValue(column.key)"
+                            (ngModelChange)="setIfcObjectFilterValue(column.key, $event)"
+                            [placeholder]="column.label"
+                          />
+                        </div>
+                      </th>
+                    }
+                  </tr>
+                }
+              </thead>
+              <tbody>
+                @for (objeto of objetosIfcFiltrados; track objeto.id) {
+                  <tr
+                    class="b5d-linking-panel__selectable"
+                    [class.b5d-linking-panel__selectable--active]="isSelectedObject(objeto.id)"
+                    (click)="selectObject(objeto.id, $event)"
+                  >
+                    @for (column of visibleIfcObjectColumns; track column.key) {
+                      <td [class.b5d-linking-panel__linked]="column.key === 'objectType' && isLinkedObject(objeto)">
+                        @switch (column.key) {
+                          @case ('objectType') {
+                            {{ objeto.objectType || '-' }}
+                          }
+                          @case ('material') {
+                            {{ objeto.material || '-' }}
+                          }
+                          @case ('propertyLabel') {
+                            @if (idSelectedObject === objeto.id) {
+                              <select
+                                class="b5d-linking-panel__select"
+                                [(ngModel)]="selectedPropertyKey"
+                                (click)="$event.stopPropagation()"
+                              >
+                                <option value="">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.select') }}</option>
+                                @for (opcion of opcionesPropiedad; track opcion) {
+                                  <option [value]="opcion">{{ opcion }}</option>
+                                }
+                              </select>
+                            } @else {
+                              {{ objeto.propertyLabel || '-' }}
+                            }
+                          }
+                          @case ('description') {
+                            {{ objeto.description || '-' }}
+                          }
+                          @case ('unit') {
+                            {{ getObjectUnit(objeto) }}
+                          }
+                          @case ('ifcEntity') {
+                            {{ getObjectEntity(objeto) }}
+                          }
+                          @case ('ifcName') {
+                            {{ getObjectName(objeto) }}
+                          }
+                          @case ('ifcDescription') {
+                            {{ getObjectIfcDescription(objeto) }}
+                          }
+                        }
+                      </td>
+                    }
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td class="b5d-linking-panel__muted" [attr.colspan]="visibleIfcObjectColumns.length">
+                      {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.none') }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          } @else {
+            <div class="b5d-linking-panel__muted">
+              No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+            </div>
+          }
+
+          @if (ifcObjectTableContextMenuVisible) {
+            <div
+              class="b5d-linking-panel__context-menu"
+              [style.left.px]="ifcObjectTableContextMenuX"
+              [style.top.px]="ifcObjectTableContextMenuY"
+              (click)="$event.stopPropagation()"
+              (contextmenu)="$event.preventDefault()"
+            >
+              <button type="button" (click)="handleIfcObjectTableContextMenuAction('chooser')">
+                {{ ifcObjectTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+              </button>
+              <button type="button" (click)="handleIfcObjectTableContextMenuAction('filters')">
+                {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+              </button>
+              <button type="button" (click)="handleIfcObjectTableContextMenuAction('best-fit')">
+                Best fit
+              </button>
+              <button type="button" (click)="handleIfcObjectTableContextMenuAction('reset')">
+                Restablecer vista
+              </button>
+            </div>
+          }
         </div>
       </section>
     </div>
@@ -513,8 +656,12 @@
           </span>
         </div>
 
-        <div class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable" [style.zoom]="getPanelZoomFactor('related-links')">
-          <table class="b5d-linking-panel__table" b5dResizableTable="linking-related-links">
+        <div
+          class="b5d-linking-panel__box-content b5d-linking-panel__box-content--zoomable"
+          [style.zoom]="getPanelZoomFactor('related-links')"
+          (wheel)="onPanelZoomWheel($event, 'related-links')"
+        >
+          <table class="b5d-linking-panel__table" [b5dResizableTable]="relatedLinksTableResizableStorageKey">
             <thead>
               <tr>
                 <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptId') }}</th>
