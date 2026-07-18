@@ -26,8 +26,10 @@ export interface ProyectoTrabajoOrm {
   nombre: string;
   estado: string;
   mensaje_error: string;
+  mensaje_progreso: string;
   total_registros: number;
   registros_importados: number;
+  progreso_porcentaje: number;
   archivo_original: string;
   archivo_exportado: string | null;
   url_descarga: string | null;
@@ -37,6 +39,7 @@ export interface ProyectoTrabajoOrm {
   ifc_nombre_archivo: string | null;
   ifc_tamano_bytes: number | null;
   ifc_fecha_referencia: string | null;
+  debug_trace?: string[];
 }
 
 export interface ConceptoB5DOrm {
@@ -50,9 +53,9 @@ export interface ConceptoB5DOrm {
   agrupador_padre_id: number | null;
   unidad: string | null;
   orden: number | null;
-  costo?: number | null;
-  costo_mn?: number | null;
-  costo_me?: number | null;
+  precio_unitario?: number | null;
+  cantidad?: number | null;
+  importe?: number | null;
   porcentaje_padre?: number | null;
   optimistic_lock_field?: number | null;
   gc_record?: number | null;
@@ -79,6 +82,24 @@ export interface CatalogoB5DOrm {
   grupo_cantidades_bim?: string | null;
   propiedad_tipo_bim?: string | null;
   catalogo_externo?: string | null;
+  catalog_metadata?: CatalogMetadataOrm | null;
+  optimistic_lock_field?: number | null;
+  gc_record?: number | null;
+}
+
+export interface CatalogMetadataOrm {
+  id: number;
+  catalogo_id: number;
+  clave: string | null;
+  descripcion: string | null;
+  calle_y_numero: string | null;
+  colonia: string | null;
+  ciudad: string | null;
+  estado: string | null;
+  fecha_creacion: string | null;
+  fecha_ultimo_calculo: string | null;
+  fecha_inicio: string | null;
+  fecha_termino: string | null;
   optimistic_lock_field?: number | null;
   gc_record?: number | null;
 }
@@ -101,7 +122,7 @@ export interface CuantificacionB5DOrm {
 }
 
 export type TipoComparacionParametroOrm = 'clave_exacta' | 'clave_parcial' | 'descripcion_parcial';
-export type TipoParametroOrm = 'costo' | 'cantidad';
+export type TipoParametroOrm = 'costo' | 'costo_porcentaje' | 'cantidad';
 
 export interface ParametroB5DOrm {
   id: number;
@@ -126,9 +147,8 @@ export interface ConceptoB5DDraftOrm {
   clave: string | null;
   clave_secundaria: string | null;
   descripcion: string | null;
-  costo?: number | null;
-  costo_mn?: number | null;
-  costo_me?: number | null;
+  precio_unitario?: number | null;
+  cantidad?: number | null;
   es_agrupador: boolean;
   agrupador_padre_id: number | null;
   unidad: string | null;

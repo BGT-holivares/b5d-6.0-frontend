@@ -3,8 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import {
+import type {
   CatalogoB5DOrm,
+  CatalogMetadataOrm,
   ConceptoB5DOrm,
   SaveB5DProyectPayloadOrm,
   GuardarProyectoB5DResponseOrm,
@@ -40,6 +41,26 @@ export interface ImportarCatalogoAxaPayload {
   descripcion?: string;
   propiedad_tipo_bim?: string;
   grupo_cantidades_bim?: string;
+  sincrono?: boolean;
+}
+
+export interface ImportarCatalogoMetadataAxaPayload {
+  archivo: File;
+}
+
+export interface ImportarCostosCatalogoAxaPayload {
+  archivo: File;
+  conceptos_seleccionados: number[];
+}
+
+export interface ImportarParametrosXdbPayload {
+  archivos: File[];
+  tipo_parametro?: 'costo' | 'costo_porcentaje' | 'cantidad';
+  modo_agrupacion?: 'hojas' | 'agrupadores';
+}
+
+export interface ImportarParametrosB5dPayload {
+  archivos: File[];
 }
 
 export interface CrearCatalogoPayload {
@@ -50,17 +71,165 @@ export interface CrearCatalogoPayload {
   copiar_vinculos_desde_catalogo_id?: number | null;
 }
 
-export interface ImportarCatalogoAxaResponse extends GuardarProyectoB5DResponseOrm {
+export interface ImportarCatalogoAxaResponse {
+  proyecto: ProyectoTrabajoOrm;
+  catalogo?: CatalogoB5DOrm;
+  catalog_metadata?: CatalogMetadataOrm | null;
+  catalogos?: ResultadosOrm<CatalogoB5DOrm>;
+  conceptos?: ResultadosOrm<ConceptoB5DOrm>;
+  vinculos?: ResultadosOrm<VinculoConceptoBimOrm>;
+}
+
+export interface PrevisualizarCostosCatalogoAxaResponse {
+  proyecto: ProyectoTrabajoOrm;
   catalogo: CatalogoB5DOrm;
+  summary: {
+    count: number;
+    matched: number;
+    unmatched: number;
+    tipo: string;
+  };
+  preview: {
+    resultados: Array<{
+      firma: string;
+      clave: string | null;
+      descripcion: string | null;
+      unidad_origen: string | null;
+      catalogo_concepto_id: number | null;
+      catalogo_clave: string | null;
+      catalogo_descripcion: string | null;
+      catalogo_unidad: string | null;
+      precio_unitario_actual: number | null;
+      precio_unitario_nuevo: number | null;
+      cantidad_actual: number | null;
+      cantidad_nueva: number | null;
+      importe_actual: number | null;
+      importe_nuevo: number | null;
+      puede_importarse: boolean;
+      motivo: string | null;
+      seleccionado: boolean;
+    }>;
+  };
+}
+
+export interface ImportarCostosCatalogoAxaResponse {
+  proyecto: ProyectoTrabajoOrm;
+  catalogo: CatalogoB5DOrm;
+  summary: {
+    created: number;
+    updated: number;
+    skipped: number;
+    rejected: number;
+    failed: number;
+    count: number;
+    tipo: string;
+  };
+  preview: {
+    count: number;
+    matched: number;
+    unmatched: number;
+    resultados: Array<{
+      firma: string;
+      clave: string | null;
+      descripcion: string | null;
+      unidad_origen: string | null;
+      catalogo_concepto_id: number | null;
+      catalogo_clave: string | null;
+      catalogo_descripcion: string | null;
+      catalogo_unidad: string | null;
+      precio_unitario_actual: number | null;
+      precio_unitario_nuevo: number | null;
+      cantidad_actual: number | null;
+      cantidad_nueva: number | null;
+      importe_actual: number | null;
+      importe_nuevo: number | null;
+      puede_importarse: boolean;
+      motivo: string | null;
+      seleccionado: boolean;
+    }>;
+    tipo: string;
+  };
+  conceptos: ResultadosOrm<ConceptoB5DOrm>;
+}
+
+export interface ImportarParametrosXdbResponse {
+  proyecto: ProyectoTrabajoOrm;
+  summary: {
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+    count: number;
+    tipo_parametro: string;
+  };
+  parametros: ResultadosOrm<ParametroB5DOrm>;
+}
+
+export interface PrevisualizarParametrosXdbResponse {
+  proyecto: ProyectoTrabajoOrm;
+  summary: {
+    count: number;
+    tipo_parametro: string;
+  };
+  preview: {
+    resultados: Array<{
+      firma: string;
+      clave: string;
+      descripcion: string;
+      tipo_parametro: string;
+      unidad: string | null;
+      minimo: number | null;
+      maximo: number | null;
+      promedio: number | null;
+      cantidad_conceptos: number;
+      cantidad_origenes: number;
+      origenes: string[];
+    }>;
+  };
+}
+
+export interface ImportarParametrosB5dResponse {
+  proyecto: ProyectoTrabajoOrm;
+  summary: {
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+    count: number;
+    tipo_parametro: string;
+  };
+  parametros: ResultadosOrm<ParametroB5DOrm>;
+}
+
+export interface PrevisualizarParametrosB5dResponse {
+  proyecto: ProyectoTrabajoOrm;
+  summary: {
+    count: number;
+    tipo_parametro: string;
+  };
+  preview: {
+    resultados: Array<{
+      firma: string;
+      clave: string;
+      descripcion: string;
+      tipo_parametro: string;
+      unidad: string | null;
+      minimo: number | null;
+      maximo: number | null;
+      promedio: number | null;
+      cantidad_conceptos: number;
+      cantidad_origenes: number;
+      origenes: string[];
+    }>;
+  };
 }
 
 export interface EditarConceptoPayload {
   clave?: string | null;
   clave_secundaria?: string | null;
   descripcion?: string | null;
-  costo?: number | null;
-  costo_mn?: number | null;
-  costo_me?: number | null;
+  precio_unitario?: number | null;
+  cantidad?: number | null;
   es_agrupador?: boolean;
   unidad?: string | null;
   orden?: number | null;
@@ -75,7 +244,7 @@ export interface CrearParametroPayload {
   clave?: string | null;
   descripcion?: string | null;
   tipo_comparacion?: 'clave_exacta' | 'clave_parcial' | 'descripcion_parcial';
-  tipo_parametro?: 'costo' | 'cantidad';
+  tipo_parametro?: 'costo' | 'costo_porcentaje' | 'cantidad';
   tipo_edificacion?: string | null;
   unidad?: string | null;
   minimo?: number | null;
@@ -129,8 +298,128 @@ export class BackendProyectosService {
     if (payload.grupo_cantidades_bim) {
       formData.append('grupo_cantidades_bim', payload.grupo_cantidades_bim);
     }
+    if (payload.sincrono) {
+      formData.append('sincrono', '1');
+    }
     return this.http.post<ImportarCatalogoAxaResponse>(
       this.url(`/api/proyectos/${proyectoId}/catalogos/importar-axa/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  importarMetadataCatalogoAxa(
+    proyectoId: number,
+    catalogoId: number,
+    payload: ImportarCatalogoMetadataAxaPayload,
+  ): Observable<ImportarCatalogoAxaResponse> {
+    const formData = new FormData();
+    formData.append('archivo', payload.archivo);
+    return this.http.post<ImportarCatalogoAxaResponse>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/${catalogoId}/importar-metadata-axa/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  previsualizarCostosCatalogoAxa(
+    proyectoId: number,
+    catalogoId: number,
+    payload: ImportarCatalogoMetadataAxaPayload,
+  ): Observable<PrevisualizarCostosCatalogoAxaResponse> {
+    const formData = new FormData();
+    formData.append('archivo', payload.archivo);
+    return this.http.post<PrevisualizarCostosCatalogoAxaResponse>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/${catalogoId}/previsualizar-costos-axa/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  importarCostosCatalogoAxa(
+    proyectoId: number,
+    catalogoId: number,
+    payload: ImportarCostosCatalogoAxaPayload,
+  ): Observable<ImportarCostosCatalogoAxaResponse> {
+    const formData = new FormData();
+    formData.append('archivo', payload.archivo);
+    for (const conceptoId of payload.conceptos_seleccionados) {
+      formData.append('conceptos_seleccionados', String(conceptoId));
+    }
+    return this.http.post<ImportarCostosCatalogoAxaResponse>(
+      this.url(`/api/proyectos/${proyectoId}/catalogos/${catalogoId}/importar-costos-axa/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  importarParametrosDesdeXdb(
+    proyectoId: number,
+    payload: ImportarParametrosXdbPayload,
+  ): Observable<ImportarParametrosXdbResponse> {
+    const formData = new FormData();
+    for (const archivo of payload.archivos) {
+      formData.append('archivos', archivo);
+    }
+    if (payload.tipo_parametro) {
+      formData.append('tipo_parametro', payload.tipo_parametro);
+    }
+    if (payload.modo_agrupacion) {
+      formData.append('modo_agrupacion', payload.modo_agrupacion);
+    }
+    return this.http.post<ImportarParametrosXdbResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/importar-xdb/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  previsualizarParametrosDesdeXdb(
+    proyectoId: number,
+    payload: ImportarParametrosXdbPayload,
+  ): Observable<PrevisualizarParametrosXdbResponse> {
+    const formData = new FormData();
+    for (const archivo of payload.archivos) {
+      formData.append('archivos', archivo);
+    }
+    if (payload.tipo_parametro) {
+      formData.append('tipo_parametro', payload.tipo_parametro);
+    }
+    if (payload.modo_agrupacion) {
+      formData.append('modo_agrupacion', payload.modo_agrupacion);
+    }
+    return this.http.post<PrevisualizarParametrosXdbResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/previsualizar-xdb/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  importarParametrosDesdeB5d(
+    proyectoId: number,
+    payload: ImportarParametrosB5dPayload,
+  ): Observable<ImportarParametrosB5dResponse> {
+    const formData = new FormData();
+    for (const archivo of payload.archivos) {
+      formData.append('archivos', archivo);
+    }
+    return this.http.post<ImportarParametrosB5dResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/importar-b5d/`),
+      formData,
+      this.requestOptions,
+    );
+  }
+
+  previsualizarParametrosDesdeB5d(
+    proyectoId: number,
+    payload: ImportarParametrosB5dPayload,
+  ): Observable<PrevisualizarParametrosB5dResponse> {
+    const formData = new FormData();
+    for (const archivo of payload.archivos) {
+      formData.append('archivos', archivo);
+    }
+    return this.http.post<PrevisualizarParametrosB5dResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/previsualizar-b5d/`),
       formData,
       this.requestOptions,
     );

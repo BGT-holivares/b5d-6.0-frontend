@@ -12,7 +12,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   private readonly maxWidthPx = 2400;
   private readonly boundHandleListenerRemovers: Array<() => void> = [];
   private readonly pointerCleanup: Array<() => void> = [];
-  private columnWidths: number[] = [];
+  private columnWidthsByKey = new Map<string, number>();
 
   constructor(private readonly host: ElementRef<HTMLTableElement>) {}
 
@@ -25,12 +25,11 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['storageKey'] && !changes['storageKey'].firstChange) {
-      this.columnWidths = [];
+      this.columnWidthsByKey = new Map();
       this.rebindTableStructure();
       return;
     }
     if (changes['b5dResizableRefreshToken'] && !changes['b5dResizableRefreshToken'].firstChange) {
-      this.columnWidths = [];
       this.rebindTableStructure();
       return;
     }
@@ -54,7 +53,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
 
   private bindHeaderHandles(): void {
     const headers = this.getHeaderCells();
-    headers.forEach((headerCell, index) => {
+    headers.forEach((headerCell) => {
       const existingHandle = headerCell.querySelector('.b5d-resizable-table__handle');
       if (existingHandle) existingHandle.remove();
       headerCell.classList.add('b5d-resizable-table__header');
@@ -63,26 +62,30 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
       handle.setAttribute('aria-hidden', 'true');
       headerCell.appendChild(handle);
 
-      const onPointerDown = (event: PointerEvent): void => this.startResize(event, index, headerCell);
+      const onPointerDown = (event: PointerEvent): void => {
+        const columnKey = this.getColumnKey(headerCell);
+        if (!columnKey) return;
+        this.startResize(event, columnKey, headerCell);
+      };
       handle.addEventListener('pointerdown', onPointerDown);
       this.boundHandleListenerRemovers.push(() => handle.removeEventListener('pointerdown', onPointerDown));
     });
   }
 
-  private startResize(event: PointerEvent, columnIndex: number, headerCell: HTMLElement): void {
+  private startResize(event: PointerEvent, columnKey: string, headerCell: HTMLElement): void {
     if (typeof window === 'undefined') return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     this.clearPointerListeners();
 
-    const initialWidth = this.columnWidths[columnIndex] ?? headerCell.getBoundingClientRect().width;
+    const initialWidth = this.columnWidthsByKey.get(columnKey) ?? headerCell.getBoundingClientRect().width;
     const startX = event.clientX;
 
     const onPointerMove = (moveEvent: PointerEvent): void => {
       const deltaX = moveEvent.clientX - startX;
       const width = this.clamp(initialWidth + deltaX, this.b5dResizableMinWidthPx, this.maxWidthPx);
-      this.columnWidths[columnIndex] = width;
+      this.columnWidthsByKey.set(columnKey, width);
       this.applyColumnWidths();
     };
     const onPointerUp = (): void => {
@@ -97,41 +100,36 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
   }
 
   private applyColumnWidths(): void {
-    const table = this.host.nativeElement;
-    const colElements = Array.from(table.querySelectorAll<HTMLTableColElement>('colgroup col'));
     const headers = this.getHeaderCells();
-    const widthValues = this.columnWidths;
-
-    if (colElements.length) {
-      colElements.forEach((colElement, index) => {
-        const width = widthValues[index];
-        colElement.style.width = typeof width === 'number' && width > 0 ? `${width}px` : '';
-      });
-      return;
-    }
-
-    headers.forEach((headerCell, index) => {
-      const width = widthValues[index];
+    headers.forEach((headerCell) => {
+      const columnKey = this.getColumnKey(headerCell);
+      if (!columnKey) return;
+      const width = this.columnWidthsByKey.get(columnKey);
       headerCell.style.width = typeof width === 'number' && width > 0 ? `${width}px` : '';
       headerCell.style.minWidth = `${this.b5dResizableMinWidthPx}px`;
     });
   }
 
   private getHeaderCells(): HTMLElement[] {
-    return Array.from(this.host.nativeElement.querySelectorAll('thead th'));
+    return Array.from(this.host.nativeElement.querySelectorAll('thead th[data-b5d-column-key]'));
   }
 
   private restoreColumnWidths(): void {
     if (typeof window === 'undefined') return;
     if (!this.storageKey) return;
+    this.columnWidthsByKey = new Map();
     try {
       const raw = window.localStorage.getItem(this.buildStorageKey());
       if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      this.columnWidths = parsed.map((value) => (typeof value === 'number' && Number.isFinite(value) ? value : -1));
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      for (const [columnKey, width] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+          this.columnWidthsByKey.set(columnKey, width);
+        }
+      }
     } catch {
-      this.columnWidths = [];
+      this.columnWidthsByKey = new Map();
     }
   }
 
@@ -139,7 +137,7 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
     if (typeof window === 'undefined') return;
     if (!this.storageKey) return;
     try {
-      window.localStorage.setItem(this.buildStorageKey(), JSON.stringify(this.columnWidths));
+      window.localStorage.setItem(this.buildStorageKey(), JSON.stringify(Object.fromEntries(this.columnWidthsByKey.entries())));
     } catch {
       // Ignore storage errors (private mode, quota exceeded, or unavailable storage).
     }
@@ -152,6 +150,10 @@ export class ResizableTableDirective implements AfterViewInit, OnChanges, OnDest
 
   private buildStorageKey(): string {
     return `b5d-resizable-table:${this.storageKey}`;
+  }
+
+  private getColumnKey(headerCell: HTMLElement): string {
+    return headerCell.getAttribute('data-b5d-column-key')?.trim() ?? '';
   }
 
   private clamp(value: number, minValue: number, maxValue: number): number {

@@ -6,17 +6,17 @@
   width: min(610px, calc(100vw - 16px));
   height: 420px;
   border: 1px solid var(--primary-color);
-  background: #ffffff;
+  background: var(--white-color);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   color: #374151;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-float-file-tab__header {
   height: 26px;
   padding: 6px 12px 0;
   background: var(--primary-color);
-  color: #ffffff;
+  color: var(--white-color);
   text-transform: uppercase;
 }
 
@@ -27,7 +27,7 @@
 }
 
 .b5d-float-file-tab__menu {
-  border-right: 1px solid #d1d5db;
+  border-right: 1px solid var(--bd-muted);
   padding: 4px 0;
 }
 
@@ -47,7 +47,7 @@
 }
 
 .b5d-float-file-tab__item:hover {
-  background: #e8f2fb;
+  background: var(--b5d-toolbar-hover);
 }
 
 .b5d-float-file-tab__icon {
@@ -80,12 +80,12 @@
 
 .b5d-float-file-tab__recent h3 {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-float-file-tab__recent-line {
   margin-bottom: 6px;
-  color: #334155;
+  color: var(--b5d-text-secondary);
 }
 
 .b5d-float-file-tab__recent button {

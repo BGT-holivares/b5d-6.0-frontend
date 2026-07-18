@@ -30,7 +30,7 @@ import {
   getFilterModesForKind,
   getVisibleColumns,
   loadTableViewPreferences,
-  reorderTableColumn,
+  moveTableColumn,
   resetTableViewPreferences,
   saveTableViewPreferences,
   setTableFilterMode,
@@ -39,6 +39,8 @@ import {
   type TableColumnDefinition,
   type TableViewPreferences,
 } from '../../utils/table-view/table-view';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
+import { getSafeLocalStorage } from '../../utils/browser-storage';
 import { buildScopedStorageKey } from '../../utils/ui-state-storage';
 import {
   clampPanelPercent,
@@ -95,18 +97,29 @@ type ConceptoFila = {
   clave: string;
   descripcion: string;
   unidad: string;
-  costo: number | null;
+  precio_unitario: number | null;
+  cantidad: number | null;
+  importe: number | null;
   porcentajePadre: number | null;
   linked: boolean;
 };
 
-type ConceptTableColumnKey = 'clave' | 'descripcion' | 'unidad' | 'costo' | 'porcentaje_padre';
+type ConceptTableColumnKey =
+  | 'clave'
+  | 'descripcion'
+  | 'unidad'
+  | 'precio_unitario'
+  | 'cantidad'
+  | 'importe'
+  | 'porcentaje_padre';
 type IfcObjectTableColumnKey = 'objectType' | 'material' | 'propertyLabel' | 'description' | 'unit' | 'ifcEntity' | 'ifcName' | 'ifcDescription';
 
 type ConceptDraft = {
   clave: string;
   descripcion: string;
   unidad: string;
+  precio_unitario: string;
+  cantidad: string;
   esAgrupador: boolean;
 };
 
@@ -127,6 +140,11 @@ export class LinkingPanel implements OnChanges {
 
   readonly i18n = inject(I18nService);
   readonly linkingPanelTranslations = LINKING_PANEL_TRANSLATIONS;
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+
+  private t(key: string): string {
+    return this.i18n.translateForComponent(this.linkingPanelTranslations, key);
+  }
 
   @Input() ifcData: NodoCuantificacion | null = null;
   @Input() ifcElements: ElementoIfcB5D[] = [];
@@ -147,35 +165,56 @@ export class LinkingPanel implements OnChanges {
   readonly conceptTableColumns: TableColumnDefinition<ConceptoFila>[] = [
     {
       key: 'clave',
-      label: 'Concepto ID',
+      label: this.t('linking.concept.id'),
+      labelKey: 'linking.concept.id',
       kind: 'text',
       widthPx: 190,
       getValue: (row) => row.clave,
     },
     {
       key: 'descripcion',
-      label: 'Descripcion',
+      label: this.t('linking.concept.description'),
+      labelKey: 'linking.concept.description',
       kind: 'text',
       widthPx: 320,
       getValue: (row) => row.descripcion,
     },
     {
       key: 'unidad',
-      label: 'Unidad',
+      label: this.t('linking.concept.unit'),
+      labelKey: 'linking.concept.unit',
       kind: 'text',
       widthPx: 110,
       getValue: (row) => row.unidad,
     },
     {
-      key: 'costo',
-      label: 'Costo',
+      key: 'precio_unitario',
+      label: this.t('linking.concept.priceUnit'),
+      labelKey: 'linking.concept.priceUnit',
       kind: 'number',
       widthPx: 120,
-      getValue: (row) => row.costo,
+      getValue: (row) => row.precio_unitario,
+    },
+    {
+      key: 'cantidad',
+      label: this.t('linking.concept.quantity'),
+      labelKey: 'linking.concept.quantity',
+      kind: 'number',
+      widthPx: 120,
+      getValue: (row) => row.cantidad,
+    },
+    {
+      key: 'importe',
+      label: this.t('linking.concept.amount'),
+      labelKey: 'linking.concept.amount',
+      kind: 'number',
+      widthPx: 120,
+      getValue: (row) => row.importe,
     },
     {
       key: 'porcentaje_padre',
-      label: '% Padre',
+      label: this.t('linking.concept.parentPercentage'),
+      labelKey: 'linking.concept.parentPercentage',
       kind: 'number',
       widthPx: 110,
       getValue: (row) => row.porcentajePadre,
@@ -192,59 +231,69 @@ export class LinkingPanel implements OnChanges {
     this.conceptTableStorageKey,
     this.conceptTableDefaults,
   );
+  conceptColumnChooserLeft = 0;
+  conceptColumnChooserTop = 0;
   readonly ifcObjectTableColumns: TableColumnDefinition<ifcObject>[] = [
     {
       key: 'objectType',
-      label: 'Tipo',
+      label: this.t('linking.object.type'),
+      labelKey: 'linking.object.type',
       kind: 'text',
       widthPx: 160,
       getValue: (row) => row.objectType,
     },
     {
       key: 'material',
-      label: 'Material',
+      label: this.t('linking.object.material'),
+      labelKey: 'linking.object.material',
       kind: 'text',
       widthPx: 160,
       getValue: (row) => row.material,
     },
     {
       key: 'propertyLabel',
-      label: 'Prop. cantidad',
+      label: this.t('linking.object.quantityProperty'),
+      labelKey: 'linking.object.quantityProperty',
       kind: 'text',
       widthPx: 160,
       getValue: (row) => row.propertyLabel,
     },
     {
       key: 'description',
-      label: 'Descripcion',
+      label: this.t('linking.object.description'),
+      labelKey: 'linking.object.description',
       kind: 'text',
       widthPx: 240,
       getValue: (row) => row.description,
     },
     {
       key: 'unit',
-      label: 'Unidad',
+      label: this.t('linking.object.unit'),
+      labelKey: 'linking.object.unit',
       kind: 'text',
       widthPx: 90,
       getValue: (row) => this.getObjectUnit(row),
     },
     {
       key: 'ifcEntity',
-      label: 'IFC Entity',
+      label: this.t('linking.object.entity'),
+      labelKey: 'linking.object.entity',
       kind: 'text',
       widthPx: 130,
       getValue: (row) => this.getObjectEntity(row),
     },
     {
       key: 'ifcName',
-      label: 'IFC Name',
+      label: this.t('linking.object.name'),
+      labelKey: 'linking.object.name',
       kind: 'text',
       widthPx: 180,
       getValue: (row) => this.getObjectName(row),
     },
     {
       key: 'ifcDescription',
-      label: 'IFC Description',
+      label: this.t('linking.object.ifcDescription'),
+      labelKey: 'linking.object.ifcDescription',
       kind: 'text',
       widthPx: 220,
       getValue: (row) => this.getObjectIfcDescription(row),
@@ -261,6 +310,8 @@ export class LinkingPanel implements OnChanges {
     this.ifcObjectTableStorageKey,
     this.ifcObjectTableDefaults,
   );
+  ifcObjectColumnChooserLeft = 0;
+  ifcObjectColumnChooserTop = 0;
 
   idSelectedConcept: number | null = null;
   idSelectedObject = '';
@@ -269,10 +320,13 @@ export class LinkingPanel implements OnChanges {
   leftPanelWidth = 420;
   topPanelHeight = 260;
   topPanelOrder: ('concepts' | 'ifc-objects')[] = ['concepts', 'ifc-objects'];
+  private draggedTopPanelId: 'concepts' | 'ifc-objects' | null = null;
+  private topPanelDragTargetId: 'concepts' | 'ifc-objects' | null = null;
   conceptPanelZoomPercent = 100;
   objectPanelZoomPercent = 100;
   relatedLinksPanelZoomPercent = 100;
   relatedLinksVisible = true;
+  collapsedConceptIds = new Set<number>();
   activeWorkspacePanel: LinkingWorkspacePanel = 'concepts';
   selectedConceptIds = new Set<number>();
   selectedObjectIds = new Set<string>();
@@ -295,11 +349,18 @@ export class LinkingPanel implements OnChanges {
   ifcObjectTableContextMenuX = 0;
   ifcObjectTableContextMenuY = 0;
   ifcObjectTableRefreshToken = 0;
+  private conceptColumnChooserPositionReady = false;
+  private ifcObjectColumnChooserPositionReady = false;
+  conceptColumnDragKey: string | null = null;
+  ifcObjectColumnDragKey: string | null = null;
+  private readonly conceptColumnChooserWidth = 360;
+  private readonly ifcObjectColumnChooserWidth = 360;
   private temporalConceptId = -1;
   private lastSelectedConceptId: number | null = null;
   private lastSelectedObjectId = '';
   private lastSelectedLinkId = '';
   private lastAppliedStorageScopeKey = '';
+  private lastAppliedCollapsedConceptStorageKey = '';
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -314,6 +375,7 @@ export class LinkingPanel implements OnChanges {
       this.idSelectedConcept = null;
       this.lastSelectedConceptId = null;
       this.syncConceptTablePreferences();
+      this.collapsedConceptIds = new Set<number>();
     }
     if (changes['b5dCatalogs'] || changes['b5dConcepts']) {
       const availableCatalogIds = new Set(this.b5dCatalogs.map((catalogItem) => catalogItem.id));
@@ -426,6 +488,7 @@ export class LinkingPanel implements OnChanges {
     const hijosPorPadre = new Map<number | null, ConceptoB5DOrm[]>();
     const ids = new Set<number>(conceptos.map((concepto) => concepto.id));
     const costosCalculados = this.calcularMetricasConceptos(conceptos);
+    const conceptosOcultosPorColapso = new Set<number>();
 
     for (const concepto of conceptos) {
       const parentId =
@@ -437,6 +500,15 @@ export class LinkingPanel implements OnChanges {
       hijosPorPadre.set(parentId, hijos);
     }
 
+    const marcarDescendientesOcultos = (parentId: number): void => {
+      const hijos = hijosPorPadre.get(parentId) ?? [];
+      for (const hijo of hijos) {
+        if (conceptosOcultosPorColapso.has(hijo.id)) continue;
+        conceptosOcultosPorColapso.add(hijo.id);
+        marcarDescendientesOcultos(hijo.id);
+      }
+    };
+
     const linkedIds = this.idsConceptoConVinculo();
     const filas: ConceptoFila[] = [];
     const visitados = new Set<number>();
@@ -446,31 +518,41 @@ export class LinkingPanel implements OnChanges {
       for (const concepto of hijos) {
         if (visitados.has(concepto.id)) continue;
         visitados.add(concepto.id);
+        const metricas = costosCalculados.get(concepto.id);
         filas.push({
           id: concepto.id,
           level,
           clave: concepto.clave ?? '',
           descripcion: concepto.descripcion ?? '',
           unidad: concepto.unidad ?? '',
-          costo: costosCalculados.get(concepto.id)?.costo ?? null,
-          porcentajePadre: costosCalculados.get(concepto.id)?.porcentajePadre ?? null,
+          precio_unitario: metricas?.precio_unitario ?? null,
+          cantidad: metricas?.cantidad ?? null,
+          importe: metricas?.importe ?? null,
+          porcentajePadre: metricas?.porcentajePadre ?? null,
           linked: linkedIds.has(concepto.id),
         });
+        if (this.collapsedConceptIds.has(concepto.id)) {
+          marcarDescendientesOcultos(concepto.id);
+          continue;
+        }
         recorrer(concepto.id, level + 1);
       }
     };
 
     recorrer(null, 0);
     for (const concepto of conceptos) {
-      if (visitados.has(concepto.id)) continue;
+      if (visitados.has(concepto.id) || conceptosOcultosPorColapso.has(concepto.id)) continue;
+      const metricas = costosCalculados.get(concepto.id);
       filas.push({
         id: concepto.id,
         level: 0,
         clave: concepto.clave ?? '',
         descripcion: concepto.descripcion ?? '',
         unidad: concepto.unidad ?? '',
-        costo: costosCalculados.get(concepto.id)?.costo ?? null,
-        porcentajePadre: costosCalculados.get(concepto.id)?.porcentajePadre ?? null,
+        precio_unitario: metricas?.precio_unitario ?? null,
+        cantidad: metricas?.cantidad ?? null,
+        importe: metricas?.importe ?? null,
+        porcentajePadre: metricas?.porcentajePadre ?? null,
         linked: linkedIds.has(concepto.id),
       });
     }
@@ -827,25 +909,47 @@ export class LinkingPanel implements OnChanges {
       this.assignPropertiesFromSelection();
       return;
     }
+    if (accion === 'expand-tree') {
+      this.expandAllConceptGroups();
+      return;
+    }
+    if (accion === 'collapse-tree') {
+      this.collapseAllConceptGroups();
+      return;
+    }
   }
 
-  // Swaps the two stable panels in the top row of the linking workspace.
-  toggleTopPanelOrder(): void {
+  startTopPanelDrag(panelId: 'concepts' | 'ifc-objects', event: DragEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.draggedTopPanelId = panelId;
+    this.topPanelDragTargetId = null;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', panelId);
+    }
+  }
+
+  onTopPanelDragOver(targetPanelId: 'concepts' | 'ifc-objects', event: DragEvent): void {
+    event.preventDefault();
+    const draggedPanelId = this.draggedTopPanelId;
+    if (!draggedPanelId || draggedPanelId === targetPanelId) return;
+    if (this.topPanelDragTargetId === targetPanelId) return;
+
+    this.topPanelDragTargetId = targetPanelId;
     this.topPanelOrder = swapPanelOrder([this.topPanelOrder[0], this.topPanelOrder[1]] as const);
     this.changeDetectorRef.detectChanges();
+  }
+
+  endTopPanelDrag(): void {
+    this.draggedTopPanelId = null;
+    this.topPanelDragTargetId = null;
   }
 
   // Returns true when the IFC objects panel is leading the top row.
   get isTopPanelOrderReversed(): boolean {
     return this.topPanelOrder[0] === 'ifc-objects';
-  }
-
-  // Returns true when the requested top-row panel can move in the provided direction.
-  canMoveTopPanel(panelId: 'concepts' | 'ifc-objects', direction: 'left' | 'right'): boolean {
-    const currentIndex = this.topPanelOrder.indexOf(panelId);
-    if (currentIndex === -1) return false;
-    if (direction === 'left') return currentIndex > 0;
-    return currentIndex < this.topPanelOrder.length - 1;
   }
 
   // Returns the zoom factor for a specific panel content area.
@@ -892,9 +996,8 @@ export class LinkingPanel implements OnChanges {
       clave: conceptItem.clave ?? null,
       clave_secundaria: conceptItem.clave_secundaria ?? null,
       descripcion: conceptItem.descripcion ?? null,
-      costo: conceptItem.costo ?? null,
-      costo_mn: conceptItem.costo_mn ?? null,
-      costo_me: conceptItem.costo_me ?? null,
+      precio_unitario: conceptItem.precio_unitario ?? null,
+      cantidad: conceptItem.cantidad ?? null,
       es_agrupador: !!conceptItem.es_agrupador,
       agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
       unidad: conceptItem.unidad ?? null,
@@ -1084,11 +1187,11 @@ export class LinkingPanel implements OnChanges {
   }
 
   get conceptTableResizableStorageKey(): string {
-    return `${this.conceptTableStorageKey}:${this.conceptTablePreferences.order.join('|')}:${this.conceptTablePreferences.hidden.join('|')}`;
+    return this.conceptTableStorageKey;
   }
 
   get ifcObjectsTableResizableStorageKey(): string {
-    return `${this.ifcObjectTableStorageKey}:${this.ifcObjectTablePreferences.order.join('|')}:${this.ifcObjectTablePreferences.hidden.join('|')}`;
+    return this.ifcObjectTableStorageKey;
   }
 
   get relatedLinksTableResizableStorageKey(): string {
@@ -1105,6 +1208,41 @@ export class LinkingPanel implements OnChanges {
 
   getConceptById(conceptId: number): ConceptoB5DOrm | null {
     return this.workConcepts.find((concepto) => concepto.id === conceptId) ?? null;
+  }
+
+  hasConceptChildren(conceptId: number): boolean {
+    return this.workConcepts.some((concepto) => concepto.agrupador_padre_id === conceptId);
+  }
+
+  isConceptGroupCollapsed(conceptId: number): boolean {
+    return this.collapsedConceptIds.has(conceptId);
+  }
+
+  toggleConceptGroupVisibility(conceptId: number): void {
+    if (!this.hasConceptChildren(conceptId)) return;
+
+    const nextCollapsedConceptIds = new Set(this.collapsedConceptIds);
+    if (nextCollapsedConceptIds.has(conceptId)) nextCollapsedConceptIds.delete(conceptId);
+    else nextCollapsedConceptIds.add(conceptId);
+
+    this.collapsedConceptIds = nextCollapsedConceptIds;
+    this.emitToolbarState();
+  }
+
+  expandAllConceptGroups(): void {
+    if (!this.collapsedConceptIds.size) return;
+    this.collapsedConceptIds = new Set<number>();
+    this.emitToolbarState();
+  }
+
+  collapseAllConceptGroups(): void {
+    const nextCollapsedConceptIds = new Set<number>();
+    for (const conceptItem of this.workConcepts) {
+      if (this.hasConceptChildren(conceptItem.id)) nextCollapsedConceptIds.add(conceptItem.id);
+    }
+
+    this.collapsedConceptIds = nextCollapsedConceptIds;
+    this.emitToolbarState();
   }
 
   markDraftChanged(): void {
@@ -1127,21 +1265,34 @@ export class LinkingPanel implements OnChanges {
     return `${numericValue.toFixed(2)}%`;
   }
 
+  formatNumericInputValue(value: number | null | undefined): string {
+    const numericValue = this.parseOptionalNumber(value);
+    if (numericValue == null) {
+      return '';
+    }
+    return `${numericValue}`.replace(/\.0+$/, '');
+  }
+
+  calculateConceptImporte(precioUnitario: number | null | undefined, cantidad: number | null | undefined): number | null {
+    const precio = this.parseOptionalNumber(precioUnitario ?? null);
+    const cantidadValue = this.parseOptionalNumber(cantidad ?? null);
+    if (precio == null || cantidadValue == null) return null;
+    return Number((precio * cantidadValue).toFixed(4));
+  }
+
   private calcularMetricasConceptos(
     conceptos: ConceptoB5DOrm[],
-  ): Map<number, { costo: number | null; porcentajePadre: number | null }> {
+  ): Map<number, { precio_unitario: number | null; cantidad: number | null; importe: number | null; porcentajePadre: number | null }> {
     const conceptosPorId = new Map<number, ConceptoB5DOrm>();
     const hijosPorPadre = new Map<number | null, ConceptoB5DOrm[]>();
-    const conceptosEnProyecto = new Set<number>();
 
     for (const concepto of conceptos) {
       conceptosPorId.set(concepto.id, concepto);
-      conceptosEnProyecto.add(concepto.id);
     }
 
     for (const concepto of conceptos) {
       const parentId =
-        concepto.agrupador_padre_id && conceptosEnProyecto.has(concepto.agrupador_padre_id)
+        concepto.agrupador_padre_id && conceptosPorId.has(concepto.agrupador_padre_id)
           ? concepto.agrupador_padre_id
           : null;
       const hijos = hijosPorPadre.get(parentId) ?? [];
@@ -1149,15 +1300,20 @@ export class LinkingPanel implements OnChanges {
       hijosPorPadre.set(parentId, hijos);
     }
 
-    const cacheCostos = new Map<number, number | null>();
+    const cacheImportes = new Map<number, number | null>();
     const visitados = new Set<number>();
 
-    const obtenerCostoBase = (concepto: ConceptoB5DOrm): number | null =>
-      this.parseOptionalNumber(concepto.costo ?? concepto.costo_mn ?? concepto.costo_me ?? null);
+    const obtenerImporteBase = (concepto: ConceptoB5DOrm): number | null => {
+      if (concepto.es_agrupador) return null;
+      const precioUnitario = this.parseOptionalNumber(concepto.precio_unitario ?? null);
+      const cantidad = this.parseOptionalNumber(concepto.cantidad ?? null);
+      if (precioUnitario == null || cantidad == null) return null;
+      return Number((precioUnitario * cantidad).toFixed(4));
+    };
 
-    const resolverCosto = (conceptoId: number): number | null => {
-      if (cacheCostos.has(conceptoId)) {
-        return cacheCostos.get(conceptoId) ?? null;
+    const resolverImporte = (conceptoId: number): number | null => {
+      if (cacheImportes.has(conceptoId)) {
+        return cacheImportes.get(conceptoId) ?? null;
       }
 
       const concepto = conceptosPorId.get(conceptoId);
@@ -1166,40 +1322,54 @@ export class LinkingPanel implements OnChanges {
       }
 
       if (visitados.has(conceptoId)) {
-        const costoCiclico = obtenerCostoBase(concepto);
-        cacheCostos.set(conceptoId, costoCiclico);
-        return costoCiclico;
+        const importeCiclico = obtenerImporteBase(concepto);
+        cacheImportes.set(conceptoId, importeCiclico);
+        return importeCiclico;
       }
 
       visitados.add(conceptoId);
-      let costo = obtenerCostoBase(concepto);
-      if (costo == null) {
-        const hijos = hijosPorPadre.get(conceptoId) ?? [];
-        const costosHijos = hijos
-          .map((hijo) => resolverCosto(hijo.id))
+      const hijos = hijosPorPadre.get(conceptoId) ?? [];
+      let importe: number | null;
+      if (hijos.length) {
+        const importesHijos = hijos
+          .map((hijo) => resolverImporte(hijo.id))
           .filter((valor): valor is number => typeof valor === 'number' && Number.isFinite(valor));
-        if (costosHijos.length) {
-          costo = Number(costosHijos.reduce((acumulado, valor) => acumulado + valor, 0).toFixed(4));
-        }
+        importe = importesHijos.length ? Number(importesHijos.reduce((acumulado, valor) => acumulado + valor, 0).toFixed(4)) : null;
+      } else {
+        importe = obtenerImporteBase(concepto);
       }
       visitados.delete(conceptoId);
-      cacheCostos.set(conceptoId, costo);
-      return costo;
+      cacheImportes.set(conceptoId, importe);
+      return importe;
     };
 
-    const metricas = new Map<number, { costo: number | null; porcentajePadre: number | null }>();
+    const sumarImportes = (importes: Array<number | null>): number | null => {
+      const importesValidos = importes.filter((valor): valor is number => typeof valor === 'number' && Number.isFinite(valor));
+      if (!importesValidos.length) {
+        return null;
+      }
+      return Number(importesValidos.reduce((acumulado, valor) => acumulado + valor, 0).toFixed(4));
+    };
+
+    const importesRaiz = conceptos
+      .filter((concepto) => concepto.agrupador_padre_id == null || !conceptosPorId.has(concepto.agrupador_padre_id))
+      .map((concepto) => resolverImporte(concepto.id));
+    let importeTotalCatalogo = sumarImportes(importesRaiz);
+    if (importeTotalCatalogo == null) {
+      importeTotalCatalogo = sumarImportes(conceptos.map((concepto) => resolverImporte(concepto.id)));
+    }
+
+    const metricas = new Map<number, { precio_unitario: number | null; cantidad: number | null; importe: number | null; porcentajePadre: number | null }>();
     for (const concepto of conceptos) {
-      const costo = resolverCosto(concepto.id);
-      let porcentajePadre = this.parseOptionalNumber(concepto.porcentaje_padre ?? null);
-      const parentId = concepto.agrupador_padre_id;
-      if (porcentajePadre == null && parentId != null && conceptosPorId.has(parentId)) {
-        const costoPadre = resolverCosto(parentId);
-        if (costo != null && costoPadre != null && costoPadre !== 0) {
-          porcentajePadre = Number(((costo / costoPadre) * 100).toFixed(6));
-        }
+      const importe = resolverImporte(concepto.id);
+      let porcentajePadre: number | null = null;
+      if (importe != null && importeTotalCatalogo != null && importeTotalCatalogo !== 0) {
+        porcentajePadre = Number(((importe / importeTotalCatalogo) * 100).toFixed(6));
       }
       metricas.set(concepto.id, {
-        costo,
+        precio_unitario: this.parseOptionalNumber(concepto.precio_unitario ?? null),
+        cantidad: this.parseOptionalNumber(concepto.cantidad ?? null),
+        importe,
         porcentajePadre,
       });
     }
@@ -1221,6 +1391,20 @@ export class LinkingPanel implements OnChanges {
     this.resetIfcObjectTablePreferences();
     this.resetIfcObjectTableWidths();
     this.emitToolbarState();
+  }
+
+  private ensureConceptColumnChooserPosition(): void {
+    if (this.conceptColumnChooserPositionReady || typeof window === 'undefined') return;
+    this.conceptColumnChooserLeft = Math.max(16, window.innerWidth - this.conceptColumnChooserWidth - 24);
+    this.conceptColumnChooserTop = 120;
+    this.conceptColumnChooserPositionReady = true;
+  }
+
+  private ensureIfcObjectColumnChooserPosition(): void {
+    if (this.ifcObjectColumnChooserPositionReady || typeof window === 'undefined') return;
+    this.ifcObjectColumnChooserLeft = Math.max(16, window.innerWidth - this.ifcObjectColumnChooserWidth - 24);
+    this.ifcObjectColumnChooserTop = 120;
+    this.ifcObjectColumnChooserPositionReady = true;
   }
 
   openConceptTableContextMenu(event: MouseEvent): void {
@@ -1254,9 +1438,7 @@ export class LinkingPanel implements OnChanges {
   }
 
   resetConceptTableWidths(): void {
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(`b5d-resizable-table:${this.conceptTableResizableStorageKey}`);
-    }
+    getSafeLocalStorage()?.removeItem(`b5d-resizable-table:${this.conceptTableResizableStorageKey}`);
     this.conceptTableRefreshToken += 1;
   }
 
@@ -1291,14 +1473,21 @@ export class LinkingPanel implements OnChanges {
   }
 
   resetIfcObjectTableWidths(): void {
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(`b5d-resizable-table:${this.ifcObjectsTableResizableStorageKey}`);
-    }
+    getSafeLocalStorage()?.removeItem(`b5d-resizable-table:${this.ifcObjectsTableResizableStorageKey}`);
     this.ifcObjectTableRefreshToken += 1;
   }
 
   toggleConceptTableChooser(): void {
     this.conceptTablePreferences.chooserOpen = !this.conceptTablePreferences.chooserOpen;
+    if (this.conceptTablePreferences.chooserOpen) {
+      this.ensureConceptColumnChooserPosition();
+    }
+    this.persistConceptTablePreferences();
+  }
+
+  closeConceptTableChooser(): void {
+    if (!this.conceptTablePreferences.chooserOpen) return;
+    this.conceptTablePreferences.chooserOpen = false;
     this.persistConceptTablePreferences();
   }
 
@@ -1314,11 +1503,56 @@ export class LinkingPanel implements OnChanges {
   toggleConceptTableColumnVisibility(columnKey: string): void {
     toggleTableColumnVisibility(this.conceptTablePreferences, columnKey);
     this.persistConceptTablePreferences();
+    this.conceptTableRefreshToken += 1;
   }
 
-  moveConceptTableColumn(columnKey: string, direction: 'left' | 'right'): void {
-    reorderTableColumn(this.conceptTablePreferences, columnKey, direction);
+  startConceptColumnChooserDrag(event: PointerEvent): void {
+    if (!this.conceptTablePreferences.chooserOpen) return;
+    if (event.button !== 0 || typeof window === 'undefined') return;
+
+    this.ensureConceptColumnChooserPosition();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const offsetX = event.clientX - this.conceptColumnChooserLeft;
+    const offsetY = event.clientY - this.conceptColumnChooserTop;
+
+    startPointerDrag(event, (moveEvent) => {
+      const maxLeft = Math.max(16, window.innerWidth - this.conceptColumnChooserWidth - 16);
+      const maxTop = Math.max(76, window.innerHeight - 120);
+      this.conceptColumnChooserLeft = this.clamp(moveEvent.clientX - offsetX, 16, maxLeft);
+      this.conceptColumnChooserTop = this.clamp(moveEvent.clientY - offsetY, 76, maxTop);
+      this.changeDetectorRef.detectChanges();
+    });
+  }
+
+  onConceptColumnDragStart(columnKey: string, event: DragEvent): void {
+    this.conceptColumnDragKey = columnKey;
+    event.dataTransfer?.setData('text/plain', columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onConceptColumnDragOver(columnKey: string, event: DragEvent): void {
+    event.preventDefault();
+    const draggedColumnKey = this.conceptColumnDragKey;
+    if (!draggedColumnKey || draggedColumnKey === columnKey) return;
+
+    const targetElement = event.currentTarget as HTMLElement | null;
+    const targetRect = targetElement?.getBoundingClientRect();
+    const beforeTarget = targetRect ? event.clientY < targetRect.top + targetRect.height / 2 : true;
+    const targetIndex = this.conceptTablePreferences.order.indexOf(columnKey);
+    if (targetIndex < 0) return;
+
+    const nextIndex = beforeTarget ? targetIndex : targetIndex + 1;
+    moveTableColumn(this.conceptTablePreferences, draggedColumnKey, nextIndex);
     this.persistConceptTablePreferences();
+    this.conceptTableRefreshToken += 1;
+  }
+
+  onConceptColumnDragEnd(): void {
+    this.conceptColumnDragKey = null;
   }
 
   getConceptFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
@@ -1350,6 +1584,15 @@ export class LinkingPanel implements OnChanges {
 
   toggleIfcObjectTableChooser(): void {
     this.ifcObjectTablePreferences.chooserOpen = !this.ifcObjectTablePreferences.chooserOpen;
+    if (this.ifcObjectTablePreferences.chooserOpen) {
+      this.ensureIfcObjectColumnChooserPosition();
+    }
+    this.persistIfcObjectTablePreferences();
+  }
+
+  closeIfcObjectTableChooser(): void {
+    if (!this.ifcObjectTablePreferences.chooserOpen) return;
+    this.ifcObjectTablePreferences.chooserOpen = false;
     this.persistIfcObjectTablePreferences();
   }
 
@@ -1365,11 +1608,56 @@ export class LinkingPanel implements OnChanges {
   toggleIfcObjectTableColumnVisibility(columnKey: string): void {
     toggleTableColumnVisibility(this.ifcObjectTablePreferences, columnKey);
     this.persistIfcObjectTablePreferences();
+    this.ifcObjectTableRefreshToken += 1;
   }
 
-  moveIfcObjectTableColumn(columnKey: string, direction: 'left' | 'right'): void {
-    reorderTableColumn(this.ifcObjectTablePreferences, columnKey, direction);
+  startIfcObjectColumnChooserDrag(event: PointerEvent): void {
+    if (!this.ifcObjectTablePreferences.chooserOpen) return;
+    if (event.button !== 0 || typeof window === 'undefined') return;
+
+    this.ensureIfcObjectColumnChooserPosition();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const offsetX = event.clientX - this.ifcObjectColumnChooserLeft;
+    const offsetY = event.clientY - this.ifcObjectColumnChooserTop;
+
+    startPointerDrag(event, (moveEvent) => {
+      const maxLeft = Math.max(16, window.innerWidth - this.ifcObjectColumnChooserWidth - 16);
+      const maxTop = Math.max(76, window.innerHeight - 120);
+      this.ifcObjectColumnChooserLeft = this.clamp(moveEvent.clientX - offsetX, 16, maxLeft);
+      this.ifcObjectColumnChooserTop = this.clamp(moveEvent.clientY - offsetY, 76, maxTop);
+      this.changeDetectorRef.detectChanges();
+    });
+  }
+
+  onIfcObjectColumnDragStart(columnKey: string, event: DragEvent): void {
+    this.ifcObjectColumnDragKey = columnKey;
+    event.dataTransfer?.setData('text/plain', columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onIfcObjectColumnDragOver(columnKey: string, event: DragEvent): void {
+    event.preventDefault();
+    const draggedColumnKey = this.ifcObjectColumnDragKey;
+    if (!draggedColumnKey || draggedColumnKey === columnKey) return;
+
+    const targetElement = event.currentTarget as HTMLElement | null;
+    const targetRect = targetElement?.getBoundingClientRect();
+    const beforeTarget = targetRect ? event.clientY < targetRect.top + targetRect.height / 2 : true;
+    const targetIndex = this.ifcObjectTablePreferences.order.indexOf(columnKey);
+    if (targetIndex < 0) return;
+
+    const nextIndex = beforeTarget ? targetIndex : targetIndex + 1;
+    moveTableColumn(this.ifcObjectTablePreferences, draggedColumnKey, nextIndex);
     this.persistIfcObjectTablePreferences();
+    this.ifcObjectTableRefreshToken += 1;
+  }
+
+  onIfcObjectColumnDragEnd(): void {
+    this.ifcObjectColumnDragKey = null;
   }
 
   getIfcObjectFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
@@ -1612,9 +1900,9 @@ export class LinkingPanel implements OnChanges {
       clave: this.creatingConceptDraft.clave.trim() || `NEW-${Math.abs(newConceptId)}`,
       clave_secundaria: null,
       descripcion: this.creatingConceptDraft.descripcion.trim() || defaultDescription,
-      costo: null,
-      costo_mn: null,
-      costo_me: null,
+      precio_unitario: this.parseOptionalNumber(this.creatingConceptDraft.precio_unitario),
+      cantidad: this.parseOptionalNumber(this.creatingConceptDraft.cantidad),
+      importe: null,
       porcentaje_padre: null,
       es_agrupador: isGroupingConcept,
       agrupador_padre_id: parentConceptId,
@@ -2133,6 +2421,8 @@ export class LinkingPanel implements OnChanges {
       clave: '',
       descripcion: '',
       unidad: '',
+      precio_unitario: '',
+      cantidad: '',
       esAgrupador: false,
     };
   }
@@ -2143,6 +2433,8 @@ export class LinkingPanel implements OnChanges {
       clave: selectedConcept.clave ?? '',
       descripcion: selectedConcept.descripcion ?? '',
       unidad: selectedConcept.unidad ?? '',
+      precio_unitario: this.formatNumericInputValue(selectedConcept.precio_unitario),
+      cantidad: this.formatNumericInputValue(selectedConcept.cantidad),
       esAgrupador: !!selectedConcept.es_agrupador,
     };
   }

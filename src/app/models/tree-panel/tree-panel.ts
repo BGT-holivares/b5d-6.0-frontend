@@ -1,5 +1,7 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import type { NodoArbolIfc } from '../../types/ifc';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { TREE_PANEL_TRANSLATIONS } from './tree-panel.translations';
 
 type NodoVisible = {
   nodo: NodoArbolIfc;
@@ -13,6 +15,8 @@ type NodoVisible = {
   styleUrl: './tree-panel.scss',
 })
 export class TreePanel {
+  readonly i18n = inject(I18nService);
+  readonly treePanelTranslations = TREE_PANEL_TRANSLATIONS;
   @Input() visible = false;
   @Input() datosArbol: NodoArbolIfc[] = [];
   @Input() nodosExpandidos: Record<string, boolean> = {};
@@ -63,5 +67,9 @@ export class TreePanel {
 
   obtenerSangria(nivel: number): string {
     return `${8 + nivel * 20}px`;
+  }
+
+  t(key: string): string {
+    return this.i18n.translateForComponent(this.treePanelTranslations, key);
   }
 }

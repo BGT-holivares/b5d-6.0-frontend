@@ -1,0 +1,35 @@
+@if (state.visible) {
+  <div class="b5d-loading-panel" role="status" aria-live="polite" aria-atomic="true">
+    <section class="b5d-loading-panel__card">
+      <header class="b5d-loading-panel__header">
+        <div class="b5d-loading-panel__title-group">
+          <div class="b5d-loading-panel__eyebrow">{{ i18n.translateForComponent(globalTranslations, 'common.loading.title') }}</div>
+          <h2 class="b5d-loading-panel__title">{{ state.title }}</h2>
+          @if (state.subtitle) {
+            <div class="b5d-loading-panel__subtitle">{{ state.subtitle }}</div>
+          }
+        </div>
+      </header>
+
+      <div class="b5d-loading-panel__meter-group">
+        <div class="b5d-loading-panel__meter-label">
+          <span>{{ i18n.translateForComponent(globalTranslations, 'common.loading.overall') }}</span>
+          <span>{{ state.overallProgress.toFixed(0) }}%</span>
+        </div>
+        <div class="b5d-loading-panel__meter">
+          <span class="b5d-loading-panel__meter-fill" [style.width.%]="state.overallProgress"></span>
+        </div>
+      </div>
+
+      <div class="b5d-loading-panel__meter-group">
+        <div class="b5d-loading-panel__meter-label">
+          <span>{{ i18n.translateForComponent(globalTranslations, 'common.loading.currentStep') }}</span>
+          <span>{{ state.stepProgress.toFixed(0) }}%</span>
+        </div>
+        <div class="b5d-loading-panel__meter b5d-loading-panel__meter--secondary">
+          <span class="b5d-loading-panel__meter-fill b5d-loading-panel__meter-fill--secondary" [style.width.%]="state.stepProgress"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+}

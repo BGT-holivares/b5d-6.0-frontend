@@ -1,29 +1,40 @@
 <section class="b5d-boq-panel">
   <header class="b5d-boq-panel__header">
-    <strong>Cuantificaciones del archivo B5D</strong>
+    <strong>{{ t('boqPanel.title') }}</strong>
     @if (activeProject) {
-      <span>Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})</span>
+      <span>{{ t('boqPanel.projectLabel') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
     } @else {
-      <span class="b5d-boq-panel__muted">Sin proyecto activo</span>
+      <span class="b5d-boq-panel__muted">{{ i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}</span>
     }
   </header>
 
   @if (b5dLoading) {
-    <div class="b5d-boq-panel__loading">Cargando cuantificaciones...</div>
+    <div class="b5d-boq-panel__loading">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingQuantifications') }}</div>
   }
 
   <div class="b5d-boq-panel__layout" [style.grid-template-columns]="layoutTemplateColumns">
     @if (panelOrder[0] === 'list') {
       <aside class="b5d-boq-panel__list">
         <div class="b5d-boq-panel__list-toolbar">
-          <strong>Lista de cuantificaciones</strong>
+          <span class="b5d-panel-order__title" (dragover)="onBoqPanelOrderDragOver('list', $event)">
+            <span
+              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+              draggable="true"
+              [title]="t('boqPanel.dragHandle')"
+              (dragstart)="startBoqPanelOrderDrag('list', $event)"
+              (dragend)="endBoqPanelOrderDrag()"
+            ></span>
+            <strong>{{ t('boqPanel.listTitle') }}</strong>
+          </span>
           <span class="b5d-boq-panel__list-toolbar-actions">
-            <button type="button" class="b5d-boq-panel__zoom-button" [title]="'Reordenar paneles'" (click)="togglePanelOrder()">
-              ↔
+            <button
+              type="button"
+              class="b5d-boq-panel__zoom-button"
+              [title]="quantificationTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns')"
+              (click)="toggleQuantificationTableChooser()"
+            >
+              <i class="bi bi-layout-three-columns"></i>
             </button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseListZoom()">-</button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetListZoom()">100%</button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseListZoom()">+</button>
           </span>
         </div>
 
@@ -33,41 +44,6 @@
           (wheel)="onListZoomWheel($event)"
           (click)="closeBoqTableContextMenu()"
         >
-        @if (quantificationTablePreferences.chooserOpen) {
-          <div class="b5d-boq-panel__column-chooser">
-            @for (column of quantificationTableColumns; track column.key) {
-              <div class="b5d-boq-panel__column-chooser-row">
-                <label class="b5d-boq-panel__column-chooser-label">
-                  <input
-                    type="checkbox"
-                    [checked]="isQuantificationTableColumnVisible(column.key)"
-                    (change)="toggleQuantificationTableColumnVisibility(column.key)"
-                  />
-                  <span>{{ column.label }}</span>
-                </label>
-                <div class="b5d-boq-panel__column-chooser-actions">
-                  <button
-                    type="button"
-                    class="b5d-boq-panel__tool-button"
-                    [disabled]="quantificationTablePreferences.order.indexOf(column.key) <= 0"
-                    (click)="moveQuantificationTableColumn(column.key, 'left')"
-                  >
-                    ←
-                  </button>
-                  <button
-                    type="button"
-                    class="b5d-boq-panel__tool-button"
-                    [disabled]="quantificationTablePreferences.order.indexOf(column.key) >= quantificationTablePreferences.order.length - 1"
-                    (click)="moveQuantificationTableColumn(column.key, 'right')"
-                  >
-                    →
-                  </button>
-                </div>
-              </div>
-            }
-          </div>
-        }
-
         @if (visibleQuantificationColumns.length) {
           <table
             class="b5d-boq-panel__table"
@@ -75,12 +51,22 @@
             [b5dResizableRefreshToken]="boqTableRefreshToken"
             (contextmenu)="openBoqTableContextMenu($event)"
           >
-          <thead>
-            <tr>
-              @for (column of visibleQuantificationColumns; track column.key) {
-                <th>{{ column.label }}</th>
-              }
-            </tr>
+              <thead>
+                <tr>
+                  @for (column of visibleQuantificationColumns; track column.key) {
+                    <th [attr.data-b5d-column-key]="column.key" (dragover)="onQuantificationColumnDragOver(column.key, $event)">
+                      <span class="b5d-table-header__content">
+                        <span
+                          class="b5d-table-header__drag-handle bi bi-grip-vertical"
+                          draggable="true"
+                          (dragstart)="onQuantificationColumnDragStart(column.key, $event)"
+                          (dragend)="onQuantificationColumnDragEnd()"
+                        ></span>
+                        <span>{{ t(column.labelKey ?? column.label) }}</span>
+                      </span>
+                    </th>
+                  }
+                </tr>
             @if (tableFiltersVisible) {
               <tr class="b5d-boq-panel__filter-row">
                 @for (column of visibleQuantificationColumns; track column.key) {
@@ -100,7 +86,7 @@
                         type="text"
                         [ngModel]="getQuantificationFilterValue(column.key)"
                         (ngModelChange)="setQuantificationFilterValue(column.key, $event)"
-                        [placeholder]="column.label"
+                        [placeholder]="t(column.labelKey ?? column.label)"
                       />
                     </div>
                   </th>
@@ -111,12 +97,12 @@
           <tbody>
             @if (!groupedQuantifications.length) {
               <tr>
-                <td class="b5d-boq-panel__muted" [attr.colspan]="visibleQuantificationColumns.length">No hay cuantificaciones en este proyecto.</td>
+                <td class="b5d-boq-panel__muted" [attr.colspan]="visibleQuantificationColumns.length">{{ t('boqPanel.emptyList') }}</td>
               </tr>
             } @else {
               @for (groupRow of groupedQuantifications; track groupRow.groupName) {
                 <tr class="b5d-boq-panel__group-row">
-                  <td [attr.colspan]="visibleQuantificationColumns.length"><strong>Project:</strong> {{ groupRow.groupName }}</td>
+                  <td [attr.colspan]="visibleQuantificationColumns.length"><strong>{{ t('boqPanel.projectGroup') }}</strong> {{ groupRow.groupName }}</td>
                 </tr>
 
                 @for (qto of groupRow.items; track qto.id) {
@@ -137,8 +123,8 @@
                                 (click)="$event.stopPropagation()"
                                 (change)="saveQuantificationRow(qto)"
                               >
-                                <option [ngValue]="0">Cuantificacion</option>
-                                <option [ngValue]="1">Esquema de cuantificacion</option>
+                                <option [ngValue]="0">{{ t('boqPanel.option.quantification') }}</option>
+                                <option [ngValue]="1">{{ t('boqPanel.option.scheme') }}</option>
                               </select>
                             </div>
                           }
@@ -152,13 +138,13 @@
                             />
                           }
                           @case ('descripcion') {
-                            <input
-                              type="text"
+                            <textarea
+                              rows="2"
                               [(ngModel)]="qto.descripcion"
                               [disabled]="savingQuantificationRowById.has(qto.id)"
                               (click)="$event.stopPropagation()"
                               (blur)="saveQuantificationRow(qto)"
-                            />
+                            ></textarea>
                           }
                           @case ('comentarios') {
                             <input
@@ -183,7 +169,7 @@
           </table>
         } @else {
           <div class="b5d-boq-panel__muted">
-            No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+            {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
           </div>
         }
 
@@ -196,16 +182,16 @@
             (contextmenu)="$event.preventDefault()"
           >
             <button type="button" (click)="handleBoqTableContextMenuAction('chooser')">
-              {{ quantificationTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+              {{ quantificationTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
             </button>
             <button type="button" (click)="handleBoqTableContextMenuAction('filters')">
-              {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+              {{ tableFiltersVisible ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.hideFilters') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.showFilters') }}
             </button>
             <button type="button" (click)="handleBoqTableContextMenuAction('best-fit')">
-              Best fit
+              {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.bestFit') }}
             </button>
             <button type="button" (click)="handleBoqTableContextMenuAction('reset')">
-              Restablecer vista
+              {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.resetView') }}
             </button>
           </div>
         }
@@ -216,13 +202,22 @@
 
       <section class="b5d-boq-panel__preview">
         @if (cuantificacionSeleccionada; as seleccionada) {
-        <header class="b5d-boq-panel__preview-header">
-          <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>
+        <header class="b5d-boq-panel__preview-header" (dragover)="onBoqPanelOrderDragOver('preview', $event)">
+          <span class="b5d-panel-order__title">
+            <span
+              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+              draggable="true"
+              [title]="'Arrastrar'"
+              (dragstart)="startBoqPanelOrderDrag('preview', $event)"
+              (dragend)="endBoqPanelOrderDrag()"
+            ></span>
+            <h4>{{ seleccionada.nombre || t('boqPanel.noName') }}</h4>
+          </span>
           <div class="b5d-boq-panel__metadata">
-            <span><strong>Descripcion:</strong> {{ seleccionada.descripcion || '-' }}</span>
-            <span><strong>Comentarios:</strong> {{ seleccionada.comentarios || '-' }}</span>
-            <span><strong>Calculada:</strong> {{ seleccionada.calculada ? 'Si' : 'No' }}</span>
-            <span><strong>Libro Excel:</strong> {{ etiquetaTienePlantilla }}</span>
+            <span><strong>{{ t('boqPanel.descriptionLabel') }}</strong> {{ seleccionada.descripcion || '-' }}</span>
+            <span><strong>{{ t('boqPanel.commentsLabel') }}</strong> {{ seleccionada.comentarios || '-' }}</span>
+            <span><strong>{{ t('boqPanel.calculatedLabel') }}</strong> {{ seleccionada.calculada ? t('boqPanel.yes') : t('boqPanel.no') }}</span>
+            <span><strong>{{ t('boqPanel.excelLabel') }}</strong> {{ etiquetaTienePlantilla }}</span>
           </div>
         </header>
 
@@ -240,28 +235,28 @@
             [disabled]="workbookUploadInProgress || workbookLoading"
             (click)="openWorkbookUploadDialog(workbookUploadInput)"
           >
-            {{ workbookUploadInProgress ? 'Subiendo XLSX...' : 'Subir XLSX' }}
+            {{ workbookUploadInProgress ? t('boqPanel.uploadingXlsx') : t('boqPanel.uploadXlsx') }}
           </button>
           <input
             type="text"
             class="b5d-boq-panel__cell-address"
             [value]="selectedWorkbookCellAddress"
             readonly
-            placeholder="Celda"
+            [placeholder]="t('boqPanel.cellPlaceholder')"
           />
           <input
             type="text"
             class="b5d-boq-panel__cell-value"
             [value]="selectedWorkbookCellValue"
             (input)="selectedWorkbookCellValue = $any($event.target).value"
-            placeholder="Valor de celda"
+            [placeholder]="t('boqPanel.cellValuePlaceholder')"
           />
           <input
             type="text"
             class="b5d-boq-panel__cell-formula"
             [value]="selectedWorkbookCellFormula"
             (input)="selectedWorkbookCellFormula = $any($event.target).value"
-            placeholder="Formula (sin '=')"
+            [placeholder]="t('boqPanel.formulaPlaceholder')"
           />
           <button
             type="button"
@@ -269,7 +264,7 @@
             [disabled]="!selectedWorkbookCellAddress || workbookLoading"
             (click)="applySelectedCellValueChange()"
           >
-            Aplicar celda
+            {{ t('boqPanel.applyCell') }}
           </button>
           <button
             type="button"
@@ -277,14 +272,14 @@
             [disabled]="!selectedWorkbookCellAddress || workbookLoading"
             (click)="applySelectedCellFormulaChange()"
           >
-            Aplicar formula
+            {{ t('boqPanel.applyFormula') }}
           </button>
           <input
             type="text"
             class="b5d-boq-panel__cell-size"
             [value]="selectedWorkbookRowHeightPx"
             (input)="selectedWorkbookRowHeightPx = $any($event.target).value"
-            placeholder="Alto fila px"
+            [placeholder]="t('boqPanel.rowHeightPlaceholder')"
           />
           <button
             type="button"
@@ -292,14 +287,14 @@
             [disabled]="!selectedWorkbookRowNumber || workbookLoading"
             (click)="applySelectedRowHeightChange()"
           >
-            Aplicar fila
+            {{ t('boqPanel.applyRow') }}
           </button>
           <input
             type="text"
             class="b5d-boq-panel__cell-size"
             [value]="selectedWorkbookColumnWidthPx"
             (input)="selectedWorkbookColumnWidthPx = $any($event.target).value"
-            placeholder="Ancho col px"
+            [placeholder]="t('boqPanel.columnWidthPlaceholder')"
           />
           <button
             type="button"
@@ -307,7 +302,7 @@
             [disabled]="!selectedWorkbookColumnNumber || workbookLoading"
             (click)="applySelectedColumnWidthChange()"
           >
-            Aplicar col
+            {{ t('boqPanel.applyColumn') }}
           </button>
           <button
             type="button"
@@ -315,12 +310,12 @@
             [disabled]="workbookSavingChanges || workbookLoading"
             (click)="saveWorkbookSheetChanges()"
           >
-            {{ workbookSavingChanges ? 'Guardando...' : 'Guardar cambios' }}
+            {{ workbookSavingChanges ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
           </button>
         </div>
 
         @if (workbookLoading) {
-          <div class="b5d-boq-panel__message b5d-boq-panel__message--info">Cargando libro Excel...</div>
+          <div class="b5d-boq-panel__message b5d-boq-panel__message--info">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingWorkbook') }}</div>
         }
 
         @if (workbookInfoMessage) {
@@ -346,22 +341,6 @@
               }
             </div>
 
-            <div class="b5d-boq-panel__zoom-controls">
-              <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseSheetZoom()">-</button>
-              <label class="b5d-boq-panel__zoom-input-wrapper" aria-label="Zoom de hoja">
-                <input
-                  type="text"
-                  class="b5d-boq-panel__zoom-input"
-                  [value]="sheetZoomInputValue"
-                  (input)="onSheetZoomInputValueChange($any($event.target).value)"
-                  (blur)="commitSheetZoomInput()"
-                  (keydown.enter)="commitSheetZoomInput()"
-                />
-                <span class="b5d-boq-panel__zoom-input-suffix">%</span>
-              </label>
-              <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseSheetZoom()">+</button>
-              <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetSheetZoom()">100%</button>
-            </div>
           </div>
         }
 
@@ -374,26 +353,25 @@
             [interactive]="true"
             [zoomPercent]="sheetZoomPercent"
             [error]="workbookError"
-            title="Vista previa del libro Excel"
-            emptyMessage="Selecciona una cuantificacion con libro Excel para previsualizar."
+            [emptyMessage]="i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationPreview')"
             (cellSelected)="onWorkbookCellSelected($event)"
             (zoomRequested)="onWorkbookZoomRequested($event)"
           />
         </div>
         } @else {
-          <p class="b5d-boq-panel__muted">Selecciona una cuantificacion para ver su detalle.</p>
+          <p class="b5d-boq-panel__muted">{{ i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationDetail') }}</p>
         }
       </section>
     } @else {
       <section class="b5d-boq-panel__preview">
         @if (cuantificacionSeleccionada; as seleccionada) {
           <header class="b5d-boq-panel__preview-header">
-            <h4>{{ seleccionada.nombre || 'Cuantificacion sin nombre' }}</h4>
+            <h4>{{ seleccionada.nombre || t('boqPanel.noName') }}</h4>
             <div class="b5d-boq-panel__metadata">
-              <span><strong>Descripcion:</strong> {{ seleccionada.descripcion || '-' }}</span>
-              <span><strong>Comentarios:</strong> {{ seleccionada.comentarios || '-' }}</span>
-              <span><strong>Calculada:</strong> {{ seleccionada.calculada ? 'Si' : 'No' }}</span>
-              <span><strong>Libro Excel:</strong> {{ etiquetaTienePlantilla }}</span>
+              <span><strong>{{ t('boqPanel.descriptionLabel') }}</strong> {{ seleccionada.descripcion || '-' }}</span>
+              <span><strong>{{ t('boqPanel.commentsLabel') }}</strong> {{ seleccionada.comentarios || '-' }}</span>
+              <span><strong>{{ t('boqPanel.calculatedLabel') }}</strong> {{ seleccionada.calculada ? t('boqPanel.yes') : t('boqPanel.no') }}</span>
+              <span><strong>{{ t('boqPanel.excelLabel') }}</strong> {{ etiquetaTienePlantilla }}</span>
             </div>
           </header>
 
@@ -411,28 +389,28 @@
               [disabled]="workbookUploadInProgress || workbookLoading"
               (click)="openWorkbookUploadDialog(workbookUploadInput)"
             >
-              {{ workbookUploadInProgress ? 'Subiendo XLSX...' : 'Subir XLSX' }}
+              {{ workbookUploadInProgress ? t('boqPanel.uploadingXlsx') : t('boqPanel.uploadXlsx') }}
             </button>
             <input
               type="text"
               class="b5d-boq-panel__cell-address"
               [value]="selectedWorkbookCellAddress"
               readonly
-              placeholder="Celda"
+              [placeholder]="t('boqPanel.cellPlaceholder')"
             />
             <input
               type="text"
               class="b5d-boq-panel__cell-value"
               [value]="selectedWorkbookCellValue"
               (input)="selectedWorkbookCellValue = $any($event.target).value"
-              placeholder="Valor de celda"
+              [placeholder]="t('boqPanel.cellValuePlaceholder')"
             />
             <input
               type="text"
               class="b5d-boq-panel__cell-formula"
               [value]="selectedWorkbookCellFormula"
               (input)="selectedWorkbookCellFormula = $any($event.target).value"
-              placeholder="Formula (sin '=')"
+              [placeholder]="t('boqPanel.formulaPlaceholder')"
             />
             <button
               type="button"
@@ -440,7 +418,7 @@
               [disabled]="!selectedWorkbookCellAddress || workbookLoading"
               (click)="applySelectedCellValueChange()"
             >
-              Aplicar celda
+              {{ t('boqPanel.applyCell') }}
             </button>
             <button
               type="button"
@@ -448,14 +426,14 @@
               [disabled]="!selectedWorkbookCellAddress || workbookLoading"
               (click)="applySelectedCellFormulaChange()"
             >
-              Aplicar formula
+              {{ t('boqPanel.applyFormula') }}
             </button>
             <input
               type="text"
               class="b5d-boq-panel__cell-size"
               [value]="selectedWorkbookRowHeightPx"
               (input)="selectedWorkbookRowHeightPx = $any($event.target).value"
-              placeholder="Alto fila px"
+              [placeholder]="t('boqPanel.rowHeightPlaceholder')"
             />
             <button
               type="button"
@@ -463,14 +441,14 @@
               [disabled]="!selectedWorkbookRowNumber || workbookLoading"
               (click)="applySelectedRowHeightChange()"
             >
-              Aplicar fila
+              {{ t('boqPanel.applyRow') }}
             </button>
             <input
               type="text"
               class="b5d-boq-panel__cell-size"
               [value]="selectedWorkbookColumnWidthPx"
               (input)="selectedWorkbookColumnWidthPx = $any($event.target).value"
-              placeholder="Ancho col px"
+              [placeholder]="t('boqPanel.columnWidthPlaceholder')"
             />
             <button
               type="button"
@@ -478,7 +456,7 @@
               [disabled]="!selectedWorkbookColumnNumber || workbookLoading"
               (click)="applySelectedColumnWidthChange()"
             >
-              Aplicar col
+              {{ t('boqPanel.applyColumn') }}
             </button>
             <button
               type="button"
@@ -486,12 +464,12 @@
               [disabled]="workbookSavingChanges || workbookLoading"
               (click)="saveWorkbookSheetChanges()"
             >
-              {{ workbookSavingChanges ? 'Guardando...' : 'Guardar cambios' }}
+              {{ workbookSavingChanges ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
             </button>
           </div>
 
           @if (workbookLoading) {
-            <div class="b5d-boq-panel__message b5d-boq-panel__message--info">Cargando libro Excel...</div>
+            <div class="b5d-boq-panel__message b5d-boq-panel__message--info">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingWorkbook') }}</div>
           }
 
           @if (workbookInfoMessage) {
@@ -517,22 +495,6 @@
                 }
               </div>
 
-              <div class="b5d-boq-panel__zoom-controls">
-                <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseSheetZoom()">-</button>
-                <label class="b5d-boq-panel__zoom-input-wrapper" aria-label="Zoom de hoja">
-                  <input
-                    type="text"
-                    class="b5d-boq-panel__zoom-input"
-                    [value]="sheetZoomInputValue"
-                    (input)="onSheetZoomInputValueChange($any($event.target).value)"
-                    (blur)="commitSheetZoomInput()"
-                    (keydown.enter)="commitSheetZoomInput()"
-                  />
-                  <span class="b5d-boq-panel__zoom-input-suffix">%</span>
-                </label>
-                <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseSheetZoom()">+</button>
-                <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetSheetZoom()">100%</button>
-              </div>
             </div>
           }
 
@@ -545,14 +507,13 @@
               [interactive]="true"
               [zoomPercent]="sheetZoomPercent"
               [error]="workbookError"
-              title="Vista previa del libro Excel"
-              emptyMessage="Selecciona una cuantificacion con libro Excel para previsualizar."
+              [emptyMessage]="i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationPreview')"
               (cellSelected)="onWorkbookCellSelected($event)"
               (zoomRequested)="onWorkbookZoomRequested($event)"
             />
           </div>
         } @else {
-          <p class="b5d-boq-panel__muted">Selecciona una cuantificacion para ver su detalle.</p>
+          <p class="b5d-boq-panel__muted">{{ i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationDetail') }}</p>
         }
       </section>
 
@@ -560,51 +521,72 @@
 
       <aside class="b5d-boq-panel__list">
         <div class="b5d-boq-panel__list-toolbar">
-          <strong>Lista de cuantificaciones</strong>
+          <span class="b5d-panel-order__title" (dragover)="onBoqPanelOrderDragOver('list', $event)">
+            <span
+              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+              draggable="true"
+              [title]="t('boqPanel.dragHandle')"
+              (dragstart)="startBoqPanelOrderDrag('list', $event)"
+              (dragend)="endBoqPanelOrderDrag()"
+            ></span>
+            <strong>{{ t('boqPanel.listTitle') }}</strong>
+          </span>
           <span class="b5d-boq-panel__list-toolbar-actions">
-            <button type="button" class="b5d-boq-panel__zoom-button" [title]="'Reordenar paneles'" (click)="togglePanelOrder()">
-              ↔
-            </button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="decreaseListZoom()">-</button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="resetListZoom()">100%</button>
-            <button type="button" class="b5d-boq-panel__zoom-button" (click)="increaseListZoom()">+</button>
           </span>
         </div>
 
         <div class="b5d-boq-panel__table-shell" [style.zoom]="getListZoomFactor()" (click)="closeBoqTableContextMenu()">
           @if (quantificationTablePreferences.chooserOpen) {
-            <div class="b5d-boq-panel__column-chooser">
+            <section
+              class="b5d-floating-helper-panel"
+              [style.left.px]="quantificationColumnChooserLeft"
+              [style.top.px]="quantificationColumnChooserTop"
+            >
+              <header class="b5d-floating-helper-panel__header" (pointerdown)="startQuantificationColumnChooserDrag($event)">
+                <span class="b5d-floating-helper-panel__title">
+                  {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
+                </span>
+                <span class="b5d-floating-helper-panel__actions">
+                  <button
+                    type="button"
+                    class="b5d-floating-helper-panel__action"
+                    [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+                    (pointerdown)="$event.stopPropagation()"
+                    (click)="closeQuantificationTableChooser()"
+                  >
+                    x
+                  </button>
+                </span>
+              </header>
+
+              <div class="b5d-floating-helper-panel__body">
               @for (column of quantificationTableColumns; track column.key) {
-                <div class="b5d-boq-panel__column-chooser-row">
-                  <label class="b5d-boq-panel__column-chooser-label">
-                    <input
-                      type="checkbox"
-                      [checked]="isQuantificationTableColumnVisible(column.key)"
-                      (change)="toggleQuantificationTableColumnVisibility(column.key)"
-                    />
-                    <span>{{ column.label }}</span>
-                  </label>
-                  <div class="b5d-boq-panel__column-chooser-actions">
-                    <button
-                      type="button"
-                      class="b5d-boq-panel__tool-button"
-                      [disabled]="quantificationTablePreferences.order.indexOf(column.key) <= 0"
-                      (click)="moveQuantificationTableColumn(column.key, 'left')"
-                    >
-                      ←
-                    </button>
-                    <button
-                      type="button"
-                      class="b5d-boq-panel__tool-button"
-                      [disabled]="quantificationTablePreferences.order.indexOf(column.key) >= quantificationTablePreferences.order.length - 1"
-                      (click)="moveQuantificationTableColumn(column.key, 'right')"
-                    >
-                      →
-                    </button>
+                  <div
+                    class="b5d-floating-helper-panel__row"
+                    [class.b5d-floating-helper-panel__row--dragging]="quantificationColumnDragKey === column.key"
+                    (dragover)="onQuantificationColumnDragOver(column.key, $event)"
+                  >
+                    <span
+                      class="b5d-floating-helper-panel__drag-handle bi bi-grip-vertical"
+                      draggable="true"
+                      [title]="t(column.labelKey ?? column.label)"
+                      (dragstart)="onQuantificationColumnDragStart(column.key, $event)"
+                      (dragend)="onQuantificationColumnDragEnd()"
+                    ></span>
+                    <div class="b5d-floating-helper-panel__row-main">
+                      <label class="b5d-floating-helper-panel__row-label">
+                        <input
+                          type="checkbox"
+                          [checked]="isQuantificationTableColumnVisible(column.key)"
+                          (change)="toggleQuantificationTableColumnVisibility(column.key)"
+                        />
+                        <span>{{ t(column.labelKey ?? column.label) }}</span>
+                      </label>
+                    </div>
                   </div>
-                </div>
               }
-            </div>
+              </div>
+            </section>
           }
 
           @if (visibleQuantificationColumns.length) {
@@ -617,7 +599,17 @@
             <thead>
               <tr>
                 @for (column of visibleQuantificationColumns; track column.key) {
-                  <th>{{ column.label }}</th>
+                  <th [attr.data-b5d-column-key]="column.key" (dragover)="onQuantificationColumnDragOver(column.key, $event)">
+                    <span class="b5d-table-header__content">
+                      <span
+                        class="b5d-table-header__drag-handle bi bi-grip-vertical"
+                        draggable="true"
+                        (dragstart)="onQuantificationColumnDragStart(column.key, $event)"
+                        (dragend)="onQuantificationColumnDragEnd()"
+                      ></span>
+                      <span>{{ t(column.labelKey ?? column.label) }}</span>
+                    </span>
+                  </th>
                 }
               </tr>
               @if (tableFiltersVisible) {
@@ -639,7 +631,7 @@
                           type="text"
                           [ngModel]="getQuantificationFilterValue(column.key)"
                           (ngModelChange)="setQuantificationFilterValue(column.key, $event)"
-                          [placeholder]="column.label"
+                          [placeholder]="t(column.labelKey ?? column.label)"
                         />
                       </div>
                     </th>
@@ -650,12 +642,12 @@
             <tbody>
               @if (!groupedQuantifications.length) {
                 <tr>
-                  <td class="b5d-boq-panel__muted" [attr.colspan]="visibleQuantificationColumns.length">No hay cuantificaciones en este proyecto.</td>
+                  <td class="b5d-boq-panel__muted" [attr.colspan]="visibleQuantificationColumns.length">{{ t('boqPanel.emptyList') }}</td>
                 </tr>
               } @else {
                 @for (groupRow of groupedQuantifications; track groupRow.groupName) {
                   <tr class="b5d-boq-panel__group-row">
-                    <td [attr.colspan]="visibleQuantificationColumns.length"><strong>Project:</strong> {{ groupRow.groupName }}</td>
+                    <td [attr.colspan]="visibleQuantificationColumns.length"><strong>{{ t('boqPanel.projectGroup') }}</strong> {{ groupRow.groupName }}</td>
                   </tr>
 
                   @for (qto of groupRow.items; track qto.id) {
@@ -676,8 +668,8 @@
                                   (click)="$event.stopPropagation()"
                                   (change)="saveQuantificationRow(qto)"
                                 >
-                                  <option [ngValue]="0">Cuantificacion</option>
-                                  <option [ngValue]="1">Esquema de cuantificacion</option>
+                                  <option [ngValue]="0">{{ t('boqPanel.option.quantification') }}</option>
+                                  <option [ngValue]="1">{{ t('boqPanel.option.scheme') }}</option>
                                 </select>
                               </div>
                             }
@@ -691,13 +683,13 @@
                               />
                             }
                             @case ('descripcion') {
-                              <input
-                                type="text"
+                              <textarea
+                                rows="2"
                                 [(ngModel)]="qto.descripcion"
                                 [disabled]="savingQuantificationRowById.has(qto.id)"
                                 (click)="$event.stopPropagation()"
                                 (blur)="saveQuantificationRow(qto)"
-                              />
+                              ></textarea>
                             }
                             @case ('comentarios') {
                               <input
@@ -722,7 +714,7 @@
             </table>
           } @else {
             <div class="b5d-boq-panel__muted">
-              No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+              {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
             </div>
           }
 
@@ -735,16 +727,16 @@
               (contextmenu)="$event.preventDefault()"
             >
               <button type="button" (click)="handleBoqTableContextMenuAction('chooser')">
-                {{ quantificationTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+                {{ quantificationTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
               </button>
               <button type="button" (click)="handleBoqTableContextMenuAction('filters')">
-                {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+                {{ tableFiltersVisible ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.hideFilters') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.showFilters') }}
               </button>
               <button type="button" (click)="handleBoqTableContextMenuAction('best-fit')">
-                Best fit
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.bestFit') }}
               </button>
               <button type="button" (click)="handleBoqTableContextMenuAction('reset')">
-                Restablecer vista
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.resetView') }}
               </button>
             </div>
           }

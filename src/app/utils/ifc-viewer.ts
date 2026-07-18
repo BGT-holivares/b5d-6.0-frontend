@@ -1,6 +1,8 @@
 ﻿import { Inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import type { Box3, Sphere, Vector3 } from 'three';
+import { I18nService } from './i18n/i18n.service';
+import { GLOBAL_TRANSLATIONS } from './i18n/global.translations';
 import type {
   InformacionElementoSeleccionado,
   ModeloIfcCargado,
@@ -28,6 +30,8 @@ import {
   obtenerValorIfc,
 } from './ifc-spatial-tree';
 import { createRandomId } from './random-id';
+import { LoadingPanelService } from '../services/loading-panel.service';
+import { createIfcLoadingPlan } from './loading-panel/loading-plans';
 
 type RegistroElemento = {
   localId: number;
@@ -119,6 +123,7 @@ type MeasurementLengthEdgeHit = {
 
 @Injectable({ providedIn: 'root' })
 export class VisorIfc {
+  private readonly globalTranslations = GLOBAL_TRANSLATIONS;
   readonly cargando = signal(false);
   readonly loadingStage = signal<IfcLoadingStage | null>(null);
   readonly informacionSeleccionada = signal<InformacionElementoSeleccionado | null>(null);
@@ -174,10 +179,22 @@ export class VisorIfc {
   readonly countMeasurementSummary = signal<MeasurementCountSummary | null>(null);
   private measurementOverlayGroup: any = null;
   private readonly measurementSelectionColor = '#f472b6';
-  private readonly defaultSelectionColor = '#f7f31c';
+  private readonly defaultSelectionColor = '#47CDF2';
   private readonly measurementDebugEnabled = true;
+  private readonly lightingGroupName = 'b5d-model-lighting';
+  private modelLightingEnabled = false;
+  private lightingRig: {
+    group: any;
+    ambient: any;
+    hemisphere: any;
+    directional: any;
+  } | null = null;
 
-  constructor(@Inject(PLATFORM_ID) private readonly plataformaId: object) {}
+  constructor(
+    @Inject(PLATFORM_ID) private readonly plataformaId: object,
+    private readonly loadingPanel: LoadingPanelService,
+    private readonly i18n: I18nService,
+  ) {}
 
   get mundoActual(): any {
     return this.mundo;
@@ -248,6 +265,7 @@ export class VisorIfc {
       };
       this.activeModelId = modeloId;
       this.applyModelEdgeGuides(modelo);
+      this.applyLightingToModel(modelo);
 
       this.modelosIfcCargados.update((modelos) => {
         if (modelos.some((item) => item.id === modeloId)) return modelos;
@@ -271,14 +289,15 @@ export class VisorIfc {
     this.raycasterIfc = raycasters.get(mundo);
 
     const resaltador = componentes.get(OBCF.Highlighter);
-
     await resaltador.setup({
       world: mundo,
       selectMaterialDefinition: {
-        color: new THREE.Color('#f7f31c'),
+        color: new THREE.Color('#47CDF2'),
         opacity: 1,
         transparent: false,
         renderedFaces: 0,
+        depthTest: true,
+        depthWrite: true,
       },
     });
 
@@ -286,9 +305,11 @@ export class VisorIfc {
     this.resaltador.events.select.onHighlight.add((selectionMap: Record<string, Set<number>>) => {
       this.updateSelectionFromMap(selectionMap);
     });
-    this.resaltador.events.select.onClear.add(() => {
+    this.resaltador.events.select.onClear.add((selectionMap: Record<string, Set<number>>) => {
       this.updateSelectionFromMap(this.resaltador?.selection?.select ?? {});
     });
+
+    this.refreshLightingPreset();
 
     this.measurementOverlayGroup = new THREE.Group();
     this.measurementOverlayGroup.name = 'measurement-overlays';
@@ -322,6 +343,7 @@ export class VisorIfc {
     this.clearAngleMeasurementSelections();
     this.clearCountMeasurementSelections();
     this.removeModelVisualGuides();
+    this.removeLightingRig();
 
     if (this.urlTrabajador) URL.revokeObjectURL(this.urlTrabajador);
     if (this.componentes) this.componentes.dispose();
@@ -371,6 +393,9 @@ export class VisorIfc {
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createIfcLoadingPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.ifcFile')),
+    );
     this.cargando.set(true);
     this.loadingStage.set('reading');
     this.nombreArchivoPendiente = archivo.name;
@@ -395,12 +420,17 @@ export class VisorIfc {
     this.clearCountMeasurementSelections();
 
     try {
+      this.loadingPanel.setStepProgress(loadingSessionId, 'reading', 35, 'Cargando archivo IFC...');
       this.loadingStage.set('processing');
       const datos = await archivo.arrayBuffer();
       const buffer = new Uint8Array(datos);
+      this.loadingPanel.completeStep(loadingSessionId, 'reading', 'Archivo IFC cargado en memoria.');
 
+      this.loadingPanel.setStepProgress(loadingSessionId, 'preparing', 65, 'Preparando visor IFC...');
       this.loadingStage.set('drawing');
+      this.loadingPanel.setStepProgress(loadingSessionId, 'processing', 15, 'Procesando geometría IFC...');
       await this.cargadorIfc.load(buffer, false, archivo.name);
+      this.loadingPanel.completeStep(loadingSessionId, 'processing', 'Geometría IFC lista.');
 
       try {
         await this.mundo?.camera?.controls?.setLookAt(12, 10, 12, 0, 0, 0, true);
@@ -408,17 +438,23 @@ export class VisorIfc {
         console.warn('No se pudo reposicionar la cámara:', error);
       }
 
+      this.loadingPanel.setStepProgress(loadingSessionId, 'drawing', 45, 'Construyendo escena IFC...');
       await this.esperar(250);
       this.syncModelVisualGuides();
 
       const arbolConstruido = await this.construirArbolConReintentos();
       if (arbolConstruido) this.arbolVisible.set(true);
+      this.loadingPanel.completeStep(loadingSessionId, 'drawing', 'Modelo IFC cargado.');
     } catch (error) {
       console.error('Error cargando IFC:', error);
+      this.loadingPanel.abort(loadingSessionId);
     } finally {
       this.cargando.set(false);
       this.loadingStage.set(null);
       this.nombreArchivoPendiente = '';
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Modelo IFC cargado.');
+      }
     }
   }
 
@@ -568,6 +604,12 @@ export class VisorIfc {
       this.informacionSeleccionada.set(informacion);
 
       await this.resaltarPorLocalId(localId);
+      const modelId = this.activeModelId ?? this.getModelId(this.modeloCargado);
+      if (modelId) {
+        this.updateSelectionFromMap({
+          [modelId]: new Set([localId]),
+        });
+      }
       await this.enfocarEsfera(this.mundo, esfera);
     } catch (error) {
       console.warn('No se pudo seleccionar/enfocar el elemento desde el árbol:', error);
@@ -597,6 +639,9 @@ export class VisorIfc {
       this.activeModelId = modelId;
       if (this.resaltador.clear) await this.resaltador.clear();
       await this.resaltador.highlightByID('select', {
+        [modelId]: new Set(uniqueLocalIds),
+      });
+      this.updateSelectionFromMap({
         [modelId]: new Set(uniqueLocalIds),
       });
 
@@ -2824,6 +2869,126 @@ export class VisorIfc {
     edgeGroup.parent?.remove?.(edgeGroup);
     this.disposeObject3D(edgeGroup);
     this.modelEdgeGuides.delete(modelId);
+  }
+
+  // Enables or disables the optional lighting preset used for a more shaded view.
+  setModelLightingEnabled(enabled: boolean): void {
+    this.modelLightingEnabled = enabled;
+    this.refreshLightingPreset();
+  }
+
+  // Flips the optional lighting preset and returns the new state.
+  toggleModelLighting(): boolean {
+    this.setModelLightingEnabled(!this.modelLightingEnabled);
+    return this.modelLightingEnabled;
+  }
+
+  // Returns whether the optional lighting preset is currently enabled.
+  isModelLightingEnabled(): boolean {
+    return this.modelLightingEnabled;
+  }
+
+  // Rebuilds the lighting rig and shadow state to match the current setting.
+  private refreshLightingPreset(): void {
+    if (!this.moduloThree || !this.mundo?.scene?.three || !this.mundo?.renderer?.three) return;
+
+    if (!this.modelLightingEnabled) {
+      this.removeLightingRig();
+      this.applyShadowStateToLoadedModels(false);
+      this.mundo.renderer.three.shadowMap.enabled = false;
+      this.fragmentos?.core?.update?.(true);
+      return;
+    }
+
+    this.ensureLightingRig();
+    this.updateLightingRigPosition();
+
+    if (this.lightingRig && !this.lightingRig.group.parent) {
+      this.mundo.scene.three.add(this.lightingRig.group);
+    }
+
+    this.mundo.renderer.three.shadowMap.enabled = true;
+    this.mundo.renderer.three.shadowMap.type = this.moduloThree.PCFSoftShadowMap;
+    this.mundo.renderer.three.shadowMap.needsUpdate = true;
+    this.applyShadowStateToLoadedModels(true);
+    this.fragmentos?.core?.update?.(true);
+  }
+
+  // Creates the optional lighting rig when it is first enabled.
+  private ensureLightingRig(): void {
+    if (this.lightingRig || !this.moduloThree) return;
+
+    const group = new this.moduloThree.Group();
+    group.name = this.lightingGroupName;
+
+    const ambient = new this.moduloThree.AmbientLight(0xffffff, 0.4);
+    const hemisphere = new this.moduloThree.HemisphereLight(0xf5f7fb, 0x4b5563, 0.45);
+    const directional = new this.moduloThree.DirectionalLight(0xffffff, 1.1);
+    directional.castShadow = true;
+    directional.shadow.mapSize.set(1024, 1024);
+    directional.shadow.bias = -0.00015;
+    directional.shadow.camera.near = 0.5;
+    directional.shadow.camera.far = 250;
+    directional.shadow.camera.left = -60;
+    directional.shadow.camera.right = 60;
+    directional.shadow.camera.top = 60;
+    directional.shadow.camera.bottom = -60;
+
+    group.add(ambient);
+    group.add(hemisphere);
+    group.add(directional);
+    group.add(directional.target);
+
+    this.lightingRig = {
+      group,
+      ambient,
+      hemisphere,
+      directional,
+    };
+  }
+
+  // Positions the lighting rig around the current model bounds.
+  private updateLightingRigPosition(): void {
+    if (!this.lightingRig || !this.moduloThree) return;
+
+    const boundingBox = this.getFullModelBoundingBox() ?? this.getActiveModelBoundingBox();
+    const center = boundingBox?.getCenter(new this.moduloThree.Vector3()) ?? new this.moduloThree.Vector3(0, 0, 0);
+    const size = boundingBox?.getSize(new this.moduloThree.Vector3()) ?? new this.moduloThree.Vector3(12, 12, 12);
+    const radius = Math.max(size.length() * 0.5, 12);
+
+    this.lightingRig.group.position.set(0, 0, 0);
+    this.lightingRig.directional.position.set(center.x + radius, center.y + radius * 1.2, center.z + radius);
+    this.lightingRig.directional.target.position.copy(center);
+  }
+
+  // Applies shadow flags to every currently loaded mesh.
+  private applyShadowStateToLoadedModels(enabled: boolean): void {
+    for (const model of this.getLoadedModels()) {
+      model.object.traverse((child: any) => {
+        if (!child?.isMesh) return;
+        child.castShadow = enabled;
+        child.receiveShadow = enabled;
+      });
+    }
+  }
+
+  // Removes the optional lighting rig from the scene.
+  private removeLightingRig(): void {
+    this.lightingRig?.group?.parent?.remove?.(this.lightingRig.group);
+    this.lightingRig = null;
+  }
+
+  // Applies the lighting preset to a model when the feature is enabled.
+  private applyLightingToModel(model: any): void {
+    if (!this.modelLightingEnabled || !model?.object) return;
+
+    model.object.traverse((child: any) => {
+      if (!child?.isMesh) return;
+      child.castShadow = true;
+      child.receiveShadow = true;
+    });
+
+    this.refreshLightingPreset();
   }
 
   // Creates one highlighted axis arrow.

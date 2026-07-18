@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from './backend-proyectos.service';
 import type { WorkbookLayersOrm, WorkbookSummaryOrm } from '../types/b5d-orm';
+import { getSafeLocalStorage } from '../utils/browser-storage';
 
 export type WorkbookCacheEntry = {
   workbook: any;
@@ -111,7 +112,8 @@ export class WorkbookPreviewCacheService {
 
     const storageKey = `${this.workbookImageCacheStoragePrefix}${key}`;
     try {
-      const localStorageValue = localStorage.getItem(storageKey) ?? '';
+      const storage = getSafeLocalStorage();
+      const localStorageValue = storage?.getItem(storageKey) ?? '';
       if (localStorageValue.startsWith('data:image/')) {
         this.workbookImageDataUriByKey.set(key, localStorageValue);
         return localStorageValue;
@@ -136,7 +138,8 @@ export class WorkbookPreviewCacheService {
         if (oldestKey) this.workbookImageDataUriByKey.delete(oldestKey);
       }
       try {
-        localStorage.setItem(storageKey, imageDataUri);
+        const storage = getSafeLocalStorage();
+        storage?.setItem(storageKey, imageDataUri);
       } catch {
         // Ignores localStorage availability and quota errors.
       }
@@ -195,10 +198,12 @@ export class WorkbookPreviewCacheService {
 
     const localStoragePrefix = `${this.workbookImageCacheStoragePrefix}${quantificationPrefix}:`;
     try {
-      for (let itemIndex = localStorage.length - 1; itemIndex >= 0; itemIndex -= 1) {
-        const storageKey = localStorage.key(itemIndex) ?? '';
+      const storage = getSafeLocalStorage();
+      if (!storage) return;
+      for (let itemIndex = storage.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const storageKey = storage.key(itemIndex) ?? '';
         if (storageKey.startsWith(localStoragePrefix)) {
-          localStorage.removeItem(storageKey);
+          storage.removeItem(storageKey);
         }
       }
     } catch {

@@ -22,8 +22,8 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  border: 1px solid var(--b5d-border-strong);
+  background: var(--bg-subtle);
 }
 
 .b5d-xlsx-preview__canvas {
@@ -32,15 +32,15 @@
   min-width: 100%;
   min-height: 100%;
   padding-bottom: 4px;
-  background: #ffffff;
+  background: var(--white-color);
   isolation: isolate;
 }
 
 .b5d-xlsx-preview__grid {
   border-collapse: separate;
   border-spacing: 0;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
+  background: var(--white-color);
+  border: 1px solid var(--b5d-border-strong);
   position: relative;
   z-index: 2;
 }
@@ -52,7 +52,7 @@
 
 .b5d-xlsx-preview__grid td,
 .b5d-xlsx-preview__grid th {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--bd-muted);
   min-width: 80px;
   height: 22px;
   padding: 2px 6px;
@@ -62,21 +62,21 @@
   overflow-wrap: anywhere;
   box-sizing: border-box;
   font-family: Calibri, 'Segoe UI', Arial, sans-serif;
-  font-size: 11px;
-  color: #111827;
+  font-size: var(--font-size-xxs);
+  color: var(--b5d-text-strong);
 }
 
 .b5d-xlsx-preview__grid td {
-  background: #ffffff;
+  background: var(--white-color);
 }
 
 .b5d-xlsx-preview__grid td:not([style]):hover {
-  background: #f0f9ff;
+  background: var(--bg-soft);
 }
 
 .b5d-xlsx-preview__grid td:focus,
 .b5d-xlsx-preview__grid th:focus {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--primary-color);
   outline-offset: -2px;
 }
 
@@ -94,7 +94,7 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: #e2e8f0;
+  background: var(--bd-soft);
   font-weight: 700;
   text-align: center;
 }
@@ -104,7 +104,7 @@
   position: sticky;
   left: 0;
   z-index: 35;
-  background: #e2e8f0;
+  background: var(--bd-soft);
   font-weight: 700;
   text-align: center;
   min-width: 48px;
@@ -132,24 +132,24 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #94a3b8 0 50%, transparent 50% 100%);
+  background: linear-gradient(135deg, var(--b5d-border-control-strong) 0 50%, transparent 50% 100%);
 }
 
 .b5d-xlsx-preview__cell--selected {
-  box-shadow: inset 0 0 0 1px #2563eb;
+  box-shadow: inset 0 0 0 1px var(--primary-color);
 }
 
 .b5d-xlsx-preview__cell--selected:not([style]) {
-  background: #dbeafe;
+  background: var(--bg-chip);
 }
 
 .b5d-xlsx-preview__grid a {
-  color: #1d4ed8;
+  color: var(--b5d-brand-primary-strong);
   text-decoration: underline;
 }
 
 .b5d-xlsx-preview__grid tr:nth-child(even) td:not([style]) {
-  background: #fcfcfd;
+  background: var(--b5d-surface-ghost);
 }
 
 .b5d-xlsx-preview__image {
@@ -166,13 +166,13 @@
   align-items: center;
   justify-content: center;
   padding: 8px;
-  border: 1px solid #d1d5db;
-  background: #f8fafc;
-  color: #334155;
+  border: 1px solid var(--bd-muted);
+  background: var(--bg-subtle);
+  color: var(--b5d-text-secondary);
 }
 
 .b5d-xlsx-preview__message--error {
   border-color: #fecaca;
   background: #fee2e2;
-  color: #991b1b;
+  color: var(--b5d-text-danger);
 }

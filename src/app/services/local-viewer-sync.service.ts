@@ -22,6 +22,10 @@ export type LocalViewerSyncMessage =
       kind: 'ifc-selection';
       localIds: number[];
       selectedElementInfo: InformacionElementoSeleccionado | null;
+    }
+  | {
+      kind: 'viewer-lighting';
+      enabled: boolean;
     };
 
 @Injectable({ providedIn: 'root' })
@@ -103,6 +107,17 @@ export class LocalViewerSyncService implements OnDestroy {
       kind: 'ifc-selection',
       localIds: [...new Set(localIds)].filter((localId) => Number.isInteger(localId) && localId > 0),
       selectedElementInfo: selectedElementInfo ? { ...selectedElementInfo } : null,
+    });
+  }
+
+  // Broadcasts the optional viewer lighting preset state to the other browser tabs.
+  broadcastModelLighting(enabled: boolean): void {
+    logB5dDebug('local-viewer-sync: broadcast viewer-lighting', {
+      enabled,
+    });
+    this.broadcastMessage({
+      kind: 'viewer-lighting',
+      enabled,
     });
   }
 

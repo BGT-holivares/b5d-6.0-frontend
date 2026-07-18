@@ -1,6 +1,8 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, inject } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { PROPERTIES_PANEL_TRANSLATIONS } from './properties-panel.translations';
 
 type PestanaPropiedades = 'properties' | 'location' | 'classification' | 'relations' | 'quantities';
 type FilaPropiedad = [string, string | number];
@@ -12,6 +14,9 @@ type FilaPropiedad = [string, string | number];
   styleUrl: './properties-panel.scss',
 })
 export class PropertiesPanel {
+  readonly i18n = inject(I18nService);
+  readonly propertiesPanelTranslations = PROPERTIES_PANEL_TRANSLATIONS;
+
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
 
   activeTab: PestanaPropiedades = 'properties';
@@ -26,13 +31,17 @@ export class PropertiesPanel {
     relations: true,
   };
 
-  readonly pestanas: { id: PestanaPropiedades; etiqueta: string }[] = [
-    { id: 'properties', etiqueta: 'Propiedades' },
-    { id: 'location', etiqueta: 'Localización' },
-    { id: 'classification', etiqueta: 'Clasificación' },
-    { id: 'relations', etiqueta: 'Relaciones' },
-    { id: 'quantities', etiqueta: 'Cantidades' },
+  readonly pestanas: { id: PestanaPropiedades; etiquetaKey: string }[] = [
+    { id: 'properties', etiquetaKey: 'propertiesPanel.tab.properties' },
+    { id: 'location', etiquetaKey: 'propertiesPanel.tab.location' },
+    { id: 'classification', etiquetaKey: 'propertiesPanel.tab.classification' },
+    { id: 'relations', etiquetaKey: 'propertiesPanel.tab.relations' },
+    { id: 'quantities', etiquetaKey: 'propertiesPanel.tab.quantities' },
   ];
+
+  t(key: string): string {
+    return this.i18n.translateForComponent(this.propertiesPanelTranslations, key);
+  }
 
   alternarSeccion(llave: string): void {
     this.seccionesAbiertas[llave] = !this.seccionesAbiertas[llave];
@@ -43,12 +52,12 @@ export class PropertiesPanel {
     if (!informacion) return [];
 
     return [
-      ['ExpressID', informacion.expressID],
-      ['Local ID', informacion.localId],
-      ['GlobalId', informacion.globalId],
-      ['IFC Class', informacion.ifcClass],
-      ['Name', informacion.name],
-      ['ObjectType', informacion.objectType],
+      [this.t('propertiesPanel.field.expressId'), informacion.expressID],
+      [this.t('propertiesPanel.field.localId'), informacion.localId],
+      [this.t('propertiesPanel.field.globalId'), informacion.globalId],
+      [this.t('propertiesPanel.field.ifcClass'), informacion.ifcClass],
+      [this.t('propertiesPanel.field.name'), informacion.name],
+      [this.t('propertiesPanel.field.objectType'), informacion.objectType],
     ];
   }
 
@@ -57,17 +66,17 @@ export class PropertiesPanel {
     if (!informacion) return [];
 
     return [
-      ['Bounding Box Length', informacion.width],
-      ['Bounding Box Width', informacion.depth],
-      ['Bounding Box Height', informacion.height],
-      ['Área total', informacion.totalArea],
-      ['Área bruta', informacion.grossArea],
-      ['Área neta', informacion.netArea],
-      ['Volumen total', informacion.totalVolume],
-      ['Volumen bruto', informacion.grossVolume],
-      ['Volumen neto', informacion.netVolume],
-      ['Perímetro', informacion.perimeter],
-      ['Longitud', informacion.length],
+      [this.t('propertiesPanel.field.boundingBoxLength'), informacion.width],
+      [this.t('propertiesPanel.field.boundingBoxWidth'), informacion.depth],
+      [this.t('propertiesPanel.field.boundingBoxHeight'), informacion.height],
+      [this.t('propertiesPanel.field.totalArea'), informacion.totalArea],
+      [this.t('propertiesPanel.field.grossArea'), informacion.grossArea],
+      [this.t('propertiesPanel.field.netArea'), informacion.netArea],
+      [this.t('propertiesPanel.field.totalVolume'), informacion.totalVolume],
+      [this.t('propertiesPanel.field.grossVolume'), informacion.grossVolume],
+      [this.t('propertiesPanel.field.netVolume'), informacion.netVolume],
+      [this.t('propertiesPanel.field.perimeter'), informacion.perimeter],
+      [this.t('propertiesPanel.field.length'), informacion.length],
     ];
   }
 
@@ -76,14 +85,14 @@ export class PropertiesPanel {
     if (!informacion) return [];
 
     return [
-      ['Project', informacion.project],
-      ['Building', informacion.building],
-      ['Storey', informacion.storey],
-      ['Top Elevation', informacion.topElevation],
-      ['Bottom Elevation', informacion.bottomElevation],
-      ['Global X', informacion.globalX],
-      ['Global Y', informacion.globalY],
-      ['Global Z', informacion.globalZ],
+      [this.t('propertiesPanel.field.project'), informacion.project],
+      [this.t('propertiesPanel.field.building'), informacion.building],
+      [this.t('propertiesPanel.field.storey'), informacion.storey],
+      [this.t('propertiesPanel.field.topElevation'), informacion.topElevation],
+      [this.t('propertiesPanel.field.bottomElevation'), informacion.bottomElevation],
+      [this.t('propertiesPanel.field.globalX'), informacion.globalX],
+      [this.t('propertiesPanel.field.globalY'), informacion.globalY],
+      [this.t('propertiesPanel.field.globalZ'), informacion.globalZ],
     ];
   }
 
@@ -92,9 +101,9 @@ export class PropertiesPanel {
     if (!informacion) return [];
 
     return [
-      ['IFC Class', informacion.ifcClass],
-      ['Layer', informacion.layer],
-      ['ObjectType', informacion.objectType],
+      [this.t('propertiesPanel.field.ifcClass'), informacion.ifcClass],
+      [this.t('propertiesPanel.field.layer'), informacion.layer],
+      [this.t('propertiesPanel.field.objectType'), informacion.objectType],
     ];
   }
 
@@ -103,9 +112,9 @@ export class PropertiesPanel {
     if (!informacion) return [];
 
     return [
-      ['GlobalId', informacion.globalId],
-      ['Name', informacion.name],
-      ['IFC Class', informacion.ifcClass],
+      [this.t('propertiesPanel.field.globalId'), informacion.globalId],
+      [this.t('propertiesPanel.field.name'), informacion.name],
+      [this.t('propertiesPanel.field.ifcClass'), informacion.ifcClass],
     ];
   }
 

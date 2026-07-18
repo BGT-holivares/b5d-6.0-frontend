@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { getSafeLocalStorage } from './browser-storage';
 
 type TemaB5D = 'light' | 'dark';
 
@@ -21,14 +22,16 @@ export class ThemeService {
     const siguienteTema: TemaB5D = this.tema() === 'dark' ? 'light' : 'dark';
     this.tema.set(siguienteTema);
 
-    if (typeof localStorage !== 'undefined') localStorage.setItem(LLAVE_TEMA, siguienteTema);
+    const storage = getSafeLocalStorage();
+    if (storage) storage.setItem(LLAVE_TEMA, siguienteTema);
     this.aplicarTema(siguienteTema);
   }
 
   private obtenerTemaInicial(): TemaB5D {
-    if (typeof localStorage === 'undefined') return 'light';
+    const storage = getSafeLocalStorage();
+    if (!storage) return 'light';
 
-    const temaGuardado = localStorage.getItem(LLAVE_TEMA);
+    const temaGuardado = storage.getItem(LLAVE_TEMA);
     return temaGuardado === 'dark' ? 'dark' : 'light';
   }
 

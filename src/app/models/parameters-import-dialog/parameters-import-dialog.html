@@ -2,26 +2,26 @@
   <div class="b5d-parameters-import-dialog__backdrop" (click)="handleBackdropClick($event)">
     <section #dialogPanel class="b5d-parameters-import-dialog" (click)="$event.stopPropagation()">
       <header class="b5d-parameters-import-dialog__header">
-        <strong>Importar parametros desde Excel</strong>
+        <strong>{{ t('parametersImport.title') }}</strong>
         @if (activeProject) {
-          <span class="b5d-parameters-import-dialog__project">Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})</span>
+          <span class="b5d-parameters-import-dialog__project">{{ t('parametersImport.project') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
         } @else {
-          <span class="b5d-parameters-import-dialog__project b5d-parameters-import-dialog__muted">Sin proyecto activo</span>
+          <span class="b5d-parameters-import-dialog__project b5d-parameters-import-dialog__muted">{{ i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}</span>
         }
       </header>
 
       <div class="b5d-parameters-import-dialog__body">
         <label class="b5d-parameters-import-dialog__field">
-          <span>Archivo Excel</span>
+          <span>{{ t('parametersImport.fileLabel') }}</span>
           <div class="b5d-parameters-import-dialog__file-row">
             <input
               type="text"
               class="b5d-parameters-import-dialog__input b5d-parameters-import-dialog__input--file"
-              [value]="workbookFileName || 'Selecciona un archivo .xlsx o .xlsm'"
+              [value]="workbookFileName || i18n.translateForComponent(globalTranslations, 'common.placeholder.selectFile')"
               readonly
             />
             <label class="b5d-parameters-import-dialog__file-button" [class.b5d-parameters-import-dialog__file-button--disabled]="importInProgress || loading">
-              Elegir archivo
+              {{ i18n.translateForComponent(globalTranslations, 'common.action.chooseFile') }}
               <input
                 type="file"
                 accept=".xlsx,.xlsm"
@@ -31,14 +31,14 @@
             </label>
           </div>
           <div class="b5d-parameters-import-dialog__hint">
-            El asistente busca encabezados de columnas y permite ajustar el mapeo antes de importar.
+            {{ t('parametersImport.fileHint') }}
           </div>
         </label>
 
         @if (isWorkbookProcessing || importInProgress) {
           <div class="b5d-parameters-import-dialog__processing">
             <div class="b5d-parameters-import-dialog__processing-label">
-              {{ processingMessage || (importInProgress ? 'Importando parametros...' : 'Procesando archivo...') }}
+              {{ processingMessage || (importInProgress ? t('parametersImport.importing') : t('parametersImport.processing')) }}
             </div>
             <div class="b5d-parameters-import-dialog__progress">
               <span class="b5d-parameters-import-dialog__progress-bar"></span>
@@ -52,11 +52,11 @@
 
         @if (currentSheet) {
           <section class="b5d-parameters-import-dialog__section">
-            <div class="b5d-parameters-import-dialog__section-title">Deteccion de tabla</div>
+            <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.tableDetection') }}</div>
 
             <div class="b5d-parameters-import-dialog__two-columns">
               <label class="b5d-parameters-import-dialog__field">
-                <span>Hoja</span>
+                <span>{{ t('parametersImport.sheet') }}</span>
                 <select
                   class="b5d-parameters-import-dialog__input"
                   [ngModel]="selectedSheetIndex"
@@ -70,7 +70,7 @@
               </label>
 
               <label class="b5d-parameters-import-dialog__field">
-                <span>Fila de encabezados</span>
+                <span>{{ t('parametersImport.headerRow') }}</span>
                 <select
                   class="b5d-parameters-import-dialog__input"
                   [ngModel]="selectedHeaderCandidateRowNumber"
@@ -78,11 +78,11 @@
                   (ngModelChange)="selectHeaderCandidate($event)"
                 >
                   @if (!selectedHeaderCandidates.length) {
-                    <option [ngValue]="selectedHeaderCandidateRowNumber ?? 1">Fila {{ selectedHeaderCandidateRowNumber ?? 1 }}</option>
+                    <option [ngValue]="selectedHeaderCandidateRowNumber ?? 1">{{ t('parametersImport.rowLabel') }} {{ selectedHeaderCandidateRowNumber ?? 1 }}</option>
                   }
                   @for (candidate of selectedHeaderCandidates; track candidate.rowNumber) {
                     <option [ngValue]="candidate.rowNumber">
-                      Fila {{ candidate.rowNumber }} - {{ getHeaderCandidateSnippet(candidate) || 'Sin encabezado' }}
+                      {{ t('parametersImport.rowLabel') }} {{ candidate.rowNumber }} - {{ getHeaderCandidateSnippet(candidate) || t('parametersImport.noHeader') }}
                     </option>
                   }
                 </select>
@@ -90,19 +90,19 @@
             </div>
 
             <div class="b5d-parameters-import-dialog__hint">
-              {{ mappingSummary }}. La fila seleccionada se usa para detectar las columnas.
+              {{ mappingSummary }}. {{ t('parametersImport.headerHint') }}
             </div>
           </section>
 
           <section class="b5d-parameters-import-dialog__section">
-            <div class="b5d-parameters-import-dialog__section-title">Mapeo de columnas</div>
+            <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.mappingTitle') }}</div>
             <div class="b5d-parameters-import-dialog__mapping-grid">
               @for (field of fieldDefinitions; track field.key) {
                 <div class="b5d-parameters-import-dialog__mapping-row">
                   <div class="b5d-parameters-import-dialog__mapping-label">
-                    <span>{{ field.label }}</span>
+                    <span>{{ t(field.labelKey) }}</span>
                     @if (field.required) {
-                      <small>Obligatorio</small>
+                      <small>{{ t('parametersImport.required') }}</small>
                     }
                   </div>
                   <select
@@ -111,15 +111,15 @@
                     [name]="'mapping-' + field.key"
                     (ngModelChange)="setFieldMapping(field.key, $event)"
                   >
-                    <option [ngValue]="null">No usar / valor por defecto</option>
+                    <option [ngValue]="null">{{ t('parametersImport.ignoreField') }}</option>
                     @for (column of selectedColumns; track column.index) {
                       <option [ngValue]="column.index">
-                        {{ column.letter }} - {{ column.header || 'Sin encabezado' }}
+                        {{ column.letter }} - {{ column.header || t('parametersImport.noHeader') }}
                       </option>
                     }
                   </select>
                   <small class="b5d-parameters-import-dialog__mapping-sample">
-                    Muestra: {{ getFieldMappingSample(field.key) }}
+                    {{ t('parametersImport.sample') }}: {{ getFieldMappingSample(field.key) }}
                   </small>
                 </div>
               }
@@ -127,17 +127,17 @@
           </section>
 
           <section class="b5d-parameters-import-dialog__section b5d-parameters-import-dialog__section--preview">
-            <div class="b5d-parameters-import-dialog__section-title">Vista previa</div>
+            <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.previewTitle') }}</div>
             <div class="b5d-parameters-import-dialog__hint">
-              Los valores por defecto se resaltan para que sea mas facil revisarlos antes de importar.
+              {{ t('parametersImport.previewHint') }}
             </div>
             <div class="b5d-parameters-import-dialog__table-wrapper b5d-parameters-import-dialog__table-wrapper--wide">
               <table class="b5d-parameters-import-dialog__table">
                 <thead>
                   <tr>
-                    <th>Fila</th>
+                    <th>{{ t('parametersImport.rowLabel') }}</th>
                     @for (field of fieldDefinitions; track field.key) {
-                      <th>{{ field.label }}</th>
+                      <th>{{ t(field.labelKey) }}</th>
                     }
                   </tr>
                 </thead>
@@ -154,7 +154,7 @@
                   } @empty {
                     <tr>
                       <td [attr.colspan]="fieldDefinitions.length + 1" class="b5d-parameters-import-dialog__table-empty">
-                        No hay filas de datos después del encabezado seleccionado.
+                        {{ t('parametersImport.noDataRows') }}
                       </td>
                     </tr>
                   }
@@ -174,14 +174,14 @@
       </div>
 
       <footer class="b5d-parameters-import-dialog__footer">
-        <button type="button" class="b5d-parameters-import-dialog__button" (click)="closeDialog()" [disabled]="importInProgress">Cancelar</button>
+        <button type="button" class="b5d-parameters-import-dialog__button" (click)="closeDialog()" [disabled]="importInProgress">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
         <button
           type="button"
           class="b5d-parameters-import-dialog__button b5d-parameters-import-dialog__button--primary"
           (click)="importParameters()"
           [disabled]="!canImport"
         >
-          {{ importInProgress ? 'Importando...' : 'Importar parametros' }}
+          {{ importInProgress ? t('parametersImport.importing') : i18n.translateForComponent(globalTranslations, 'common.action.import') }}
         </button>
       </footer>
     </section>

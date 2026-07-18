@@ -1,0 +1,115 @@
+.b5d-loading-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(8px);
+}
+
+.b5d-loading-panel__card {
+  width: min(680px, 100%);
+  margin-top: 88px;
+  padding: 18px 20px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.28);
+}
+
+.b5d-loading-panel__header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.b5d-loading-panel__title-group {
+  min-width: 0;
+}
+
+.b5d-loading-panel__eyebrow {
+  color: var(--primary-color);
+  font-size: var(--font-size-xxs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.b5d-loading-panel__title {
+  margin: 4px 0 0;
+  color: var(--b5d-text);
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+}
+
+.b5d-loading-panel__subtitle {
+  margin-top: 6px;
+  color: var(--b5d-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.b5d-loading-panel__percent {
+  color: var(--b5d-text);
+  font-size: var(--font-size-xl);
+  font-weight: 800;
+}
+
+.b5d-loading-panel__meter-group {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.b5d-loading-panel__meter-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--b5d-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.b5d-loading-panel__meter {
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--bg-chip);
+}
+
+.b5d-loading-panel__meter--secondary {
+  height: 8px;
+  background: var(--bd-soft);
+}
+
+.b5d-loading-panel__meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary-color) 0%, #22c55e 100%);
+  transition: width 140ms linear;
+}
+
+.b5d-loading-panel__meter-fill--secondary {
+  background: linear-gradient(90deg, #0ea5e9 0%, var(--b5d-brand-primary-light) 100%);
+}
+
+@media (max-width: 640px) {
+  .b5d-loading-panel {
+    padding: 16px;
+  }
+
+  .b5d-loading-panel__card {
+    margin-top: 64px;
+    padding: 16px;
+  }
+
+  .b5d-loading-panel__header {
+    flex-direction: column;
+  }
+}

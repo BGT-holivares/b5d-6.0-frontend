@@ -15,7 +15,7 @@
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--white-color);
   box-shadow: 0 22px 48px rgba(15, 23, 42, 0.3);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -27,14 +27,14 @@
   gap: 12px;
   align-items: center;
   padding: 16px 18px;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 14px;
+  border-bottom: 1px solid var(--bd-soft);
+  font-size: var(--font-size-md);
   font-weight: 700;
 }
 
 .b5d-parameters-import-dialog__project {
-  color: #475569;
-  font-size: 12px;
+  color: var(--b5d-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
@@ -49,14 +49,14 @@
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--b5d-border-info-strong);
   border-radius: 8px;
-  background: #eff6ff;
+  background: var(--bg-soft);
 }
 
 .b5d-parameters-import-dialog__processing-label {
-  color: #1e3a8a;
-  font-size: 12px;
+  color: var(--b5d-brand-primary-strong);
+  font-size: var(--font-size-xs);
   font-weight: 700;
 }
 
@@ -65,7 +65,7 @@
   overflow: hidden;
   height: 8px;
   border-radius: 999px;
-  background: #dbeafe;
+  background: var(--bg-chip);
 }
 
 .b5d-parameters-import-dialog__progress-bar {
@@ -73,27 +73,27 @@
   inset: 0 auto 0 0;
   width: 34%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+  background: linear-gradient(90deg, var(--primary-color) 0%, var(--b5d-brand-primary-light) 100%);
   animation: b5d-parameters-import-dialog-progress 1.2s ease-in-out infinite;
 }
 
 .b5d-parameters-import-dialog__field {
   display: grid;
   gap: 6px;
-  color: #0f172a;
-  font-size: 12px;
+  color: var(--b5d-text);
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
 .b5d-parameters-import-dialog__input {
   width: 100%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--b5d-border-strong);
   border-radius: 8px;
   padding: 8px 10px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--white-color);
+  color: var(--b5d-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .b5d-parameters-import-dialog__input--file {
@@ -113,12 +113,12 @@
   justify-content: center;
   min-width: 110px;
   padding: 8px 12px;
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--b5d-border-control-strong);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--bg-subtle);
+  color: var(--b5d-text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-align: center;
 }
@@ -136,8 +136,8 @@
 }
 
 .b5d-parameters-import-dialog__hint {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--b5d-text-subtle);
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -145,19 +145,19 @@
   display: grid;
   gap: 12px;
   padding: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--bd-soft);
   border-radius: 10px;
-  background: #f8fafc;
+  background: var(--bg-subtle);
 }
 
 .b5d-parameters-import-dialog__section--preview {
-  border-color: #93c5fd;
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+  border-color: var(--b5d-border-info-strong);
+  background: linear-gradient(180deg, var(--bg-soft) 0%, var(--b5d-surface-ghost) 100%);
 }
 
 .b5d-parameters-import-dialog__section-title {
-  color: #0f172a;
-  font-size: 13px;
+  color: var(--b5d-text);
+  font-size: var(--font-size-sm);
   font-weight: 700;
 }
 
@@ -182,27 +182,27 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: #0f172a;
-  font-size: 12px;
+  color: var(--b5d-text);
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
 .b5d-parameters-import-dialog__mapping-label small {
-  color: #64748b;
+  color: var(--b5d-text-subtle);
   font-weight: 600;
 }
 
 .b5d-parameters-import-dialog__mapping-sample {
-  color: #64748b;
-  font-size: 11px;
+  color: var(--b5d-text-subtle);
+  font-size: var(--font-size-xxs);
   line-height: 1.35;
 }
 
 .b5d-parameters-import-dialog__table-wrapper {
   overflow: auto;
-  border: 1px solid #d9dee4;
+  border: 1px solid var(--bd-muted);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--white-color);
 }
 
 .b5d-parameters-import-dialog__table-wrapper--wide {
@@ -218,41 +218,41 @@
 .b5d-parameters-import-dialog__table th,
 .b5d-parameters-import-dialog__table td {
   padding: 8px;
-  border: 1px solid #d9dee4;
+  border: 1px solid var(--bd-muted);
   vertical-align: top;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-parameters-import-dialog__table th {
-  background: #edf2f8;
+  background: var(--b5d-surface-panel-alt);
   font-weight: 700;
 }
 
 .b5d-parameters-import-dialog__table-empty {
   text-align: center;
-  color: #64748b;
+  color: var(--b5d-text-subtle);
 }
 
 .b5d-parameters-import-dialog__table-cell--default {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: var(--bg-soft);
+  color: var(--b5d-brand-primary-strong);
   font-weight: 700;
 }
 
 .b5d-parameters-import-dialog__message {
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--b5d-border-strong);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
-  font-size: 12px;
+  background: var(--bg-subtle);
+  color: var(--b5d-text);
+  font-size: var(--font-size-xs);
 }
 
 .b5d-parameters-import-dialog__message--error {
   border-color: #fca5a5;
   background: #fef2f2;
-  color: #b91c1c;
+  color: var(--b5d-text-danger);
 }
 
 .b5d-parameters-import-dialog__message--success {
@@ -266,26 +266,26 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 18px;
-  border-top: 1px solid #e2e8f0;
-  background: #ffffff;
+  border-top: 1px solid var(--bd-soft);
+  background: var(--white-color);
 }
 
 .b5d-parameters-import-dialog__button {
   min-width: 120px;
   padding: 8px 14px;
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--b5d-border-control-strong);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--bg-subtle);
+  color: var(--b5d-text);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
 .b5d-parameters-import-dialog__button--primary {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #ffffff;
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: var(--white-color);
 }
 
 .b5d-parameters-import-dialog__button:disabled {
@@ -294,7 +294,7 @@
 }
 
 .b5d-parameters-import-dialog__muted {
-  color: #64748b;
+  color: var(--b5d-text-subtle);
 }
 
 @media (max-width: 900px) {

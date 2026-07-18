@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { type B5DLanguage, type ComponentTranslations } from './translations';
+import { getSafeLocalStorage } from '../browser-storage';
 
 const LANGUAGE_KEY = 'b5d-language';
 
@@ -17,20 +18,22 @@ export class I18nService {
   changeLanguage(language: B5DLanguage): void {
     this.language.set(language);
 
-    if (typeof localStorage !== 'undefined') localStorage.setItem(LANGUAGE_KEY, language);
+    const storage = getSafeLocalStorage();
+    if (storage) storage.setItem(LANGUAGE_KEY, language);
     if (typeof document !== 'undefined') document.documentElement.lang = language;
   }
 
   // Alterna entre los idiomas configurados para probar la traducción en pantalla.
-  // TODO: Agregar más opciones para lenguaje
+  // Manual attention needed: add more language options here.
   toggleLanguage(): void {
     this.changeLanguage(this.language() === 'es-MX' ? 'en-US' : 'es-MX');
   }
 
   private getInitialLanguage(): B5DLanguage {
-    if (typeof localStorage === 'undefined') return 'es-MX';
+    const storage = getSafeLocalStorage();
+    if (!storage) return 'es-MX';
 
-    const storedLanguage = localStorage.getItem(LANGUAGE_KEY);
+    const storedLanguage = storage.getItem(LANGUAGE_KEY);
     if (storedLanguage === 'es-MX' || storedLanguage === 'en-US') {
       if (typeof document !== 'undefined') document.documentElement.lang = storedLanguage;
       return storedLanguage;

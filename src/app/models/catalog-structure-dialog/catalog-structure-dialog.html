@@ -55,12 +55,12 @@
 
         <div class="b5d-catalog-dialog__field">
           <span>{{ i18n.translateForComponent(translations, 'catalogDialog.externalCatalog') }}</span>
-          <div class="b5d-catalog-dialog__file-row">
-            <input
-              type="text"
-              class="b5d-catalog-dialog__input b5d-catalog-dialog__input--file"
-              [value]="selectedFileName || i18n.translateForComponent(translations, 'catalogDialog.noFile')"
-              readonly
+        <div class="b5d-catalog-dialog__file-row">
+          <input
+            type="text"
+            class="b5d-catalog-dialog__input b5d-catalog-dialog__input--file"
+            [value]="selectedFileName || i18n.translateForComponent(translations, 'catalogDialog.noFile')"
+            readonly
             />
             <label class="b5d-catalog-dialog__file-button" [class.b5d-catalog-dialog__file-button--disabled]="isReadOnly">
               {{ i18n.translateForComponent(translations, 'catalogDialog.chooseFile') }}
@@ -78,6 +78,207 @@
             </div>
           }
         </div>
+
+        @if (mode === 'info') {
+          <section class="b5d-catalog-dialog__section">
+            <strong>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataTitle') }}</strong>
+            @if (catalogMetadata) {
+              <div class="b5d-catalog-dialog__metadata-grid">
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataKey') }}</span>
+                  <strong>{{ catalogMetadata.clave || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataDescription') }}</span>
+                  <strong>{{ catalogMetadata.descripcion || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataStreet') }}</span>
+                  <strong>{{ catalogMetadata.calle_y_numero || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataNeighborhood') }}</span>
+                  <strong>{{ catalogMetadata.colonia || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataCity') }}</span>
+                  <strong>{{ catalogMetadata.ciudad || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataState') }}</span>
+                  <strong>{{ catalogMetadata.estado || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataCreatedAt') }}</span>
+                  <strong>{{ catalogMetadata.fecha_creacion || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataLastCalculationAt') }}</span>
+                  <strong>{{ catalogMetadata.fecha_ultimo_calculo || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataStartAt') }}</span>
+                  <strong>{{ catalogMetadata.fecha_inicio || '-' }}</strong>
+                </div>
+                <div class="b5d-catalog-dialog__metadata-row">
+                  <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataEndAt') }}</span>
+                  <strong>{{ catalogMetadata.fecha_termino || '-' }}</strong>
+                </div>
+              </div>
+            } @else {
+              <div class="b5d-catalog-dialog__hint">
+                {{ i18n.translateForComponent(translations, 'catalogDialog.metadataEmpty') }}
+              </div>
+            }
+          </section>
+
+          <section class="b5d-catalog-dialog__section">
+            <strong>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataImportTitle') }}</strong>
+            <label class="b5d-catalog-dialog__field">
+              <span>{{ i18n.translateForComponent(translations, 'catalogDialog.metadataImportFile') }}</span>
+              <div class="b5d-catalog-dialog__file-row">
+                <input
+                  type="text"
+                  class="b5d-catalog-dialog__input b5d-catalog-dialog__input--file"
+                  [value]="selectedMetadataFileName || i18n.translateForComponent(translations, 'catalogDialog.noMetadataFile')"
+                  readonly
+                />
+                <label class="b5d-catalog-dialog__file-button" [class.b5d-catalog-dialog__file-button--disabled]="loading">
+                  {{ i18n.translateForComponent(translations, 'catalogDialog.chooseMetadataFile') }}
+                  <input
+                    type="file"
+                    accept=".xdb"
+                    [disabled]="loading"
+                    (change)="handleMetadataFileChange($event)"
+                  />
+                </label>
+              </div>
+            </label>
+            <div class="b5d-catalog-dialog__hint">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.metadataImportHint') }}
+            </div>
+          </section>
+
+          <section class="b5d-catalog-dialog__section b5d-catalog-dialog__section--preview">
+            <strong>{{ i18n.translateForComponent(translations, 'catalogDialog.costImportTitle') }}</strong>
+            <label class="b5d-catalog-dialog__field">
+              <span>{{ i18n.translateForComponent(translations, 'catalogDialog.costImportFile') }}</span>
+              <div class="b5d-catalog-dialog__file-row">
+                <input
+                  type="text"
+                  class="b5d-catalog-dialog__input b5d-catalog-dialog__input--file"
+                  [value]="selectedCostFileName || i18n.translateForComponent(translations, 'catalogDialog.noCostFile')"
+                  readonly
+                />
+                <label class="b5d-catalog-dialog__file-button" [class.b5d-catalog-dialog__file-button--disabled]="loading || costPreviewLoading">
+                  {{ i18n.translateForComponent(translations, 'catalogDialog.chooseCostFile') }}
+                  <input
+                    type="file"
+                    accept=".xdb"
+                    [disabled]="loading || costPreviewLoading"
+                    (change)="handleCostFileChange($event)"
+                  />
+                </label>
+              </div>
+            </label>
+            <div class="b5d-catalog-dialog__hint">
+              {{ i18n.translateForComponent(translations, 'catalogDialog.costImportHint') }}
+            </div>
+
+            @if (costPreviewLoading) {
+              <div class="b5d-catalog-dialog__message b5d-catalog-dialog__message--info">{{ costPreviewMessage }}</div>
+            } @else if (hasCostPreview) {
+              @if (costPreviewMessage) {
+                <div class="b5d-catalog-dialog__message b5d-catalog-dialog__message--info">{{ costPreviewMessage }}</div>
+              }
+
+              <div class="b5d-catalog-dialog__inline-actions">
+                <button
+                  type="button"
+                  class="b5d-catalog-dialog__button"
+                  [disabled]="!importableCostCount"
+                  (click)="setAllCostSelections(true)"
+                >
+                  {{ i18n.translateForComponent(translations, 'catalogDialog.selectAllCosts') }}
+                </button>
+                <button
+                  type="button"
+                  class="b5d-catalog-dialog__button"
+                  [disabled]="!selectedCostCount"
+                  (click)="setAllCostSelections(false)"
+                >
+                  {{ i18n.translateForComponent(translations, 'catalogDialog.clearSelectedCosts') }}
+                </button>
+                <span class="b5d-catalog-dialog__counter">
+                  {{ selectedCostCount }} / {{ importableCostCount }}
+                  {{ i18n.translateForComponent(translations, 'catalogDialog.selectedCosts') }}
+                </span>
+              </div>
+
+              <div class="b5d-catalog-dialog__table-wrapper b5d-catalog-dialog__table-wrapper--wide">
+                <table class="b5d-catalog-dialog__table">
+                  <thead>
+                    <tr>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewAccept') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewWbs') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCode') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewDescription') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewSourceUnit') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCatalogCode') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCatalogUnit') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCurrentPriceUnit') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewNewPriceUnit') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCurrentQuantity') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewNewQuantity') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewCurrentAmount') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewNewAmount') }}</th>
+                      <th>{{ i18n.translateForComponent(translations, 'catalogDialog.costPreviewReason') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of costPreviewRows; track row.catalogo_concepto_id ?? row.firma) {
+                      <tr [class.b5d-catalog-dialog__table-row--disabled]="!row.puede_importarse">
+                        <td class="b5d-catalog-dialog__table-cell--center">
+                          @if (row.catalogo_concepto_id !== null) {
+                            <input
+                              type="checkbox"
+                              [checked]="isCostSelected(row.catalogo_concepto_id)"
+                              [disabled]="!row.puede_importarse"
+                              (change)="toggleCostSelection(row.catalogo_concepto_id, $any($event.target).checked)"
+                            />
+                          } @else {
+                            -
+                          }
+                        </td>
+                        <td class="b5d-catalog-dialog__table-cell--strong" [title]="row.firma">{{ row.firma }}</td>
+                        <td>{{ row.clave || '-' }}</td>
+                        <td>{{ row.descripcion || '-' }}</td>
+                        <td>{{ row.unidad_origen || '-' }}</td>
+                        <td>{{ row.catalogo_clave || '-' }}</td>
+                        <td>{{ row.catalogo_unidad || '-' }}</td>
+                        <td>{{ formatCostValue(row.precio_unitario_actual) }}</td>
+                        <td>{{ formatCostValue(row.precio_unitario_nuevo) }}</td>
+                        <td>{{ formatCostValue(row.cantidad_actual) }}</td>
+                        <td>{{ formatCostValue(row.cantidad_nueva) }}</td>
+                        <td>{{ formatCostValue(row.importe_actual) }}</td>
+                        <td>{{ formatCostValue(row.importe_nuevo) }}</td>
+                        <td [title]="row.motivo || '-'">{{ row.motivo || '-' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <div class="b5d-catalog-dialog__hint">
+                {{ costPreviewMessage || i18n.translateForComponent(translations, 'catalogDialog.costPreviewEmpty') }}
+              </div>
+            }
+
+            @if (costValidationMessage) {
+              <div class="b5d-catalog-dialog__message">{{ costValidationMessage }}</div>
+            }
+          </section>
+        }
 
         @if (mode === 'create') {
           <section class="b5d-catalog-dialog__section">
@@ -122,10 +323,27 @@
         }
 
         <footer class="b5d-catalog-dialog__footer">
-          <button type="button" class="b5d-catalog-dialog__button" (click)="closeDialog()">
+          <button type="button" class="b5d-catalog-dialog__button" (click)="closeDialog()" [disabled]="loading">
             {{ i18n.translateForComponent(translations, 'catalogDialog.cancel') }}
           </button>
-          @if (!isReadOnly) {
+          @if (mode === 'info') {
+            <button
+              type="button"
+              class="b5d-catalog-dialog__button b5d-catalog-dialog__button--primary"
+              [disabled]="loading || !metadataArchivo"
+              (click)="submitMetadataImport()"
+            >
+              {{ i18n.translateForComponent(translations, 'catalogDialog.importMetadata') }}
+            </button>
+            <button
+              type="button"
+              class="b5d-catalog-dialog__button b5d-catalog-dialog__button--primary"
+              [disabled]="!canImportCosts"
+              (click)="submitCostImport()"
+            >
+              {{ i18n.translateForComponent(translations, 'catalogDialog.importCosts') }}
+            </button>
+          } @else {
             <button type="submit" class="b5d-catalog-dialog__button b5d-catalog-dialog__button--primary" [disabled]="loading">
               {{ i18n.translateForComponent(translations, 'catalogDialog.save') }}
             </button>

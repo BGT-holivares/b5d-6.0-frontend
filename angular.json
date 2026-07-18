@@ -71,12 +71,12 @@
                 {
                   "type": "initial",
                   "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumError": "1160kB"
                 },
                 {
                   "type": "anyComponentStyle",
                   "maximumWarning": "4kB",
-                  "maximumError": "8kB"
+                  "maximumError": "9kB"
                 }
               ],
               "outputHashing": "all"
@@ -117,12 +117,14 @@
               "buildTarget": "frontend:build:production"
             },
             "development": {
+              "proxyConfig": "proxy.dev.conf.json",
               "buildTarget": "frontend:build:development"
             },
             "server": {
               "allowedHosts": [
                 "192.168.2.36"
               ],
+              "proxyConfig": "proxy.server.conf.json",
               "buildTarget": "frontend:build:server"
             },
             "private-vm": {

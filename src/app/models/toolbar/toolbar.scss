@@ -10,7 +10,7 @@
   width: 100%;
   min-height: var(--navbar-height);
   color: var(--text-color);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-tab-archive-button {
@@ -22,7 +22,7 @@
   background-color: var(--primary-color);
   color: var(--white-color);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-toolbar__collapse-button {
@@ -33,7 +33,7 @@
   background: transparent;
   color: var(--text-color);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-toolbar__collapse-button:hover {
@@ -95,7 +95,8 @@
 
 .b5d-toolbar-action-small {
   display: grid;
-  width: 130px;
+  width: 120px;
+  min-width: 120px;
   height: 20px;
   grid-template-columns: 22px 1fr;
   gap: 4px;
@@ -116,7 +117,8 @@
 
 .b5d-toolbar-action-large {
   display: grid;
-  width: clamp(110px, 11ch, 130px);
+  width: clamp(112px, 11ch, 124px);
+  min-width: 112px;
   height: 64px;
   grid-template-rows: 30px 24px;
   justify-items: center;
@@ -185,7 +187,7 @@
 
 .b5d-toolbar-action-grid {
   display: grid;
-  grid-auto-columns: 130px;
+  grid-auto-columns: 120px;
   grid-auto-flow: column;
   grid-template-rows: repeat(3, 20px);
   gap: 1px 4px;
@@ -205,7 +207,7 @@
   align-items: center;
   padding: 0 14px;
   color: var(--b5d-toolbar-muted-text);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .b5d-toolbar__loading {
@@ -222,7 +224,7 @@
 
 .b5d-toolbar__loading-header {
   color: var(--text-color);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 700;
 }
 
@@ -254,7 +256,7 @@
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+  background: linear-gradient(90deg, var(--primary-color) 0%, var(--b5d-brand-primary-light) 100%);
   transition: width 180ms ease;
 }
 

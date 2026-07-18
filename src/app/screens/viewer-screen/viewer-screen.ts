@@ -27,18 +27,30 @@ import { BoqPanel } from '../../models/boq-panel/boq-panel';
 import { ParametersPanel } from '../../models/parameters-panel/parameters-panel';
 import { ParametersReportPanel } from '../../models/parameters-report-panel/parameters-report-panel';
 import { ParametersImportDialog } from '../../models/parameters-import-dialog/parameters-import-dialog';
-import { CatalogStructureDialog, type CatalogStructureDraft } from '../../models/catalog-structure-dialog/catalog-structure-dialog';
+import { ParametersB5dImportDialog, type B5dParameterImportSummary } from '../../models/parameters-b5d-import-dialog/parameters-b5d-import-dialog';
+import { ParametersXdbImportDialog, type XdbParameterImportSummary } from '../../models/parameters-xdb-import-dialog/parameters-xdb-import-dialog';
+import { LoadingPanel } from '../../models/loading-panel/loading-panel';
+import {
+  CatalogStructureDialog,
+  type CatalogCostImportDraft,
+  type CatalogStructureDraft,
+} from '../../models/catalog-structure-dialog/catalog-structure-dialog';
 import { BackendAuthService } from '../../services/backend-auth.service';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { IfcFileCacheService } from '../../services/ifc-file-cache.service';
 import { LocalViewerSyncService, type LocalViewerSyncMessage } from '../../services/local-viewer-sync.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
-import { logB5dDebug } from '../../utils/debug/b5d-debug';
+import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
 import { I18nService } from '../../utils/i18n/i18n.service';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import { VisorIfc } from '../../utils/ifc-viewer';
+import { LoadingPanelService } from '../../services/loading-panel.service';
 import { resolveIfcSelectionFromConceptKey } from '../../utils/ifc-selection/ifc-selection';
 import { startPointerDrag } from '../../utils/panel-interactions/panel-interactions';
+import { getSafeLocalStorage, getSafeSessionStorage } from '../../utils/browser-storage';
 import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import { createB5dExportPlan, createB5dImportPlan, createCatalogImportPlan } from '../../utils/loading-panel/loading-plans';
+import { VIEWER_SCREEN_TRANSLATIONS } from './viewer-screen.translations';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type {
   CatalogoB5DOrm,
@@ -88,6 +100,7 @@ type ViewerUiState = {
   bottomPanelTab?: BottomPanelTab;
   treeSectionHeight?: number;
   toolbarContentVisible?: boolean;
+  modelLightingEnabled?: boolean;
   selectedCatalogId?: number | null;
   tableFiltersVisible?: boolean;
   floatingPanels?: Record<FloatingPanelId, FloatingPanelState>;
@@ -141,12 +154,17 @@ type ViewerUiState = {
     ParametersPanel,
     ParametersReportPanel,
     ParametersImportDialog,
+    ParametersB5dImportDialog,
+    ParametersXdbImportDialog,
+    LoadingPanel,
     CatalogStructureDialog,
   ],
   templateUrl: './viewer-screen.html',
   styleUrl: './viewer-screen.scss',
 })
 export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy, OnInit {
+  readonly viewerScreenTranslations = VIEWER_SCREEN_TRANSLATIONS;
+
   @ViewChild('contenedorVisor') private readonly contenedorVisor?: ElementRef<HTMLElement>;
   @ViewChild('inputB5d') private readonly inputB5d?: ElementRef<HTMLInputElement>;
   @ViewChild(PropertiesPanel) private readonly propertiesPanel?: PropertiesPanel;
@@ -167,6 +185,8 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly ifcFileCache = inject(IfcFileCacheService);
   readonly localViewerSync = inject(LocalViewerSyncService);
   readonly i18n = inject(I18nService);
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+  readonly loadingPanel = inject(LoadingPanelService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly isBrowser = isPlatformBrowser(this.platformId);
   readonly cuantificacion = signal<NodoCuantificacion | null>(null);
@@ -187,12 +207,16 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly b5dCargando = signal(false);
   readonly b5dMensaje = signal('');
   readonly usuarioSesion = signal<UsuarioSesionOrm | null>(null);
+  readonly importDebugTrace = signal<string[]>([]);
   readonly catalogStructureDialogVisible = signal(false);
   readonly catalogStructureDialogMode = signal<'create' | 'info'>('create');
   readonly catalogStructureDialogCatalog = signal<CatalogoB5DOrm | null>(null);
   readonly catalogStructureDialogLoading = signal(false);
   readonly parameterImportDialogVisible = signal(false);
+  readonly parameterB5dImportDialogVisible = signal(false);
+  readonly parameterXdbImportDialogVisible = signal(false);
   private readonly catalogLinkCopySourceByTargetId = new Map<number, number>();
+  private backendImportTraceCount = 0;
   readonly homeToolbarState = signal<HomeToolbarState>({
     activeBottomTab: 'links',
     activePanel: 'concepts',
@@ -271,12 +295,13 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     };
   });
   readonly toolbarContentVisible = signal(true);
+  readonly modelLightingEnabled = signal(false);
   readonly windowMode = signal<ViewerWindowMode>(this.restoreWindowMode());
   readonly bottomPanelTab = signal<BottomPanelTab>('links');
   readonly bottomPanelTabs: { id: BottomPanelTab; label: string }[] = [
     { id: 'links', label: 'Estructura de conceptos' },
     { id: 'boq', label: 'Cuantificaciones' },
-    { id: 'parameters', label: 'Parameters' },
+    { id: 'parameters', label: 'Parametros' },
     { id: 'report', label: 'Reporte' },
   ];
   treeSectionHeight = 220;
@@ -493,10 +518,14 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             ? {}
           : message.kind === 'ifc-elements'
             ? { count: message.ifcElements.length }
-            : {
-                count: message.localIds.length,
-                hasSelectedElementInfo: !!message.selectedElementInfo,
-              },
+            : message.kind === 'ifc-selection'
+              ? {
+                  count: message.localIds.length,
+                  hasSelectedElementInfo: !!message.selectedElementInfo,
+                }
+              : {
+                  enabled: message.enabled,
+                },
     });
     if (!this.localViewerSyncReady || this.processingLocalViewerSyncMessages) {
       this.pendingLocalViewerSyncMessages.push(message);
@@ -531,6 +560,8 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
           this.applyRemoteIfcElements(pendingMessage.ifcElements);
         } else if (pendingMessage.kind === 'ifc-selection') {
           await this.applyRemoteIfcSelection(pendingMessage.localIds, pendingMessage.selectedElementInfo);
+        } else if (pendingMessage.kind === 'viewer-lighting') {
+          this.applyRemoteModelLighting(pendingMessage.enabled);
         }
       }
     } finally {
@@ -647,6 +678,31 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       count: localIds.length,
       windowMode: this.windowMode(),
     });
+  }
+
+  // Replays the viewer lighting preset received from another browser tab.
+  private applyRemoteModelLighting(enabled: boolean): void {
+    this.debugB5d('applyRemoteModelLighting: update', {
+      enabled,
+      windowMode: this.windowMode(),
+      hasWorld: !!this.visorIfc.mundoActual,
+    });
+    this.setModelLightingEnabled(enabled, false);
+  }
+
+  // Updates the viewer lighting preset and optionally mirrors it to the other tabs.
+  private setModelLightingEnabled(enabled: boolean, broadcast = true): void {
+    this.modelLightingEnabled.set(enabled);
+    this.visorIfc.setModelLightingEnabled(enabled);
+
+    if (broadcast && this.localViewerSyncReady && !this.suppressLocalViewerBroadcast) {
+      this.localViewerSync.broadcastModelLighting(enabled);
+    }
+  }
+
+  // Toggles the viewer lighting preset.
+  private toggleModelLighting(): void {
+    this.setModelLightingEnabled(!this.modelLightingEnabled());
   }
 
   // Extracts a flat, de-duplicated list of selected local identifiers.
@@ -850,7 +906,8 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     this.persistedPropertiesPanelUiStateApplied = false;
 
     try {
-      const raw = window.localStorage.getItem(this.viewerUiStateStorageKey);
+      const storage = getSafeLocalStorage();
+      const raw = storage?.getItem(this.viewerUiStateStorageKey) ?? null;
       if (!raw) return;
       const parsed = JSON.parse(raw) as ViewerUiState | null;
       if (!parsed || typeof parsed !== 'object') return;
@@ -875,6 +932,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       }
       if (typeof parsed.toolbarContentVisible === 'boolean') {
         this.toolbarContentVisible.set(parsed.toolbarContentVisible);
+      }
+      if (typeof parsed.modelLightingEnabled === 'boolean') {
+        this.setModelLightingEnabled(parsed.modelLightingEnabled, false);
       }
       if (typeof parsed.selectedCatalogId === 'number' && Number.isFinite(parsed.selectedCatalogId)) {
         this.homeToolbarState.update((state) => ({
@@ -950,7 +1010,8 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     if (!this.isBrowser || typeof window === 'undefined') return 'viewer';
 
     try {
-      const raw = window.sessionStorage.getItem('b5d-viewer-window-mode');
+      const storage = getSafeSessionStorage();
+      const raw = storage?.getItem('b5d-viewer-window-mode') ?? null;
       this.debugB5d('restoreWindowMode: raw value', { raw });
       return raw === 'control' ? 'control' : 'viewer';
     } catch {
@@ -977,6 +1038,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
         30000,
         'El visor IFC no termino de inicializarse en 30 segundos.',
       );
+      this.visorIfc.setModelLightingEnabled(this.modelLightingEnabled());
 
       if (this.lastLoadedIfcFile && this.windowMode() === 'viewer' && !this.visorIfc.modelosIfcCargados().length) {
         const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
@@ -1220,6 +1282,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       bottomPanelTab: this.bottomPanelTab(),
       treeSectionHeight: this.treeSectionHeight,
       toolbarContentVisible: this.toolbarContentVisible(),
+      modelLightingEnabled: this.modelLightingEnabled(),
       selectedCatalogId: this.homeToolbarState().selectedCatalogId ?? null,
       tableFiltersVisible: this.homeToolbarState().tableFiltersVisible ?? false,
       floatingPanels: this.floatingPanels(),
@@ -1272,7 +1335,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     if (serialized === this.lastPersistedViewerUiState) return;
 
     try {
-      window.localStorage.setItem(this.viewerUiStateStorageKey, serialized);
+      getSafeLocalStorage()?.setItem(this.viewerUiStateStorageKey, serialized);
       this.lastPersistedViewerUiState = serialized;
     } catch {
       // Ignore persistence errors.
@@ -1281,8 +1344,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
   private async importarProyectoB5d(archivo: File): Promise<void> {
     const inicioImportacion = performance.now();
+    const loadingSessionId = this.loadingPanel.start(
+      createB5dImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importB5dProject')),
+    );
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
+    this.clearImportDebugTrace();
     this.debugB5d('importarProyectoB5d: request start', {
       fileName: archivo.name,
       fileSize: archivo.size,
@@ -1295,13 +1362,16 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
           sincrono: false,
         }),
       );
+      this.loadingPanel.completeStep(loadingSessionId, 'uploading', 'Archivo B5D recibido.');
       this.debugB5d('importarProyectoB5d: upload request resolved', {
         projectId: proyecto.id,
         elapsedMs: Math.round(performance.now() - inicioImportacion),
       });
-      const proyectoImportado = await this.esperarProyectoImportado(proyecto.id);
+      const proyectoImportado = await this.esperarProyectoImportado(proyecto.id, loadingSessionId);
+      this.loadingPanel.completeStep(loadingSessionId, 'processing', 'Proyecto B5D procesado.');
       this.proyectoB5dActivo.set(proyectoImportado);
       await this.cargarDatosProyectoB5d(proyectoImportado.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
       this.debugB5d('importarProyectoB5d: import completed', {
         projectId: proyectoImportado.id,
         elapsedMs: Math.round(performance.now() - inicioImportacion),
@@ -1312,46 +1382,83 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
         elapsedMs: Math.round(performance.now() - inicioImportacion),
         error,
       });
+      this.loadingPanel.abort(loadingSessionId);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar el archivo B5D.'));
     } finally {
       this.b5dCargando.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Proyecto importado.');
+      }
     }
   }
 
-  private async esperarProyectoImportado(proyectoId: number): Promise<ProyectoTrabajoOrm> {
+  private async esperarProyectoImportado(proyectoId: number, loadingSessionId?: number): Promise<ProyectoTrabajoOrm> {
     return this.withTimeout(
-      this.esperarProyectoImportadoSinTimeout(proyectoId),
+      this.esperarProyectoEnEstadoSinTimeout(proyectoId, 'importando', 'processing', loadingSessionId),
       this.projectImportTimeoutMs,
       'La importacion del proyecto esta tardando demasiado. Vuelve a intentarlo en unos minutos.',
     );
   }
 
-  private async esperarProyectoImportadoSinTimeout(proyectoId: number): Promise<ProyectoTrabajoOrm> {
+  private async esperarProyectoExportado(proyectoId: number, loadingSessionId?: number): Promise<ProyectoTrabajoOrm> {
+    return this.withTimeout(
+      this.esperarProyectoEnEstadoSinTimeout(proyectoId, 'exportando', 'downloading', loadingSessionId),
+      this.projectImportTimeoutMs,
+      'La exportacion del proyecto esta tardando demasiado. Vuelve a intentarlo en unos minutos.',
+    );
+  }
+
+  private async esperarProyectoEnEstadoSinTimeout(
+    proyectoId: number,
+    estadoEnCurso: 'importando' | 'exportando',
+    loadingStepId: 'processing' | 'downloading',
+    loadingSessionId?: number,
+  ): Promise<ProyectoTrabajoOrm> {
     const inicioEspera = performance.now();
+    let pollCount = 0;
+    this.appendImportDebugTrace(`esperando /estado para proyecto ${proyectoId}...`);
     while (true) {
+      pollCount += 1;
       const proyecto = await firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId));
       this.proyectoB5dActivo.set(proyecto);
-      this.debugB5d('esperarProyectoImportado: poll', {
+      const backendTrace = proyecto.debug_trace ?? [];
+      if (backendTrace.length < this.backendImportTraceCount) {
+        this.backendImportTraceCount = 0;
+      }
+      for (const line of backendTrace.slice(this.backendImportTraceCount)) {
+        this.appendImportDebugTrace(`backend: ${line}`);
+      }
+      this.backendImportTraceCount = backendTrace.length;
+      this.debugB5d('esperarProyectoEnEstado: poll', {
         projectId: proyectoId,
+        pollCount,
         estado: proyecto.estado,
         registrosImportados: proyecto.registros_importados,
         totalRegistros: proyecto.total_registros,
+        progresoPorcentaje: proyecto.progreso_porcentaje,
+        mensajeProgreso: proyecto.mensaje_progreso,
         elapsedMs: Math.round(performance.now() - inicioEspera),
       });
+      this.appendImportDebugTrace(
+        `poll ${pollCount}: estado=${proyecto.estado ?? '-'} progreso=${Math.max(0, Math.min(100, proyecto.progreso_porcentaje ?? 0)).toFixed(0)}% registros=${proyecto.registros_importados ?? 0}/${proyecto.total_registros ?? 0} mensaje=${(proyecto.mensaje_progreso ?? '').trim() || '-'}`,
+      );
 
-      if (proyecto.estado !== 'importando') {
+      if (proyecto.estado !== estadoEnCurso) {
         const mensajeError = proyecto.mensaje_error?.trim();
         if (mensajeError) {
+          this.appendImportDebugTrace(`fin con error: ${mensajeError}`);
           throw new Error(mensajeError);
         }
+        this.appendImportDebugTrace(`fin con estado=${proyecto.estado ?? '-'}`);
         return proyecto;
       }
 
-      const progreso =
-        proyecto.total_registros > 0
-          ? ` (${proyecto.registros_importados}/${proyecto.total_registros})`
-          : '';
-      this.b5dMensaje.set(`Importando proyecto B5D${progreso}...`);
+      const mensajeProgreso = proyecto.mensaje_progreso?.trim() || (estadoEnCurso === 'importando' ? 'Importando proyecto B5D...' : 'Exportando proyecto B5D...');
+      const progreso = Math.max(0, Math.min(100, proyecto.progreso_porcentaje ?? 0));
+      this.b5dMensaje.set(mensajeProgreso);
+      if (loadingSessionId) {
+        this.loadingPanel.setStepProgress(loadingSessionId, loadingStepId, progreso, mensajeProgreso);
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, this.projectImportPollIntervalMs));
     }
   }
@@ -1363,19 +1470,30 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createB5dExportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.exportB5dProject')),
+    );
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
     try {
-      const exportado = await firstValueFrom(this.backendProyectos.exportarProyecto(proyecto.id, true));
+      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Preparando exportación B5D.');
+      const exportando = await firstValueFrom(this.backendProyectos.exportarProyecto(proyecto.id));
+      const exportado = await this.esperarProyectoExportado(exportando.id, loadingSessionId);
+      this.loadingPanel.completeStep(loadingSessionId, 'downloading', 'Archivo B5D listo para descargar.');
       this.proyectoB5dActivo.set(exportado);
       await this.cargarDatosProyectoB5d(exportado.id);
       const blob = await firstValueFrom(this.backendProyectos.descargarProyecto(exportado.id));
       this.descargarBlob(blob, `proyecto-${exportado.id}.b5d`);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
       this.b5dMensaje.set(`Proyecto exportado correctamente (ID ${exportado.id}).`);
     } catch (error) {
+      this.loadingPanel.abort(loadingSessionId);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo exportar el proyecto B5D.'));
     } finally {
       this.b5dCargando.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Proyecto exportado.');
+      }
     }
   }
 
@@ -1392,22 +1510,33 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createB5dExportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.exportB5dProject')),
+    );
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
     try {
       await this.flushPendingAutoSave(proyecto.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Preparando exportación B5D.');
 
-      const proyectoExportado = await firstValueFrom(this.backendProyectos.exportarProyecto(proyecto.id, true));
+      const proyectoEnExportacion = await firstValueFrom(this.backendProyectos.exportarProyecto(proyecto.id));
+      const proyectoExportado = await this.esperarProyectoExportado(proyectoEnExportacion.id, loadingSessionId);
+      this.loadingPanel.completeStep(loadingSessionId, 'downloading', 'Archivo B5D listo para descargar.');
       this.proyectoB5dActivo.set(proyectoExportado);
       await this.cargarDatosProyectoB5d(proyectoExportado.id);
 
       const archivoExportado = await firstValueFrom(this.backendProyectos.descargarProyecto(proyectoExportado.id));
       this.descargarBlob(archivoExportado, `proyecto-${proyectoExportado.id}.b5d`);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
       this.b5dMensaje.set(`Proyecto exportado correctamente (ID ${proyectoExportado.id}).`);
     } catch (error) {
+      this.loadingPanel.abort(loadingSessionId);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo exportar el proyecto B5D.'));
     } finally {
       this.b5dCargando.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Proyecto exportado.');
+      }
     }
   }
 
@@ -1451,9 +1580,43 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     this.b5dMensaje.set('');
   }
 
+  // Opens the B5D-based parameter import wizard.
+  abrirDialogoImportacionParametrosB5d(): void {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para importar parametros.');
+      return;
+    }
+
+    this.parameterB5dImportDialogVisible.set(true);
+    this.b5dMensaje.set('');
+  }
+
+  // Opens the XDB-based parameter import wizard.
+  abrirDialogoImportacionParametrosXdb(): void {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) {
+      this.b5dMensaje.set('No hay un proyecto B5D activo para importar parametros.');
+      return;
+    }
+
+    this.parameterXdbImportDialogVisible.set(true);
+    this.b5dMensaje.set('');
+  }
+
   // Closes the parameter import wizard.
   cerrarDialogoImportacionParametros(): void {
     this.parameterImportDialogVisible.set(false);
+  }
+
+  // Closes the B5D parameter import wizard.
+  cerrarDialogoImportacionParametrosB5d(): void {
+    this.parameterB5dImportDialogVisible.set(false);
+  }
+
+  // Closes the XDB parameter import wizard.
+  cerrarDialogoImportacionParametrosXdb(): void {
+    this.parameterXdbImportDialogVisible.set(false);
   }
 
   // Imports a PlanAXA catalog and refreshes the current project snapshot.
@@ -1466,8 +1629,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
     if (this.catalogStructureDialogLoading()) return;
 
+    const loadingSessionId = this.loadingPanel.start(
+      createCatalogImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importCatalog')),
+    );
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
+    this.clearImportDebugTrace();
     try {
       const respuesta = await firstValueFrom(
         this.backendProyectos.importarCatalogoAxa(proyecto.id, {
@@ -1478,16 +1645,27 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
           grupo_cantidades_bim: draft.grupo_cantidades_bim,
         }),
       );
-
-      await this.cargarDatosProyectoB5d(proyecto.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+      const proyectoImportado = await this.esperarProyectoImportado(proyecto.id, loadingSessionId);
+      await this.cargarDatosProyectoB5d(proyectoImportado.id);
+      const catalogosActuales = this.b5dCatalogs();
+      const catalogoCreado = respuesta.catalogo ?? catalogosActuales[catalogosActuales.length - 1] ?? null;
+      if (!catalogoCreado) {
+        throw new Error('No se pudo identificar el catálogo importado.');
+      }
       this.setBottomPanelTab('links');
-      await this.sincronizarCatalogoSeleccionado(respuesta.catalogo.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
+      await this.sincronizarCatalogoSeleccionado(catalogoCreado.id);
       this.cerrarDialogoEstructuraCatalogo();
-      this.b5dMensaje.set(`Catálogo importado correctamente: ${respuesta.catalogo.nombre ?? draft.nombre}.`);
+      this.b5dMensaje.set(`Catálogo importado correctamente: ${catalogoCreado.nombre ?? draft.nombre}.`);
     } catch (error) {
+      this.loadingPanel.abort(loadingSessionId);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar la estructura de conceptos.'));
     } finally {
       this.catalogStructureDialogLoading.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Catálogo importado.');
+      }
     }
   }
 
@@ -1501,8 +1679,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
     if (this.catalogStructureDialogLoading()) return;
 
+    const loadingSessionId = draft.archivo
+      ? this.loadingPanel.start(createCatalogImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importCatalog')))
+      : 0;
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
+    this.clearImportDebugTrace();
     try {
       const sourceCatalogId = draft.copiar_vinculos ? draft.copiar_vinculos_desde_catalogo_id : null;
       const shouldCopyLinks = sourceCatalogId != null;
@@ -1526,13 +1708,29 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             }),
           );
 
-      const catalogoCreado = this.obtenerCatalogoDeRespuesta(respuesta);
+      if (draft.archivo) {
+        this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+        const proyectoImportado = await this.esperarProyectoImportado(proyecto.id, loadingSessionId);
+        await this.cargarDatosProyectoB5d(proyectoImportado.id);
+      }
+      const catalogosActuales = this.b5dCatalogs();
+      const catalogoCreado = draft.archivo
+        ? ((respuesta as { catalogo?: CatalogoB5DOrm }).catalogo ?? catalogosActuales[catalogosActuales.length - 1] ?? null)
+        : this.obtenerCatalogoDeRespuesta(respuesta);
+      if (!catalogoCreado) {
+        throw new Error('No se pudo identificar el catálogo guardado.');
+      }
       if (shouldCopyLinks) {
         this.catalogLinkCopySourceByTargetId.set(catalogoCreado.id, sourceCatalogId);
       }
 
-      await this.cargarDatosProyectoB5d(proyecto.id);
+      if (!draft.archivo) {
+        await this.cargarDatosProyectoB5d(proyecto.id);
+      }
       this.setBottomPanelTab('links');
+      if (draft.archivo) {
+        this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
+      }
       await this.sincronizarCatalogoSeleccionado(catalogoCreado.id);
       if (shouldCopyLinks) {
         await this.persistirCambiosB5dEnServidor(proyecto.id, this.draftChangeVersion);
@@ -1541,9 +1739,102 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       const actionLabel = draft.archivo ? 'importado' : 'creado';
       this.b5dMensaje.set(`Catalogo ${actionLabel} correctamente: ${catalogoCreado.nombre ?? draft.nombre}.`);
     } catch (error) {
+      if (draft.archivo) {
+        this.loadingPanel.abort(loadingSessionId);
+      }
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo guardar la estructura de conceptos.'));
     } finally {
       this.catalogStructureDialogLoading.set(false);
+      if (draft.archivo && this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Catálogo importado.');
+      }
+    }
+  }
+
+  // Imports or updates only the metadata of the selected catalog from an XDB file.
+  async importarMetadatosCatalogo(archivo: File): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    const catalogo = this.catalogStructureDialogCatalog();
+    if (!proyecto || !catalogo) {
+      this.b5dMensaje.set('Selecciona un catálogo activo para importar metadatos.');
+      return;
+    }
+
+    if (this.catalogStructureDialogLoading()) return;
+
+    const loadingSessionId = this.loadingPanel.start(createCatalogImportPlan('Importando metadatos de catálogo'));
+    this.catalogStructureDialogLoading.set(true);
+    this.b5dMensaje.set('');
+    this.clearImportDebugTrace();
+    try {
+      const respuesta = await firstValueFrom(
+        this.backendProyectos.importarMetadataCatalogoAxa(proyecto.id, catalogo.id, { archivo }),
+      );
+      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      const catalogoActualizado =
+        this.b5dCatalogs().find((item) => item.id === catalogo.id) ?? respuesta.catalogo ?? null;
+      if (!catalogoActualizado) {
+        throw new Error('No se pudo identificar el catálogo actualizado.');
+      }
+      this.catalogStructureDialogCatalog.set(catalogoActualizado);
+      await this.sincronizarCatalogoSeleccionado(catalogoActualizado.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
+      this.b5dMensaje.set(
+        `Metadatos importados correctamente para ${catalogoActualizado.nombre ?? 'el catálogo seleccionado'}.`,
+      );
+    } catch (error) {
+      this.loadingPanel.abort(loadingSessionId);
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar la metadata del catálogo.'));
+    } finally {
+      this.catalogStructureDialogLoading.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Metadatos importados.');
+      }
+    }
+  }
+
+  // Imports selected costs into the active catalog from an XDB file.
+  async importarCostosCatalogo(draft: CatalogCostImportDraft): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    const catalogo = this.catalogStructureDialogCatalog();
+    if (!proyecto || !catalogo) {
+      this.b5dMensaje.set('Selecciona un catálogo activo para importar costos.');
+      return;
+    }
+
+    if (this.catalogStructureDialogLoading()) return;
+
+    const loadingSessionId = this.loadingPanel.start(createCatalogImportPlan('Importando costos de catálogo'));
+    this.catalogStructureDialogLoading.set(true);
+    this.b5dMensaje.set('');
+    this.clearImportDebugTrace();
+    try {
+      const respuesta = await firstValueFrom(
+        this.backendProyectos.importarCostosCatalogoAxa(proyecto.id, catalogo.id, {
+          archivo: draft.archivo,
+          conceptos_seleccionados: draft.conceptos_seleccionados,
+        }),
+      );
+      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      const catalogoActualizado = this.b5dCatalogs().find((item) => item.id === catalogo.id) ?? respuesta.catalogo ?? null;
+      if (!catalogoActualizado) {
+        throw new Error('No se pudo identificar el catálogo actualizado.');
+      }
+      this.catalogStructureDialogCatalog.set(catalogoActualizado);
+      await this.sincronizarCatalogoSeleccionado(catalogoActualizado.id);
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
+      this.cerrarDialogoEstructuraCatalogo();
+      this.b5dMensaje.set(`Costos importados correctamente para ${catalogoActualizado.nombre ?? 'el catálogo seleccionado'}.`);
+    } catch (error) {
+      this.loadingPanel.abort(loadingSessionId);
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar los costos del catálogo.'));
+    } finally {
+      this.catalogStructureDialogLoading.set(false);
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, 'Costos importados.');
+      }
     }
   }
 
@@ -1555,6 +1846,28 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     await this.cargarDatosProyectoB5d(proyecto.id);
     this.b5dMensaje.set(
       `Importación de parámetros finalizada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`,
+    );
+  }
+
+  // Refreshes project state after the B5D parameter import wizard completes.
+  async onParametersB5dImportCompleted(summary: B5dParameterImportSummary): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) return;
+
+    await this.cargarDatosProyectoB5d(proyecto.id);
+    this.b5dMensaje.set(
+      `Importación B5D finalizada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`,
+    );
+  }
+
+  // Refreshes project state after the XDB parameter import wizard completes.
+  async onParametersXdbImportCompleted(summary: XdbParameterImportSummary): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) return;
+
+    await this.cargarDatosProyectoB5d(proyecto.id);
+    this.b5dMensaje.set(
+      `Importación XDB finalizada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`,
     );
   }
 
@@ -1615,9 +1928,8 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             clave: conceptItem.clave ?? null,
             clave_secundaria: conceptItem.clave_secundaria ?? null,
             descripcion: conceptItem.descripcion ?? null,
-            costo: conceptItem.costo ?? null,
-            costo_mn: conceptItem.costo_mn ?? null,
-            costo_me: conceptItem.costo_me ?? null,
+            precio_unitario: conceptItem.precio_unitario ?? null,
+            cantidad: conceptItem.cantidad ?? null,
             es_agrupador: !!conceptItem.es_agrupador,
             agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
             unidad: conceptItem.unidad ?? null,
@@ -1731,8 +2043,14 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   }
 
   // Extracts the created catalog from either a raw catalog or a wrapped response.
-  private obtenerCatalogoDeRespuesta(respuesta: CatalogoB5DOrm | { catalogo: CatalogoB5DOrm }): CatalogoB5DOrm {
-    return 'catalogo' in respuesta ? respuesta.catalogo : respuesta;
+  private obtenerCatalogoDeRespuesta(respuesta: CatalogoB5DOrm | { catalogo?: CatalogoB5DOrm } | null): CatalogoB5DOrm | null {
+    if (!respuesta) {
+      return null;
+    }
+    if ('id' in respuesta) {
+      return respuesta;
+    }
+    return respuesta.catalogo ?? null;
   }
 
   // Removes copy-link mappings that point to catalogs no longer present in the project.
@@ -1850,12 +2168,24 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     logB5dDebug(message, data);
   }
 
+  private clearImportDebugTrace(): void {
+    if (!isB5dDebugEnabled()) return;
+    this.backendImportTraceCount = 0;
+    this.importDebugTrace.set([]);
+  }
+
+  private appendImportDebugTrace(line: string): void {
+    if (!isB5dDebugEnabled()) return;
+    const nextTrace = [...this.importDebugTrace(), line].slice(-8);
+    this.importDebugTrace.set(nextTrace);
+  }
+
   private normalizarConceptosB5d(conceptos: ConceptoB5DOrm[]): ConceptoB5DOrm[] {
     return conceptos.map((concepto) => ({
       ...concepto,
-      costo: this.parseNumericLikeValue(concepto.costo),
-      costo_mn: this.parseNumericLikeValue(concepto.costo_mn),
-      costo_me: this.parseNumericLikeValue(concepto.costo_me),
+      precio_unitario: this.parseNumericLikeValue(concepto.precio_unitario),
+      cantidad: this.parseNumericLikeValue(concepto.cantidad),
+      importe: this.parseNumericLikeValue(concepto.importe),
       porcentaje_padre: this.parseNumericLikeValue(concepto.porcentaje_padre),
     }));
   }
@@ -2011,10 +2341,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       'rotate-left': () => this.visorIfc.rotarIzquierda(),
       'rotate-right': () => this.visorIfc.rotarDerecha(),
       'clear-selection': () => this.visorIfc.limpiarSeleccion(),
-      'expand-tree': () => this.visorIfc.expandirArbolCompleto(),
-      'collapse-tree': () => this.visorIfc.colapsarArbolCompleto(),
       'quantify-b5d': () => this.cuantificarB5D(),
       'toggle-theme': () => undefined,
+      'toggle-lighting': () => this.toggleModelLighting(),
       'show-all-objects': () => this.visorIfc.showAllModelElements(),
       'show-selected-objects': () => this.visorIfc.showSelectedElements(),
       'transparent-selected-objects': () => this.visorIfc.makeSelectedElementsTransparent(),
@@ -2115,9 +2444,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       nextMode: mode,
     });
     this.windowMode.set(mode);
-    if (this.isBrowser && typeof window !== 'undefined') {
+    if (this.isBrowser) {
       try {
-        window.sessionStorage.setItem(this.viewerWindowModeStorageKey, mode);
+        getSafeSessionStorage()?.setItem(this.viewerWindowModeStorageKey, mode);
       } catch {
         // Ignore session storage errors.
       }
@@ -2767,6 +3096,10 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       'parameter-toggle-matches',
       'parameter-toggle-analysis',
       'import-parameters-excel',
+      'import-parameters-b5d',
+      'import-parameters-xdb',
+      'expand-tree',
+      'collapse-tree',
     ].includes(action);
   }
 
@@ -2822,6 +3155,16 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
     if (action === 'import-parameters-excel') {
       this.abrirDialogoImportacionParametros();
+      return;
+    }
+
+    if (action === 'import-parameters-b5d') {
+      this.abrirDialogoImportacionParametrosB5d();
+      return;
+    }
+
+    if (action === 'import-parameters-xdb') {
+      this.abrirDialogoImportacionParametrosXdb();
       return;
     }
 
@@ -2902,7 +3245,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   // Requests filter mode to select IFC object rows and their model elements.
   private promptSelectFilterMode(): SelectFilterMode | null {
     const option = window.prompt(
-      'Filtro de selección:\n1) Objetos con vínculos (todos)\n2) Objetos con vínculos (conceptos seleccionados)\n3) Objetos seleccionados en el modelo\n4) Todos los objetos del modelo\n5) Objetos del mismo tipo que el seleccionado',
+      this.i18n.translateForComponent(this.viewerScreenTranslations, 'viewer.prompt.selectFilterMode'),
       '1',
     );
     if (option == null) return null;
@@ -2919,7 +3262,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   // Requests filter mode to find unlinked rows in IFC object data.
   private promptUnlinkedObjectsMode(): UnlinkedObjectsMode | null {
     const option = window.prompt(
-      'Objetos sin vínculo:\n1) Objetos sin vínculos a conceptos\n2) Objetos sin materiales relacionados\n3) Materiales sin vínculos a conceptos',
+      this.i18n.translateForComponent(this.viewerScreenTranslations, 'viewer.prompt.unlinkedObjectsMode'),
       '1',
     );
     if (option == null) return null;

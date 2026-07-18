@@ -4,19 +4,20 @@
       {{ i18n.translateForComponent(toolbarTranslations, 'toolbar.file') }}
     </button>
 
-    @for (tab of toolbarTabs; track tab.id) {
-      <button
-        class="b5d-tab-button"
-        type="button"
-        [class.b5d-tab-button--selected]="activeTab === tab.id"
-        (click)="updateTab(tab.id)"
-      >
-        {{ i18n.translateForComponent(toolbarTranslations, tab.labelKey) }}
-      </button>
+    @for (tab of visibleToolbarTabs; track tab.id) {
+    <button
+      class="b5d-tab-button"
+      type="button"
+      [class.b5d-tab-button--selected]="activeTab === tab.id"
+      [title]="i18n.translateForComponent(toolbarTranslations, tab.labelKey)"
+      (click)="updateTab(tab.id)"
+    >
+      {{ i18n.translateForComponent(toolbarTranslations, tab.labelKey) }}
+    </button>
     }
 
     <button class="b5d-toolbar__collapse-button" type="button" (click)="toggleToolbarContent()">
-      {{ toolbarContentVisible ? 'Hide toolbar' : 'Show toolbar' }}
+      {{ toolbarContentVisible ? i18n.translateForComponent(toolbarTranslations, 'toolbar.action.hideToolbar') : i18n.translateForComponent(toolbarTranslations, 'toolbar.action.showToolbar') }}
     </button>
   </div>
 
@@ -48,6 +49,7 @@
                     type="button"
                     [class.b5d-toolbar-action--selected]="button.selected"
                     [disabled]="button.disabled"
+                    [title]="getLabel(button)"
                     (click)="runToolbarAction(button)"
                   >
                     <span
@@ -70,6 +72,7 @@
                           class="b5d-toolbar-dropdown__item"
                           type="button"
                           [class.b5d-toolbar-dropdown__item--selected]="option.selected"
+                          [title]="getLabel(option)"
                           (click)="runDropdownAction(button, option, $event)"
                         >
                           <span class="b5d-toolbar-dropdown__item-label">{{ getLabel(option) }}</span>
@@ -84,6 +87,7 @@
                   type="button"
                   [class.b5d-toolbar-action--selected]="button.selected"
                   [disabled]="button.disabled"
+                  [title]="getLabel(button)"
                   (click)="runToolbarAction(button)"
                 >
                   <span
@@ -108,28 +112,6 @@
       @if (!getActiveCategories().length) {
         <div class="b5d-toolbar__placeholder">
           {{ activeTab === 'measurement' ? i18n.translateForComponent(toolbarTranslations, 'toolbar.empty.measurement') : i18n.translateForComponent(toolbarTranslations, 'toolbar.empty.about') }}
-        </div>
-      }
-
-      @if (cargando) {
-        <div class="b5d-toolbar__loading">
-          <div class="b5d-toolbar__loading-header">
-            {{ i18n.translateForComponent(toolbarTranslations, 'toolbar.loading.title') }}
-          </div>
-          <div class="b5d-toolbar__loading-steps">
-            @for (step of loadingSteps; track step.id) {
-              <div
-                class="b5d-toolbar__loading-step"
-                [class.b5d-toolbar__loading-step--completed]="getLoadingStepState(step.id) === 'completed'"
-                [class.b5d-toolbar__loading-step--active]="getLoadingStepState(step.id) === 'active'"
-              >
-                <div class="b5d-toolbar__loading-step-label">{{ getLoadingStepLabel(step.id) }}</div>
-                <div class="b5d-toolbar__loading-step-track">
-                  <span class="b5d-toolbar__loading-step-fill"></span>
-                </div>
-              </div>
-            }
-          </div>
         </div>
       }
     </div>

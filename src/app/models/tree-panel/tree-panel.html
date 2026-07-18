@@ -1,8 +1,8 @@
 @if (visible && datosArbol.length) {
   <section class="b5d-tree-panel">
     <div class="b5d-tree-panel__header">
-      <div class="b5d-tree-panel__header-cell b5d-tree-panel__header-cell--type">Tipo</div>
-      <div class="b5d-tree-panel__header-cell">Tipo / Elemento</div>
+      <div class="b5d-tree-panel__header-cell b5d-tree-panel__header-cell--type">{{ t('treePanel.header.type') }}</div>
+      <div class="b5d-tree-panel__header-cell">{{ t('treePanel.header.typeElement') }}</div>
     </div>
 
     @for (item of nodosVisibles; track item.nodo.id) {

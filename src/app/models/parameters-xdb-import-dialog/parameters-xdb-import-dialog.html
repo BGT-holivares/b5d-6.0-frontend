@@ -1,0 +1,198 @@
+@if (visible) {
+  <div class="b5d-parameters-xdb-dialog__backdrop" (click)="closeDialog()">
+    <section class="b5d-parameters-xdb-dialog" (click)="$event.stopPropagation()">
+      <header class="b5d-parameters-xdb-dialog__header">
+        <strong>{{ i18n.translateForComponent(translations, 'parametersXdbImport.title') }}</strong>
+        <span class="b5d-parameters-xdb-dialog__project">
+          {{ activeProjectId ? (i18n.translateForComponent(translations, 'parametersXdbImport.project') + ' ' + activeProjectId) : i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}
+        </span>
+      </header>
+
+      <div class="b5d-parameters-xdb-dialog__body">
+        <div class="b5d-parameters-xdb-dialog__section">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.sourceTitle') }}</div>
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.folderLabel') }}</span>
+            <div class="b5d-parameters-xdb-dialog__file-row">
+              <input
+                type="text"
+                class="b5d-parameters-xdb-dialog__input b5d-parameters-xdb-dialog__input--file"
+                [value]="folderName || i18n.translateForComponent(translations, 'parametersXdbImport.noFolder')"
+                readonly
+              />
+              <label class="b5d-parameters-xdb-dialog__file-button" [class.b5d-parameters-xdb-dialog__file-button--disabled]="isImporting || loading">
+                {{ i18n.translateForComponent(translations, 'parametersXdbImport.chooseFolder') }}
+                <input
+                  type="file"
+                  webkitdirectory
+                  multiple
+                  accept=".xdb"
+                  [disabled]="isImporting || loading"
+                  (change)="handleFolderChange($event)"
+                />
+              </label>
+            </div>
+          </label>
+          <div class="b5d-parameters-xdb-dialog__hint">
+            {{ i18n.translateForComponent(translations, 'parametersXdbImport.folderHint') }}
+          </div>
+          <div class="b5d-parameters-xdb-dialog__inline-actions">
+            <button type="button" class="b5d-parameters-xdb-dialog__button" [disabled]="!totalCount" (click)="setAllCandidates(true)">
+              {{ i18n.translateForComponent(translations, 'parametersXdbImport.enableAll') }}
+            </button>
+            <button type="button" class="b5d-parameters-xdb-dialog__button" [disabled]="!totalCount" (click)="setAllCandidates(false)">
+              {{ i18n.translateForComponent(translations, 'parametersXdbImport.disableAll') }}
+            </button>
+            <span class="b5d-parameters-xdb-dialog__counter">
+              {{ selectedCount }} / {{ totalCount }} {{ i18n.translateForComponent(translations, 'parametersXdbImport.filesSelected') }}
+            </span>
+          </div>
+        </div>
+
+        <div class="b5d-parameters-xdb-dialog__section">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.modeTitle') }}</div>
+          <div class="b5d-parameters-xdb-dialog__hint">
+            {{ i18n.translateForComponent(translations, 'parametersXdbImport.modeHint') }}
+          </div>
+          <div class="b5d-parameters-xdb-dialog__mode-switch">
+            <button
+              type="button"
+              class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--toggle"
+              [class.b5d-parameters-xdb-dialog__button--selected]="!isGroupingMode"
+              (click)="setGroupingMode('hojas')"
+            >
+              {{ i18n.translateForComponent(translations, modeLeavesLabelKey) }}
+            </button>
+            <button
+              type="button"
+              class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--toggle"
+              [class.b5d-parameters-xdb-dialog__button--selected]="isGroupingMode"
+              (click)="setGroupingMode('agrupadores')"
+            >
+              {{ i18n.translateForComponent(translations, modeGroupingLabelKey) }}
+            </button>
+          </div>
+        </div>
+
+        @if (totalCount) {
+          <div class="b5d-parameters-xdb-dialog__section">
+            <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.filesTitle') }}</div>
+            <div class="b5d-parameters-xdb-dialog__files">
+              @for (candidate of candidates; track candidate.relativePath) {
+                <label class="b5d-parameters-xdb-dialog__file-item">
+                  <input
+                    type="checkbox"
+                    [checked]="candidate.enabled"
+                    (change)="toggleCandidate(candidate.relativePath, $any($event.target).checked)"
+                  />
+                  <span class="b5d-parameters-xdb-dialog__file-path">{{ candidate.relativePath }}</span>
+                </label>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="b5d-parameters-xdb-dialog__section">
+            <div class="b5d-parameters-xdb-dialog__hint">{{ i18n.translateForComponent(translations, 'parametersXdbImport.noFiles') }}</div>
+          </div>
+        }
+
+        <div class="b5d-parameters-xdb-dialog__section">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.outputTitle') }}</div>
+          <div class="b5d-parameters-xdb-dialog__hint">
+            {{ i18n.translateForComponent(translations, outputHintKey) }}
+          </div>
+          <div class="b5d-parameters-xdb-dialog__pill">{{ i18n.translateForComponent(translations, 'parametersXdbImport.outputPercent') }}</div>
+        </div>
+
+        <div class="b5d-parameters-xdb-dialog__section b5d-parameters-xdb-dialog__section--preview">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, previewTitleKey) }}</div>
+          <div class="b5d-parameters-xdb-dialog__hint">
+            {{ i18n.translateForComponent(translations, previewHintKey) }}
+          </div>
+          <div class="b5d-parameters-xdb-dialog__inline-actions">
+            <button
+              type="button"
+              class="b5d-parameters-xdb-dialog__button"
+              [disabled]="!canGeneratePreview || previewLoading"
+              (click)="generatePreview()"
+            >
+              {{ i18n.translateForComponent(translations, 'parametersXdbImport.previewGenerate') }}
+            </button>
+            @if (previewDirty && !previewLoading) {
+              <span class="b5d-parameters-xdb-dialog__counter">
+                {{ i18n.translateForComponent(translations, 'parametersXdbImport.previewPending') }}
+              </span>
+            }
+          </div>
+
+          @if (previewLoading) {
+            <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ previewMessage }}</div>
+            <div class="b5d-parameters-xdb-dialog__progress" aria-hidden="true">
+              <div class="b5d-parameters-xdb-dialog__progress-track">
+                <span class="b5d-parameters-xdb-dialog__progress-fill" [style.width.%]="previewProgress"></span>
+              </div>
+              <div class="b5d-parameters-xdb-dialog__progress-caption">{{ previewProgress.toFixed(0) }}%</div>
+            </div>
+          } @else if (hasPreview) {
+            @if (previewMessage) {
+              <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ previewMessage }}</div>
+            }
+            <div class="b5d-parameters-xdb-dialog__table-wrapper b5d-parameters-xdb-dialog__table-wrapper--wide">
+              <table class="b5d-parameters-xdb-dialog__table">
+                <thead>
+                  <tr>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewWbs') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewCode') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewDescription') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewFiles') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewConcepts') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewMin') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewMax') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersXdbImport.previewAverage') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of previewRows; track row.firma) {
+                    <tr>
+                      <td class="b5d-parameters-xdb-dialog__table-cell--strong" [title]="row.firma">{{ row.firma }}</td>
+                      <td>{{ row.clave }}</td>
+                      <td>{{ row.descripcion }}</td>
+                      <td [title]="row.origenes.join(', ') || '-'">{{ row.cantidad_origenes }}</td>
+                      <td>{{ row.cantidad_conceptos }}</td>
+                      <td>{{ formatPercentage(row.minimo) }}</td>
+                      <td>{{ formatPercentage(row.maximo) }}</td>
+                      <td>{{ formatPercentage(row.promedio) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="b5d-parameters-xdb-dialog__hint">{{ previewMessage || i18n.translateForComponent(translations, 'parametersXdbImport.previewEmpty') }}</div>
+          }
+        </div>
+
+        @if (validationMessage) {
+          <div class="b5d-parameters-xdb-dialog__message">{{ validationMessage }}</div>
+        }
+
+        @if (processingMessage) {
+          <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ processingMessage }}</div>
+        }
+
+        @if (importMessage) {
+          <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--success">{{ importMessage }}</div>
+        }
+      </div>
+
+      <footer class="b5d-parameters-xdb-dialog__footer">
+        <button type="button" class="b5d-parameters-xdb-dialog__button" (click)="closeDialog()" [disabled]="isImporting">
+          {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
+        </button>
+        <button type="button" class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--primary" (click)="importParameters()" [disabled]="!canImport">
+          {{ isImporting ? i18n.translateForComponent(translations, 'parametersXdbImport.importing') : i18n.translateForComponent(globalTranslations, 'common.action.import') }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}

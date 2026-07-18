@@ -1,8 +1,9 @@
+<!-- Manual attention needed: remaining panel copy. -->
 <section class="b5d-linking-panel">
   <header class="b5d-linking-panel__toolbar">
     <strong>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.title') }}</strong>
     @if (activeProject) {
-      <span class="b5d-linking-panel__project">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.proyect') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
+      <span class="b5d-linking-panel__project">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.project') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
     } @else {
       <span class="b5d-linking-panel__project b5d-linking-panel__muted">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.panel.noB5DProject') }}</span>
     }
@@ -37,50 +38,26 @@
         class="b5d-linking-panel__box b5d-linking-panel__box--concepts"
         (click)="selectActivePanel('concepts')"
       >
-        <div class="b5d-linking-panel__box-title">
-          <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</span>
+        <div class="b5d-linking-panel__box-title" (dragover)="onTopPanelDragOver('concepts', $event)">
+          <span class="b5d-panel-order__title">
+            <span
+              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+              draggable="true"
+              [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+              (dragstart)="startTopPanelDrag('concepts', $event)"
+              (dragend)="endTopPanelDrag()"
+            ></span>
+            <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.concept.title') }}</span>
+          </span>
           <span class="b5d-linking-panel__box-title-actions">
             <button
               type="button"
               class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-              [disabled]="!canMoveTopPanel('concepts', 'left')"
-              title="Mover a la izquierda"
-              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+              [title]="conceptTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns')"
+              (click)="toggleConceptTableChooser()"
             >
-              ←
+              <i class="bi bi-layout-three-columns"></i>
             </button>
-            <button
-              type="button"
-              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-              [disabled]="!canMoveTopPanel('concepts', 'right')"
-              title="Mover a la derecha"
-              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
-            >
-              →
-            </button>
-            <span class="b5d-linking-panel__zoom-controls">
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="decreasePanelZoom('concepts'); $event.stopPropagation()"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="resetPanelZoom('concepts'); $event.stopPropagation()"
-              >
-                100%
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="increasePanelZoom('concepts'); $event.stopPropagation()"
-              >
-                +
-              </button>
-            </span>
           </span>
         </div>
 
@@ -91,38 +68,56 @@
           (click)="closeConceptTableContextMenu()"
         >
           @if (conceptTablePreferences.chooserOpen) {
-            <div class="b5d-linking-panel__column-chooser">
+            <section
+              class="b5d-floating-helper-panel"
+              [style.left.px]="conceptColumnChooserLeft"
+              [style.top.px]="conceptColumnChooserTop"
+            >
+              <header class="b5d-floating-helper-panel__header" (pointerdown)="startConceptColumnChooserDrag($event)">
+                <span class="b5d-floating-helper-panel__title">
+                  {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
+                </span>
+                <span class="b5d-floating-helper-panel__actions">
+                  <button
+                    type="button"
+                    class="b5d-floating-helper-panel__action"
+                    [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+                    (pointerdown)="$event.stopPropagation()"
+                    (click)="closeConceptTableChooser()"
+                  >
+                    x
+                  </button>
+                </span>
+              </header>
+
+              <div class="b5d-floating-helper-panel__body">
               @for (column of conceptTableColumns; track column.key) {
-                <div class="b5d-linking-panel__column-chooser-row">
-                  <label class="b5d-linking-panel__column-chooser-label">
+                  <div
+                    class="b5d-floating-helper-panel__row"
+                    [class.b5d-floating-helper-panel__row--dragging]="conceptColumnDragKey === column.key"
+                    (dragover)="onConceptColumnDragOver(column.key, $event)"
+                  >
+                    <span
+                      class="b5d-floating-helper-panel__drag-handle bi bi-grip-vertical"
+                      draggable="true"
+                      [title]="i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label)"
+                      (dragstart)="onConceptColumnDragStart(column.key, $event)"
+                      (dragend)="onConceptColumnDragEnd()"
+                    ></span>
+                    <div class="b5d-floating-helper-panel__row-main">
+                      <label class="b5d-floating-helper-panel__row-label">
                     <input
                       type="checkbox"
                       [checked]="isConceptTableColumnVisible(column.key)"
                       (change)="toggleConceptTableColumnVisibility(column.key)"
                     />
-                    <span>{{ column.label }}</span>
-                  </label>
-                  <div class="b5d-linking-panel__column-chooser-actions">
-                    <button
-                      type="button"
-                      class="b5d-linking-panel__tool-button"
-                      [disabled]="conceptTablePreferences.order.indexOf(column.key) <= 0"
-                      (click)="moveConceptTableColumn(column.key, 'left')"
-                    >
-                      ←
-                    </button>
-                    <button
-                      type="button"
-                      class="b5d-linking-panel__tool-button"
-                      [disabled]="conceptTablePreferences.order.indexOf(column.key) >= conceptTablePreferences.order.length - 1"
-                      (click)="moveConceptTableColumn(column.key, 'right')"
-                    >
-                      →
-                    </button>
+                    <span>{{ i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label) }}</span>
+                      </label>
+                    </div>
                   </div>
-                </div>
               }
-            </div>
+              </div>
+            </section>
           }
 
           @if (visibleConceptColumns.length) {
@@ -135,7 +130,17 @@
               <thead>
                 <tr>
                   @for (column of visibleConceptColumns; track column.key) {
-                    <th>{{ column.label }}</th>
+                    <th [attr.data-b5d-column-key]="column.key" (dragover)="onConceptColumnDragOver(column.key, $event)">
+                      <span class="b5d-table-header__content">
+                        <span
+                          class="b5d-table-header__drag-handle bi bi-grip-vertical"
+                          draggable="true"
+                          (dragstart)="onConceptColumnDragStart(column.key, $event)"
+                          (dragend)="onConceptColumnDragEnd()"
+                        ></span>
+                        <span>{{ i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label) }}</span>
+                      </span>
+                    </th>
                   }
                 </tr>
                 @if (tableFiltersVisible) {
@@ -157,7 +162,7 @@
                             type="text"
                             [ngModel]="getConceptFilterValue(column.key)"
                             (ngModelChange)="setConceptFilterValue(column.key, $event)"
-                            [placeholder]="column.label"
+                            [placeholder]="i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label)"
                           />
                         </div>
                       </th>
@@ -170,6 +175,8 @@
                   @if (getConceptById(concepto.id); as editableConcept) {
                     <tr
                       class="b5d-linking-panel__selectable"
+                      [class.b5d-linking-panel__concept-row--group]="hasConceptChildren(concepto.id)"
+                      [class.b5d-linking-panel__concept-row--collapsed]="isConceptGroupCollapsed(concepto.id)"
                       [class.b5d-linking-panel__selectable--active]="isSelectedConcept(concepto.id)"
                       (click)="selectConcept(concepto.id, $event)"
                     >
@@ -180,24 +187,36 @@
                         >
                           @switch (column.key) {
                             @case ('clave') {
-                              <input
-                                type="text"
-                                class="b5d-linking-panel__input"
-                                [(ngModel)]="editableConcept.clave"
-                                (click)="$event.stopPropagation()"
-                                (ngModelChange)="markDraftChanged()"
-                                placeholder="Clave"
-                              />
+                              <div class="b5d-linking-panel__concept-key-cell">
+                                @if (hasConceptChildren(concepto.id)) {
+                                  <button
+                                    type="button"
+                                    class="b5d-linking-panel__concept-toggle"
+                                    [class.b5d-linking-panel__concept-toggle--collapsed]="isConceptGroupCollapsed(concepto.id)"
+                                    (click)="$event.stopPropagation(); toggleConceptGroupVisibility(concepto.id)"
+                                  >
+                                    {{ isConceptGroupCollapsed(concepto.id) ? '▸' : '▾' }}
+                                  </button>
+                                }
+                                <input
+                                  type="text"
+                                  class="b5d-linking-panel__input"
+                                  [(ngModel)]="editableConcept.clave"
+                                  (click)="$event.stopPropagation()"
+                                  (ngModelChange)="markDraftChanged()"
+                                  [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.code')"
+                                />
+                              </div>
                             }
                             @case ('descripcion') {
-                              <input
-                                type="text"
+                              <textarea
+                                rows="2"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="editableConcept.descripcion"
                                 (click)="$event.stopPropagation()"
                                 (ngModelChange)="markDraftChanged()"
-                                placeholder="Descripcion"
-                              />
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.description')"
+                              ></textarea>
                             }
                             @case ('unidad') {
                               <input
@@ -206,18 +225,38 @@
                                 [(ngModel)]="editableConcept.unidad"
                                 (click)="$event.stopPropagation()"
                                 (ngModelChange)="markDraftChanged()"
-                                placeholder="Unidad"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.unit')"
                               />
                             }
-                            @case ('costo') {
+                            @case ('precio_unitario') {
                               <input
                                 type="text"
                                 class="b5d-linking-panel__input"
-                                [ngModel]="editableConcept.costo ?? ''"
-                                (ngModelChange)="editableConcept.costo = parseOptionalNumber($event)"
+                                [ngModel]="editableConcept.precio_unitario ?? ''"
+                                (ngModelChange)="editableConcept.precio_unitario = parseOptionalNumber($event)"
                                 (click)="$event.stopPropagation()"
                                 (input)="markDraftChanged()"
-                                placeholder="Costo"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.priceUnit')"
+                              />
+                            }
+                            @case ('cantidad') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [ngModel]="editableConcept.cantidad ?? ''"
+                                (ngModelChange)="editableConcept.cantidad = parseOptionalNumber($event)"
+                                (click)="$event.stopPropagation()"
+                                (input)="markDraftChanged()"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.quantity')"
+                              />
+                            }
+                            @case ('importe') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [value]="formatNumericInputValue(concepto.importe) || '-'"
+                                readonly
+                                tabindex="-1"
                               />
                             }
                             @case ('porcentaje_padre') {
@@ -245,16 +284,16 @@
                                 type="text"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="creatingConceptDraft.clave"
-                                placeholder="Clave"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.code')"
                               />
                             }
                             @case ('descripcion') {
-                              <input
-                                type="text"
+                              <textarea
+                                rows="2"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="creatingConceptDraft.descripcion"
-                                placeholder="Descripcion"
-                              />
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.description')"
+                              ></textarea>
                             }
                             @case ('unidad') {
                               <div class="b5d-linking-panel__concept-editor-actions">
@@ -262,31 +301,23 @@
                                   type="text"
                                   class="b5d-linking-panel__input"
                                   [(ngModel)]="creatingConceptDraft.unidad"
-                                  placeholder="Unidad"
+                                  [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.unit')"
                                 />
                                 <label class="b5d-linking-panel__checkbox-label">
                                   <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
-                                  Agrupador
+                                  {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.grouping') }}
                                 </label>
                                 @if (isConceptTableLastColumn(column.key)) {
-                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.save') }}</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
                                 }
                               </div>
-                            }
-                            @case ('costo') {
-                              @if (isConceptTableLastColumn(column.key)) {
-                                <div class="b5d-linking-panel__concept-editor-actions">
-                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
-                                </div>
-                              }
                             }
                             @case ('porcentaje_padre') {
                               @if (isConceptTableLastColumn(column.key)) {
                                 <div class="b5d-linking-panel__concept-editor-actions">
-                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.save') }}</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
                                 </div>
                               }
                             }
@@ -306,34 +337,57 @@
                                 type="text"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="creatingConceptDraft.clave"
-                                placeholder="Clave"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.code')"
                               />
                             }
                             @case ('descripcion') {
-                              <input
-                                type="text"
+                              <textarea
+                                rows="2"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="creatingConceptDraft.descripcion"
-                                placeholder="Descripcion"
-                              />
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.description')"
+                              ></textarea>
                             }
                             @case ('unidad') {
                               <input
                                 type="text"
                                 class="b5d-linking-panel__input"
                                 [(ngModel)]="creatingConceptDraft.unidad"
-                                placeholder="Unidad"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.unit')"
                               />
                             }
-                            @case ('costo') {
+                            @case ('precio_unitario') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.precio_unitario"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.priceUnit')"
+                              />
+                            }
+                            @case ('cantidad') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [(ngModel)]="creatingConceptDraft.cantidad"
+                                [placeholder]="i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.quantity')"
+                              />
+                            }
+                            @case ('importe') {
+                              <input
+                                type="text"
+                                class="b5d-linking-panel__input"
+                                [value]="formatNumericInputValue(calculateConceptImporte(parseOptionalNumber(creatingConceptDraft.precio_unitario), parseOptionalNumber(creatingConceptDraft.cantidad))) || '-'"
+                                readonly
+                                tabindex="-1"
+                              />
                               @if (isConceptTableLastColumn(column.key)) {
                                 <div class="b5d-linking-panel__concept-editor-actions">
                                   <label class="b5d-linking-panel__checkbox-label">
                                     <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
-                                    Agrupador
+                                    {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.grouping') }}
                                   </label>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.save') }}</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
                                 </div>
                               }
                             }
@@ -342,10 +396,10 @@
                                 <div class="b5d-linking-panel__concept-editor-actions">
                                   <label class="b5d-linking-panel__checkbox-label">
                                     <input type="checkbox" [(ngModel)]="creatingConceptDraft.esAgrupador" />
-                                    Agrupador
+                                    {{ i18n.translateForComponent(linkingPanelTranslations, 'linking.editor.grouping') }}
                                   </label>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">Guardar</button>
-                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">Cancelar</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="saveInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.save') }}</button>
+                                  <button type="button" class="b5d-linking-panel__button" (click)="cancelInlineConceptCreate()">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
                                 </div>
                               }
                             }
@@ -365,7 +419,7 @@
             </table>
           } @else {
             <div class="b5d-linking-panel__muted">
-              No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+              {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
             </div>
           }
 
@@ -378,16 +432,16 @@
               (contextmenu)="$event.preventDefault()"
             >
               <button type="button" (click)="handleConceptTableContextMenuAction('chooser')">
-                {{ conceptTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+                {{ conceptTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
               </button>
               <button type="button" (click)="handleConceptTableContextMenuAction('filters')">
-                {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+                {{ tableFiltersVisible ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.hideFilters') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.showFilters') }}
               </button>
               <button type="button" (click)="handleConceptTableContextMenuAction('best-fit')">
-                Best fit
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.bestFit') }}
               </button>
               <button type="button" (click)="handleConceptTableContextMenuAction('reset')">
-                Restablecer vista
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.resetView') }}
               </button>
             </div>
           }
@@ -400,50 +454,26 @@
         class="b5d-linking-panel__box b5d-linking-panel__box--ifc-objects"
         (click)="selectActivePanel('ifc-objects')"
       >
-        <div class="b5d-linking-panel__box-title">
-          <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</span>
+        <div class="b5d-linking-panel__box-title" (dragover)="onTopPanelDragOver('ifc-objects', $event)">
+          <span class="b5d-panel-order__title">
+            <span
+              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+              draggable="true"
+              [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+              (dragstart)="startTopPanelDrag('ifc-objects', $event)"
+              (dragend)="endTopPanelDrag()"
+            ></span>
+            <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.objects.title') }}</span>
+          </span>
           <span class="b5d-linking-panel__box-title-actions">
             <button
               type="button"
               class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-              [disabled]="!canMoveTopPanel('ifc-objects', 'left')"
-              title="Mover a la izquierda"
-              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
+              [title]="ifcObjectTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns')"
+              (click)="toggleIfcObjectTableChooser()"
             >
-              ←
+              <i class="bi bi-layout-three-columns"></i>
             </button>
-            <button
-              type="button"
-              class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-              [disabled]="!canMoveTopPanel('ifc-objects', 'right')"
-              title="Mover a la derecha"
-              (click)="toggleTopPanelOrder(); $event.stopPropagation()"
-            >
-              →
-            </button>
-            <span class="b5d-linking-panel__zoom-controls">
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="decreasePanelZoom('ifc-objects'); $event.stopPropagation()"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="resetPanelZoom('ifc-objects'); $event.stopPropagation()"
-              >
-                100%
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="increasePanelZoom('ifc-objects'); $event.stopPropagation()"
-              >
-                +
-              </button>
-            </span>
           </span>
         </div>
 
@@ -454,38 +484,56 @@
           (click)="closeIfcObjectTableContextMenu()"
         >
           @if (ifcObjectTablePreferences.chooserOpen) {
-            <div class="b5d-linking-panel__column-chooser">
+            <section
+              class="b5d-floating-helper-panel"
+              [style.left.px]="ifcObjectColumnChooserLeft"
+              [style.top.px]="ifcObjectColumnChooserTop"
+            >
+              <header class="b5d-floating-helper-panel__header" (pointerdown)="startIfcObjectColumnChooserDrag($event)">
+                <span class="b5d-floating-helper-panel__title">
+                  {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
+                </span>
+                <span class="b5d-floating-helper-panel__actions">
+                  <button
+                    type="button"
+                    class="b5d-floating-helper-panel__action"
+                    [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+                    (pointerdown)="$event.stopPropagation()"
+                    (click)="closeIfcObjectTableChooser()"
+                  >
+                    x
+                  </button>
+                </span>
+              </header>
+
+              <div class="b5d-floating-helper-panel__body">
               @for (column of ifcObjectTableColumns; track column.key) {
-                <div class="b5d-linking-panel__column-chooser-row">
-                  <label class="b5d-linking-panel__column-chooser-label">
+                  <div
+                    class="b5d-floating-helper-panel__row"
+                    [class.b5d-floating-helper-panel__row--dragging]="ifcObjectColumnDragKey === column.key"
+                    (dragover)="onIfcObjectColumnDragOver(column.key, $event)"
+                  >
+                    <span
+                      class="b5d-floating-helper-panel__drag-handle bi bi-grip-vertical"
+                      draggable="true"
+                      [title]="i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label)"
+                      (dragstart)="onIfcObjectColumnDragStart(column.key, $event)"
+                      (dragend)="onIfcObjectColumnDragEnd()"
+                    ></span>
+                    <div class="b5d-floating-helper-panel__row-main">
+                      <label class="b5d-floating-helper-panel__row-label">
                     <input
                       type="checkbox"
                       [checked]="isIfcObjectTableColumnVisible(column.key)"
                       (change)="toggleIfcObjectTableColumnVisibility(column.key)"
                     />
-                    <span>{{ column.label }}</span>
-                  </label>
-                  <div class="b5d-linking-panel__column-chooser-actions">
-                    <button
-                      type="button"
-                      class="b5d-linking-panel__tool-button"
-                      [disabled]="ifcObjectTablePreferences.order.indexOf(column.key) <= 0"
-                      (click)="moveIfcObjectTableColumn(column.key, 'left')"
-                    >
-                      ←
-                    </button>
-                    <button
-                      type="button"
-                      class="b5d-linking-panel__tool-button"
-                      [disabled]="ifcObjectTablePreferences.order.indexOf(column.key) >= ifcObjectTablePreferences.order.length - 1"
-                      (click)="moveIfcObjectTableColumn(column.key, 'right')"
-                    >
-                      →
-                    </button>
+                    <span>{{ i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label) }}</span>
+                      </label>
+                    </div>
                   </div>
-                </div>
               }
-            </div>
+              </div>
+            </section>
           }
 
           @if (visibleIfcObjectColumns.length) {
@@ -498,7 +546,17 @@
               <thead>
                 <tr>
                   @for (column of visibleIfcObjectColumns; track column.key) {
-                    <th>{{ column.label }}</th>
+                    <th [attr.data-b5d-column-key]="column.key" (dragover)="onIfcObjectColumnDragOver(column.key, $event)">
+                      <span class="b5d-table-header__content">
+                        <span
+                          class="b5d-table-header__drag-handle bi bi-grip-vertical"
+                          draggable="true"
+                          (dragstart)="onIfcObjectColumnDragStart(column.key, $event)"
+                          (dragend)="onIfcObjectColumnDragEnd()"
+                        ></span>
+                        <span>{{ i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label) }}</span>
+                      </span>
+                    </th>
                   }
                 </tr>
                 @if (tableFiltersVisible) {
@@ -520,7 +578,7 @@
                             type="text"
                             [ngModel]="getIfcObjectFilterValue(column.key)"
                             (ngModelChange)="setIfcObjectFilterValue(column.key, $event)"
-                            [placeholder]="column.label"
+                            [placeholder]="i18n.translateForComponent(linkingPanelTranslations, column.labelKey ?? column.label)"
                           />
                         </div>
                       </th>
@@ -590,7 +648,7 @@
             </table>
           } @else {
             <div class="b5d-linking-panel__muted">
-              No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+              {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
             </div>
           }
 
@@ -603,16 +661,16 @@
               (contextmenu)="$event.preventDefault()"
             >
               <button type="button" (click)="handleIfcObjectTableContextMenuAction('chooser')">
-                {{ ifcObjectTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+                {{ ifcObjectTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
               </button>
               <button type="button" (click)="handleIfcObjectTableContextMenuAction('filters')">
-                {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+                {{ tableFiltersVisible ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.hideFilters') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.showFilters') }}
               </button>
               <button type="button" (click)="handleIfcObjectTableContextMenuAction('best-fit')">
-                Best fit
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.bestFit') }}
               </button>
               <button type="button" (click)="handleIfcObjectTableContextMenuAction('reset')">
-                Restablecer vista
+                {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.resetView') }}
               </button>
             </div>
           }
@@ -629,31 +687,6 @@
       <section class="b5d-linking-panel__box b5d-linking-panel__bottom" (click)="selectActivePanel('related-links')">
         <div class="b5d-linking-panel__box-title">
           <span>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.title') }}</span>
-          <span class="b5d-linking-panel__box-title-actions">
-            <span class="b5d-linking-panel__zoom-controls">
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="decreasePanelZoom('related-links'); $event.stopPropagation()"
-              >
-                -
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="resetPanelZoom('related-links'); $event.stopPropagation()"
-              >
-                100%
-              </button>
-              <button
-                type="button"
-                class="b5d-linking-panel__tool-button b5d-linking-panel__tool-button--compact"
-                (click)="increasePanelZoom('related-links'); $event.stopPropagation()"
-              >
-                +
-              </button>
-            </span>
-          </span>
         </div>
 
         <div
@@ -664,13 +697,13 @@
           <table class="b5d-linking-panel__table" [b5dResizableTable]="relatedLinksTableResizableStorageKey">
             <thead>
               <tr>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptId') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptDescription') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.type') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.material') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.propQuantity') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.factor') }}</th>
-                <th>{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.description') }}</th>
+                <th data-b5d-column-key="conceptId">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptId') }}</th>
+                <th data-b5d-column-key="conceptDescription">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.conceptDescription') }}</th>
+                <th data-b5d-column-key="type">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.type') }}</th>
+                <th data-b5d-column-key="material">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.material') }}</th>
+                <th data-b5d-column-key="propQuantity">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.propQuantity') }}</th>
+                <th data-b5d-column-key="factor">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.factor') }}</th>
+                <th data-b5d-column-key="description">{{ i18n.translateForComponent(linkingPanelTranslations, 'linking.links.description') }}</th>
               </tr>
             </thead>
             <tbody>

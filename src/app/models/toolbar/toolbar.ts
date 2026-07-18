@@ -59,6 +59,8 @@ export type ToolbarActionId =
   | 'parameter-toggle-matches'
   | 'parameter-toggle-analysis'
   | 'import-parameters-excel'
+  | 'import-parameters-b5d'
+  | 'import-parameters-xdb'
   | 'import-b5d-project'
   | 'export-b5d-project'
   | 'refresh-b5d-project'
@@ -81,6 +83,7 @@ export type ToolbarActionId =
   | 'hide-not-selected-objects'
   | 'view-3d'
   | 'view-2d'
+  | 'toggle-lighting'
   | 'focus-selection'
   | 'view-default'
   | 'view-front'
@@ -105,6 +108,7 @@ type ToolbarButton = {
   variant: ToolbarButtonVariant;
   selected?: boolean;
   disabled?: boolean;
+  visible?: boolean;
   dropdownItems?: ToolbarButton[];
 };
 
@@ -126,13 +130,13 @@ export class Toolbar {
   fileTabVisible = false;
   activeTab: ToolbarTab = 'home';
 
-  readonly toolbarTabs: { id: ToolbarTab; labelKey: string }[] = [
-    { id: 'home', labelKey: 'toolbar.home' },
-    { id: 'objects', labelKey: 'toolbar.objects' },
-    { id: 'measurement', labelKey: 'toolbar.measurement' },
-    { id: 'tools', labelKey: 'toolbar.tools' },
-    { id: 'view', labelKey: 'toolbar.view' },
-    { id: 'about', labelKey: 'toolbar.about' },
+  readonly toolbarTabs: { id: ToolbarTab; labelKey: string; visible?: boolean }[] = [
+    { id: 'home', labelKey: 'toolbar.home', visible: true },
+    { id: 'objects', labelKey: 'toolbar.objects', visible: true },
+    { id: 'measurement', labelKey: 'toolbar.measurement', visible: true },
+    { id: 'view', labelKey: 'toolbar.view', visible: true },
+    { id: 'tools', labelKey: 'toolbar.tools', visible: false },
+    { id: 'about', labelKey: 'toolbar.about', visible: false },
   ];
   readonly floatingPanelOptions: { id: FloatingPanelId; icon: string; labelKey: string }[] = [
     { id: 'tree', icon: 'T', labelKey: 'toolbar.view.IFCStructure' },
@@ -154,6 +158,7 @@ export class Toolbar {
   @Input() activeLengthMeasurementMode: MeasurementLengthMode = 'edge';
   @Input() activeCountMeasurementMode: MeasurementCountMode = 'selected';
   @Input() windowMode: ViewerWindowMode = 'viewer';
+  @Input() modelLightingEnabled = false;
   @Input() floatingPanelVisibility: Record<FloatingPanelId, boolean> = {
     tree: true,
     models: true,
@@ -278,6 +283,10 @@ export class Toolbar {
     this.toolbarContentVisibleChange.emit(!this.toolbarContentVisible);
   }
 
+  get visibleToolbarTabs(): { id: ToolbarTab; labelKey: string }[] {
+    return this.toolbarTabs.filter((tab) => tab.visible !== false);
+  }
+
   // Returns the CSS classes for toolbar button variants.
   getButtonClass(button: ToolbarButton): string {
     const sizeClass = button.variant.includes('small') ? 'b5d-toolbar-action-small' : 'b5d-toolbar-action-large';
@@ -294,7 +303,13 @@ export class Toolbar {
     else if (this.activeTab === 'measurement') categories = this.measurementCategories;
     else if (this.activeTab === 'tools') categories = this.toolCategories;
     else if (this.activeTab === 'view') categories = this.viewCategories;
-    return categories.filter((category) => category.visible !== false);
+    return categories
+      .filter((category) => category.visible !== false)
+      .map((category) => ({
+        ...category,
+        buttons: category.buttons.filter((button) => button.visible !== false),
+      }))
+      .filter((category) => category.buttons.length > 0);
   }
 
   // Returns a translation or literal label for descriptor rendering.
@@ -400,107 +415,51 @@ export class Toolbar {
         ],
       },
       {
-        labelKey: 'toolbar.home.category.model',
-        layout: 'horizontal',
-        visible: true,
-        buttons: [
-          {
-            labelKey: 'toolbar.home.selectFilter',
-            iconSrc: 'assets/images/SeleccFiltro_32x32.png',
-            action: 'home-select-filter',
-            disabled: this.isHomeActionDisabled('home-select-filter'),
-            variant: 'large-dropdown',
-          },
-          {
-            labelKey: 'toolbar.home.objInfo',
-            iconSrc: 'assets/images/ObjPanelInfo_32x32.png',
-            action: 'home-object-info',
-            disabled: this.isHomeActionDisabled('home-object-info'),
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.linksView',
-            iconSrc: 'assets/images/LinksView_32x32.png',
-            action: 'home-links-view',
-            disabled: this.isHomeActionDisabled('home-links-view'),
-            selected: this.homeToolbarState.linksViewVisible,
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.asignPorpt',
-            iconSrc: 'assets/images/Paste_32x32.png',
-            action: 'home-assign-property',
-            disabled: this.isHomeActionDisabled('home-assign-property'),
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.unlinkedObjs',
-            iconSrc: 'assets/images/ObjWoLink_32x32.png',
-            action: 'home-unlinked-objects',
-            disabled: this.isHomeActionDisabled('home-unlinked-objects'),
-            variant: 'large-dropdown',
-          },
-        ],
-      },
-      {
         labelKey: 'toolbar.home.category.concept',
         layout: 'horizontal',
         visible: activeBottomTab === 'links',
         buttons: [
           {
             labelKey: 'toolbar.home.newCoStructure',
-            iconSrc: 'assets/images/VerVistaVinIFC_32x32.png',
+            iconSrc: 'assets/images/AddFile_32x32.png',
             action: 'home-coStru-new',
             disabled: !this.activeProject,
             variant: 'large',
           },
           {
             labelKey: 'toolbar.home.removeCoStructure',
-            iconSrc: 'assets/images/Add_32x32.png',
+            iconSrc: 'assets/images/RemoveFile_32x32.png',
             action: 'home-coStru-remove',
             disabled: !this.activeProject || this.homeToolbarState.selectedCatalogId == null,
             variant: 'large',
           },
           {
             labelKey: 'toolbar.home.dupCoStructure',
-            iconSrc: 'assets/images/Add_32x32.png',
+            iconSrc: 'assets/images/CloneFile_32x32.png',
             action: 'home-coStru-dup',
             disabled: true,
+            visible: false,
             variant: 'large',
           },
           {
             labelKey: 'toolbar.home.infoCoStructure',
-            iconSrc: 'assets/images/Add_32x32.png',
+            iconSrc: 'assets/images/InfoFile_32x32.png',
             action: 'home-coStru-info',
             disabled: !this.activeProject || this.homeToolbarState.selectedCatalogId == null,
             variant: 'large',
           },
-        ],
-      },
-      {
-        labelKey: 'toolbar.home.category.boq',
-        layout: 'horizontal',
-        visible: activeBottomTab === 'boq',
-        buttons: [
           {
-            labelKey: 'toolbar.home.calcInfo',
-            iconSrc: 'assets/images/VerVistaVinIFC_32x32.png',
-            action: 'home-calc-info',
-            disabled: true,
+            labelKey: 'toolbar.home.concept.show',
+            iconText: '+',
+            action: 'expand-tree',
+            disabled: this.isHomeActionDisabled('expand-tree'),
             variant: 'large',
           },
           {
-            labelKey: 'toolbar.home.calcBoq',
-            iconSrc: 'assets/images/Add_32x32.png',
-            action: 'home-calc-boq',
-            disabled: true,
-            variant: 'large',
-          },
-          {
-            labelKey: 'toolbar.home.calcRemove',
-            iconSrc: 'assets/images/Add_32x32.png',
-            action: 'home-calc-remove',
-            disabled: true,
+            labelKey: 'toolbar.home.concept.hide',
+            iconText: '-',
+            action: 'collapse-tree',
+            disabled: this.isHomeActionDisabled('collapse-tree'),
             variant: 'large',
           },
         ],
@@ -515,6 +474,20 @@ export class Toolbar {
             iconSrc: 'assets/images/ImportExcel_32x32.png',
             action: 'import-parameters-excel',
             disabled: this.isHomeActionDisabled('import-parameters-excel'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.importParametersB5d',
+            iconSrc: 'assets/images/AddFile_32x32.png',
+            action: 'import-parameters-b5d',
+            disabled: this.isHomeActionDisabled('import-parameters-b5d'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.importParametersXdb',
+            iconSrc: 'assets/images/AddFile_32x32.png',
+            action: 'import-parameters-xdb',
+            disabled: this.isHomeActionDisabled('import-parameters-xdb'),
             variant: 'large',
           },
           {
@@ -562,6 +535,50 @@ export class Toolbar {
             disabled: this.isHomeActionDisabled('parameter-toggle-analysis'),
             selected: this.homeToolbarState.parameterAnalysisVisible !== false,
             variant: 'small',
+          },
+        ],
+      },
+      {
+        labelKey: 'toolbar.home.category.model',
+        layout: 'horizontal',
+        visible: true,
+        buttons: [
+          {
+            labelKey: 'toolbar.home.selectFilter',
+            iconSrc: 'assets/images/SeleccFiltro_32x32.png',
+            action: 'home-select-filter',
+            disabled: this.isHomeActionDisabled('home-select-filter'),
+            variant: 'large-dropdown',
+          },
+          {
+            labelKey: 'toolbar.home.objInfo',
+            iconSrc: 'assets/images/ObjPanelInfo_32x32.png',
+            action: 'home-object-info',
+            disabled: this.isHomeActionDisabled('home-object-info'),
+            visible: false,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.linksView',
+            iconSrc: 'assets/images/LinksView_32x32.png',
+            action: 'home-links-view',
+            disabled: this.isHomeActionDisabled('home-links-view'),
+            selected: this.homeToolbarState.linksViewVisible,
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.asignPorpt',
+            iconSrc: 'assets/images/Paste_32x32.png',
+            action: 'home-assign-property',
+            disabled: this.isHomeActionDisabled('home-assign-property'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.unlinkedObjs',
+            iconSrc: 'assets/images/ObjWoLink_32x32.png',
+            action: 'home-unlinked-objects',
+            disabled: this.isHomeActionDisabled('home-unlinked-objects'),
+            variant: 'large-dropdown',
           },
         ],
       },
@@ -614,6 +631,8 @@ export class Toolbar {
       if (actionId === 'home-select-all') return (state.parametersTotal ?? 0) === 0;
       if (actionId === 'home-calc-parameter') return false;
       if (actionId === 'import-parameters-excel') return !this.activeProject;
+      if (actionId === 'import-parameters-b5d') return !this.activeProject;
+      if (actionId === 'import-parameters-xdb') return !this.activeProject;
       if (
         actionId === 'parameter-toggle-list' ||
         actionId === 'parameter-toggle-boq' ||
@@ -629,6 +648,9 @@ export class Toolbar {
       if (actionId === 'home-coStru-remove') return !this.activeProject || state.selectedCatalogId == null;
       if (actionId === 'home-coStru-info') return !this.activeProject || state.selectedCatalogId == null;
       if (actionId === 'home-coStru-dup') return true;
+      if (actionId === 'expand-tree' || actionId === 'collapse-tree') {
+        return state.activePanel !== 'concepts' || (state.conceptsTotal ?? 0) === 0;
+      }
     }
 
     if (actionId === 'home-refresh-view' || actionId === 'home-toggle-filters' || actionId === 'home-reset-view') {
@@ -837,7 +859,7 @@ export class Toolbar {
             ],
           },
           { labelKey: 'toolbar.measurement.clearAll', iconText: 'CLR', action: 'clear-measurements', variant: 'large', disabled: viewerOnlyDisabled },
-          { labelKey: 'toolbar.measurement.weight', iconText: 'kg', action: 'measurement-weight', disabled: true, variant: 'large' },
+          { labelKey: 'toolbar.measurement.weight', iconText: 'kg', action: 'measurement-weight', disabled: true, visible: false, variant: 'large' },
         ],
       },
     ];
@@ -849,7 +871,7 @@ export class Toolbar {
         labelKey: 'toolbar.tools.category.conceptEstructure',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.tools.importExcel', iconSrc: 'assets/images/ImportExcel_32x32.png', variant: 'large-dropdown' },
+          { labelKey: 'toolbar.tools.importExcel', iconSrc: 'assets/images/ImportExcel_32x32.png', visible: false, variant: 'large-dropdown' },
           { labelKey: 'toolbar.tools.importB5D', iconSrc: 'assets/images/Add_32x32.png', action: 'import-b5d-project', variant: 'large' },
           {
             labelKey: 'toolbar.tools.importAXA',
@@ -857,7 +879,7 @@ export class Toolbar {
             action: 'import-axa-catalog',
             variant: 'large',
           },
-          { labelKey: 'toolbar.tools.cloneDB', iconSrc: 'assets/images/CloneDB_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.tools.cloneDB', iconSrc: 'assets/images/CloneDB_32x32.png', visible: false, variant: 'large' },
           { labelKey: 'toolbar.tools.objLinks', iconSrc: 'assets/images/CopyLinks_32x32.png', action: 'refresh-b5d-project', variant: 'large-dropdown' },
         ],
       },
@@ -865,26 +887,24 @@ export class Toolbar {
         labelKey: 'toolbar.tools.category.qto',
         layout: 'horizontal',
         buttons: [
-          { labelKey: 'toolbar.tools.exportExcel', iconSrc: 'assets/images/ExportExcel_32x32.png', variant: 'large' },
+          { labelKey: 'toolbar.tools.exportExcel', iconSrc: 'assets/images/ExportExcel_32x32.png', visible: false, variant: 'large' },
           { labelKey: 'toolbar.tools.exportDB', iconSrc: 'assets/images/ExportDB_32x32.png', action: 'export-b5d-project', variant: 'large' },
-          { labelKey: 'toolbar.tools.copyAXA', iconSrc: 'assets/images/CopyAXA_32x32.png', variant: 'large' },
-          { labelKey: 'toolbar.tools.getImages', iconSrc: 'assets/images/SnapShoots_32x32.png', variant: 'large-dropdown' },
-          { labelKey: 'toolbar.tools.QTOScheme', iconSrc: 'assets/images/ExcelTemplate_32x32.png', variant: 'large-dropdown' },
+          { labelKey: 'toolbar.tools.copyAXA', iconSrc: 'assets/images/CopyAXA_32x32.png', visible: false, variant: 'large' },
+          { labelKey: 'toolbar.tools.getImages', iconSrc: 'assets/images/SnapShoots_32x32.png', visible: false, variant: 'large-dropdown' },
+          { labelKey: 'toolbar.tools.QTOScheme', iconSrc: 'assets/images/ExcelTemplate_32x32.png', visible: false, variant: 'large-dropdown' },
         ],
       },
       {
         labelKey: 'toolbar.tools.category.parameters',
         layout: 'horizontal',
-        buttons: [
-          { labelKey: 'toolbar.placeholder', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' },
-        ],
+        visible: false,
+        buttons: [{ labelKey: 'toolbar.placeholder', iconSrc: 'assets/images/Add_32x32.png', variant: 'large' }],
       },
       {
         labelKey: 'toolbar.tools.category.options',
         layout: 'horizontal',
-        buttons: [
-          { labelKey: 'toolbar.tools.options', iconSrc: 'assets/images/Options_32x32.png', variant: 'large' },
-        ],
+        visible: false,
+        buttons: [{ labelKey: 'toolbar.tools.options', iconSrc: 'assets/images/Options_32x32.png', variant: 'large' }],
       },
       {
         labelKey: 'toolbar.tools',
@@ -934,6 +954,13 @@ export class Toolbar {
             iconSrc: 'assets/images/Add_32x32.png',
             variant: 'large',
             disabled: viewerOnlyDisabled,
+          },
+          {
+            labelKey: 'toolbar.view.lighting',
+            action: 'toggle-lighting',
+            iconText: 'L',
+            variant: 'large',
+            selected: this.modelLightingEnabled,
           },
         ],
       },

@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
 import type {
   WorkbookCellOrm,
   WorkbookImageOrm,
@@ -7,6 +7,8 @@ import type {
 } from '../../types/b5d-orm';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
 import { handlePanelZoomWheel } from '../../utils/panel-interactions/panel-interactions';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 
 type XlsxPreviewRenderedColumn = {
   columnNumber: number;
@@ -67,10 +69,10 @@ type XlsxPreviewVisualContext = {
   styleUrl: './xlsx-preview.scss',
 })
 export class XlsxPreview implements OnChanges, OnDestroy {
-  @Input() title = 'Vista previa';
+  // Manual attention needed: remaining preview copy.
   @Input() loading = false;
   @Input() error = '';
-  @Input() emptyMessage = 'Selecciona una hoja para previsualizar.';
+  @Input() emptyMessage = '';
   @Input() projectId: number | null = null;
   @Input() quantificationId: number | null = null;
   @Input() sheetIndex: number | null = null;
@@ -96,6 +98,10 @@ export class XlsxPreview implements OnChanges, OnDestroy {
   renderedSheet: XlsxPreviewRenderedSheet | null = null;
   internalLoading = false;
   internalError = '';
+
+  readonly i18n = inject(I18nService);
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private loadToken = 0;
@@ -210,6 +216,7 @@ export class XlsxPreview implements OnChanges, OnDestroy {
     } finally {
       if (currentToken === this.loadToken) {
         this.internalLoading = false;
+        this.changeDetectorRef.detectChanges();
       }
     }
   }

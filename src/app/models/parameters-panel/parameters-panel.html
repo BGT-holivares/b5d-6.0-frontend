@@ -1,31 +1,34 @@
-﻿<section class="b5d-parameters-panel">
+﻿<!-- Manual attention needed: remaining panel copy. -->
+<section class="b5d-parameters-panel">
   <header class="b5d-parameters-panel__header">
-    <strong>Parametros de comparacion</strong>
-    @if (activeProject) {
-      <span>Proyecto: {{ activeProject.nombre }} ({{ activeProject.id }})</span>
-    } @else {
-      <span class="b5d-parameters-panel__muted">Sin proyecto activo</span>
-    }
+    <strong>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.title') }}</strong>
+    <span class="b5d-parameters-panel__header-actions">
+      @if (activeProject) {
+        <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.project') }} {{ activeProject.nombre }} ({{ activeProject.id }})</span>
+      } @else {
+        <span class="b5d-parameters-panel__muted">{{ i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}</span>
+      }
+    </span>
   </header>
 
   @if (b5dLoading) {
-    <div class="b5d-parameters-panel__loading">Cargando parametros...</div>
+    <div class="b5d-parameters-panel__loading">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingParameters') }}</div>
   }
 
   <div class="b5d-parameters-panel__filters">
     <label>
-      <span>Tipo de parametro</span>
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.parameterType') }}</span>
       <select [(ngModel)]="selectedParameterType" (ngModelChange)="onFilterChange()">
-        <option value="all">Todos</option>
-        <option value="cantidad">Cantidades</option>
-        <option value="costo">Costos</option>
+        <option value="all">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.all') }}</option>
+        <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+        <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
       </select>
     </label>
 
     <label>
-      <span>Tipo de edificacion</span>
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.buildingType') }}</span>
       <select [(ngModel)]="selectedBuildingType" (ngModelChange)="onFilterChange()">
-        <option value="all">Todos</option>
+        <option value="all">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.all') }}</option>
         @for (buildingType of buildingTypeOptions; track buildingType) {
           <option [value]="buildingType">{{ buildingType }}</option>
         }
@@ -50,51 +53,16 @@
             [style.grid-row]="getPaneGridRow('parameter-list')"
             [style.grid-column]="getPaneGridColumn('parameter-list')"
           >
-            <div class="b5d-parameters-panel__pane-title">
-              <span>Parametros disponibles</span>
-              <span class="b5d-parameters-panel__pane-actions">
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('parameter-list', 'up')"
-                  title="Mover arriba"
-                  (click)="movePaneOrder('parameter-list', 'up')"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('parameter-list', 'down')"
-                  title="Mover abajo"
-                  (click)="movePaneOrder('parameter-list', 'down')"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Reducir zoom"
-                  (click)="decreasePaneZoom('parameter-list')"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Restablecer zoom"
-                  (click)="resetPaneZoom('parameter-list')"
-                >
-                  100%
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Aumentar zoom"
-                  (click)="increasePaneZoom('parameter-list')"
-                >
-                  +
-                </button>
+            <div class="b5d-parameters-panel__pane-title" (dragover)="onPaneDragOver('parameter-list', $event)">
+              <span class="b5d-parameters-panel__pane-title-main">
+                <span
+                  class="b5d-parameters-panel__pane-drag-handle bi bi-grip-vertical"
+                  draggable="true"
+                  [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+                  (dragstart)="startPaneDrag('parameter-list', $event)"
+                  (dragend)="endPaneDrag()"
+                ></span>
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.availableParameters') }}</span>
               </span>
             </div>
             <div
@@ -104,38 +72,56 @@
               (click)="closeParameterTableContextMenu()"
             >
               @if (parameterTablePreferences.chooserOpen) {
-                <div class="b5d-parameters-panel__column-chooser">
+                <section
+                  class="b5d-floating-helper-panel"
+                  [style.left.px]="parameterColumnChooserLeft"
+                  [style.top.px]="parameterColumnChooserTop"
+                >
+                  <header class="b5d-floating-helper-panel__header" (pointerdown)="startParameterColumnChooserDrag($event)">
+                    <span class="b5d-floating-helper-panel__title">
+                      {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
+                    </span>
+                    <span class="b5d-floating-helper-panel__actions">
+                      <button
+                        type="button"
+                        class="b5d-floating-helper-panel__action"
+                        [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+                        (pointerdown)="$event.stopPropagation()"
+                        (click)="closeParameterTableChooser()"
+                      >
+                        x
+                      </button>
+                    </span>
+                  </header>
+
+                  <div class="b5d-floating-helper-panel__body">
                   @for (column of parameterTableColumns; track column.key) {
-                    <div class="b5d-parameters-panel__column-chooser-row">
-                      <label class="b5d-parameters-panel__column-chooser-label">
+                      <div
+                        class="b5d-floating-helper-panel__row"
+                        [class.b5d-floating-helper-panel__row--dragging]="parameterColumnDragKey === column.key"
+                        (dragover)="onParameterColumnDragOver(column.key, $event)"
+                      >
+                        <span
+                          class="b5d-floating-helper-panel__drag-handle bi bi-grip-vertical"
+                          draggable="true"
+                          [title]="i18n.translateForComponent(parametersPanelTranslations, column.labelKey ?? column.label)"
+                          (dragstart)="onParameterColumnDragStart(column.key, $event)"
+                          (dragend)="onParameterColumnDragEnd()"
+                        ></span>
+                        <div class="b5d-floating-helper-panel__row-main">
+                          <label class="b5d-floating-helper-panel__row-label">
                         <input
                           type="checkbox"
                           [checked]="isParameterTableColumnVisible(column.key)"
                           (change)="toggleParameterTableColumnVisibility(column.key)"
                         />
-                        <span>{{ column.label }}</span>
-                      </label>
-                      <div class="b5d-parameters-panel__column-chooser-actions">
-                        <button
-                          type="button"
-                          class="b5d-parameters-panel__tool-button"
-                          [disabled]="parameterTablePreferences.order.indexOf(column.key) <= 0"
-                          (click)="moveParameterTableColumn(column.key, 'left')"
-                        >
-                          ←
-                        </button>
-                        <button
-                          type="button"
-                          class="b5d-parameters-panel__tool-button"
-                          [disabled]="parameterTablePreferences.order.indexOf(column.key) >= parameterTablePreferences.order.length - 1"
-                          (click)="moveParameterTableColumn(column.key, 'right')"
-                        >
-                          →
-                        </button>
+                        <span>{{ i18n.translateForComponent(parametersPanelTranslations, column.labelKey ?? column.label) }}</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
                   }
-                </div>
+                  </div>
+                </section>
               }
 
               @if (visibleParameterColumns.length) {
@@ -148,7 +134,17 @@
                   <thead>
                     <tr>
                       @for (column of visibleParameterColumns; track column.key) {
-                        <th>{{ column.label }}</th>
+                        <th [attr.data-b5d-column-key]="column.key" (dragover)="onParameterColumnDragOver(column.key, $event)">
+                          <span class="b5d-table-header__content">
+                            <span
+                              class="b5d-table-header__drag-handle bi bi-grip-vertical"
+                              draggable="true"
+                              (dragstart)="onParameterColumnDragStart(column.key, $event)"
+                              (dragend)="onParameterColumnDragEnd()"
+                            ></span>
+                            <span>{{ i18n.translateForComponent(parametersPanelTranslations, column.labelKey ?? column.label) }}</span>
+                          </span>
+                        </th>
                       }
                     </tr>
                     @if (tableFiltersVisible) {
@@ -170,7 +166,7 @@
                                 type="text"
                                 [ngModel]="getParameterFilterValue(column.key)"
                                 (ngModelChange)="setParameterFilterValue(column.key, $event)"
-                                [placeholder]="column.label"
+                                [placeholder]="i18n.translateForComponent(parametersPanelTranslations, column.labelKey ?? column.label)"
                               />
                             </div>
                           </th>
@@ -207,13 +203,13 @@
                                 />
                               }
                               @case ('descripcion') {
-                                <input
-                                  type="text"
+                                <textarea
+                                  rows="2"
                                   [(ngModel)]="row.descripcion"
                                   [disabled]="isSavingParameterActive(row.id)"
                                   (click)="$event.stopPropagation()"
                                   (blur)="saveParameterRow(row)"
-                                />
+                                ></textarea>
                               }
                               @case ('tipo_comparacion') {
                                 <select
@@ -222,9 +218,9 @@
                                   (click)="$event.stopPropagation()"
                                   (change)="saveParameterRow(row)"
                                 >
-                                  <option value="clave_exacta">Clave exacta</option>
-                                  <option value="clave_parcial">Clave parcial</option>
-                                  <option value="descripcion_parcial">Descripcion parcial</option>
+                                  <option value="clave_exacta">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.exactCode') }}</option>
+                                  <option value="clave_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialCode') }}</option>
+                                  <option value="descripcion_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialDescription') }}</option>
                                 </select>
                               }
                               @case ('tipo_parametro') {
@@ -234,8 +230,9 @@
                                   (click)="$event.stopPropagation()"
                                   (change)="saveParameterRow(row)"
                                 >
-                                  <option value="cantidad">Cantidad</option>
-                                  <option value="costo">Costo</option>
+                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
                                 </select>
                               }
                               @case ('tipo_edificacion') {
@@ -303,21 +300,22 @@
                                   <input type="text" [(ngModel)]="creatingDraft.clave" />
                                 }
                                 @case ('descripcion') {
-                                  <input type="text" [(ngModel)]="creatingDraft.descripcion" />
+                                  <textarea rows="2" [(ngModel)]="creatingDraft.descripcion"></textarea>
                                 }
                                 @case ('tipo_comparacion') {
                                   <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                                    <option value="clave_exacta">Clave exacta</option>
-                                    <option value="clave_parcial">Clave parcial</option>
-                                    <option value="descripcion_parcial">Descripcion parcial</option>
+                                    <option value="clave_exacta">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.exactCode') }}</option>
+                                    <option value="clave_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialCode') }}</option>
+                                    <option value="descripcion_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialDescription') }}</option>
                                   </select>
                                 }
                                 @case ('tipo_parametro') {
-                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
-                                    <option value="cantidad">Cantidad</option>
-                                    <option value="costo">Costo</option>
-                                  </select>
-                                }
+                                <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
+                                </select>
+                              }
                                 @case ('tipo_edificacion') {
                                   <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
                                 }
@@ -335,10 +333,10 @@
                                     <div class="b5d-parameters-panel__editor-actions">
                                       <input type="text" [(ngModel)]="creatingDraft.promedio" />
                                       <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                                        {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                                        {{ creatingInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
                                       </button>
                                       <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                                        Cancelar
+                                        {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
                                       </button>
                                     </div>
                                   } @else {
@@ -363,21 +361,22 @@
                                   <input type="text" [(ngModel)]="creatingDraft.clave" />
                                 }
                                 @case ('descripcion') {
-                                  <input type="text" [(ngModel)]="creatingDraft.descripcion" />
+                                  <textarea rows="2" [(ngModel)]="creatingDraft.descripcion"></textarea>
                                 }
                                 @case ('tipo_comparacion') {
                                   <select [(ngModel)]="creatingDraft.tipo_comparacion">
-                                    <option value="clave_exacta">Clave exacta</option>
-                                    <option value="clave_parcial">Clave parcial</option>
-                                    <option value="descripcion_parcial">Descripcion parcial</option>
+                                    <option value="clave_exacta">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.exactCode') }}</option>
+                                    <option value="clave_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialCode') }}</option>
+                                    <option value="descripcion_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialDescription') }}</option>
                                   </select>
                                 }
                                 @case ('tipo_parametro') {
-                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
-                                    <option value="cantidad">Cantidad</option>
-                                    <option value="costo">Costo</option>
-                                  </select>
-                                }
+                                <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
+                                </select>
+                              }
                                 @case ('tipo_edificacion') {
                                   <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
                                 }
@@ -395,10 +394,10 @@
                                     <div class="b5d-parameters-panel__editor-actions">
                                       <input type="text" [(ngModel)]="creatingDraft.promedio" />
                                       <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
-                                        {{ creatingInProgress ? 'Guardando...' : 'Guardar' }}
+                                        {{ creatingInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
                                       </button>
                                       <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
-                                        Cancelar
+                                        {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
                                       </button>
                                     </div>
                                   } @else {
@@ -412,7 +411,7 @@
                       } @else {
                         <tr>
                           <td class="b5d-parameters-panel__muted" [attr.colspan]="visibleParameterColumns.length">
-                            No hay parametros para los filtros seleccionados.
+                            {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noRows') }}
                           </td>
                         </tr>
                       }
@@ -421,7 +420,7 @@
                 </table>
               } @else {
                 <div class="b5d-parameters-panel__muted">
-                  No quedan columnas visibles. Abre el selector de columnas para recuperar la vista.
+                  {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
                 </div>
               }
 
@@ -434,16 +433,16 @@
                   (contextmenu)="$event.preventDefault()"
                 >
                   <button type="button" (click)="handleParameterTableContextMenuAction('chooser')">
-                    {{ parameterTablePreferences.chooserOpen ? 'Cerrar columnas' : 'Columnas' }}
+                    {{ parameterTablePreferences.chooserOpen ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.closeColumns') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.columns') }}
                   </button>
                   <button type="button" (click)="handleParameterTableContextMenuAction('filters')">
-                    {{ tableFiltersVisible ? 'Ocultar filtro' : 'Mostrar filtro' }}
+                    {{ tableFiltersVisible ? i18n.translateForComponent(globalTranslations, 'common.contextMenu.hideFilters') : i18n.translateForComponent(globalTranslations, 'common.contextMenu.showFilters') }}
                   </button>
                   <button type="button" (click)="handleParameterTableContextMenuAction('best-fit')">
-                    Best fit
+                    {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.bestFit') }}
                   </button>
                   <button type="button" (click)="handleParameterTableContextMenuAction('reset')">
-                    Restablecer vista
+                    {{ i18n.translateForComponent(globalTranslations, 'common.contextMenu.resetView') }}
                   </button>
                 </div>
               }
@@ -466,68 +465,33 @@
             [style.grid-row]="getPaneGridRow('boq-preview')"
             [style.grid-column]="getPaneGridColumn('boq-preview')"
           >
-            <div class="b5d-parameters-panel__pane-title">
-              <span>Vista BOQ</span>
-              <span class="b5d-parameters-panel__pane-actions">
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('boq-preview', 'up')"
-                  title="Mover arriba"
-                  (click)="movePaneOrder('boq-preview', 'up')"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('boq-preview', 'down')"
-                  title="Mover abajo"
-                  (click)="movePaneOrder('boq-preview', 'down')"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Reducir zoom"
-                  (click)="decreaseBoqPreviewZoom()"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Restablecer zoom"
-                  (click)="resetBoqPreviewZoom()"
-                >
-                  100%
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Aumentar zoom"
-                  (click)="increaseBoqPreviewZoom()"
-                >
-                  +
-                </button>
+            <div class="b5d-parameters-panel__pane-title" (dragover)="onPaneDragOver('boq-preview', $event)">
+              <span class="b5d-parameters-panel__pane-title-main">
+                <span
+                  class="b5d-parameters-panel__pane-drag-handle bi bi-grip-vertical"
+                  draggable="true"
+                  [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+                  (dragstart)="startPaneDrag('boq-preview', $event)"
+                  (dragend)="endPaneDrag()"
+                ></span>
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.boqView') }}</span>
               </span>
             </div>
             <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--stacked">
               <div class="b5d-parameters-panel__boq-controls">
                 <label>
-                  <span>Cuantificacion</span>
+                  <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.quantification') }}</span>
                   <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectBoqQuantification($event)">
                     @if (!quantificationsWithWorkbook.length) {
-                      <option [ngValue]="null">Sin libro Excel</option>
+                      <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noWorkbook') }}</option>
                     }
                     @for (quantification of quantificationsWithWorkbook; track quantification.id) {
-                      <option [ngValue]="quantification.id">{{ quantification.nombre || ('Cuantificacion ' + quantification.id) }}</option>
+                      <option [ngValue]="quantification.id">{{ quantification.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.quantificationLabel') + ' ' + quantification.id) }}</option>
                     }
                   </select>
                 </label>
                 <label>
-                  <span>Esquema</span>
+                  <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.sheet') }}</span>
                   <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectBoqSheet($event)" [disabled]="!boqSheets.length">
                     @for (sheet of boqSheets; track sheet.index) {
                       <option [ngValue]="sheet.index">{{ sheet.name }}</option>
@@ -543,8 +507,7 @@
                   [quantificationId]="selectedQuantificationId"
                   [sheetIndex]="selectedSheetIndex"
                   [zoomPercent]="boqPreviewZoomPercent"
-                  title="Vista previa BOQ"
-                  emptyMessage="Selecciona una cuantificacion y esquema para previsualizar."
+              [emptyMessage]="i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationDetail')"
                   (cellSelected)="onBoqPreviewCellSelected($event)"
                   (zoomRequested)="onBoqPreviewZoomRequested($event)"
                 />
@@ -572,51 +535,16 @@
             [style.grid-row]="getPaneGridRow('description-matches')"
             [style.grid-column]="getPaneGridColumn('description-matches')"
           >
-            <div class="b5d-parameters-panel__pane-title">
-              <span>Coincidencias</span>
-              <span class="b5d-parameters-panel__pane-actions">
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('description-matches', 'up')"
-                  title="Mover arriba"
-                  (click)="movePaneOrder('description-matches', 'up')"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('description-matches', 'down')"
-                  title="Mover abajo"
-                  (click)="movePaneOrder('description-matches', 'down')"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Reducir zoom"
-                  (click)="decreasePaneZoom('description-matches')"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Restablecer zoom"
-                  (click)="resetPaneZoom('description-matches')"
-                >
-                  100%
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Aumentar zoom"
-                  (click)="increasePaneZoom('description-matches')"
-                >
-                  +
-                </button>
+            <div class="b5d-parameters-panel__pane-title" (dragover)="onPaneDragOver('description-matches', $event)">
+              <span class="b5d-parameters-panel__pane-title-main">
+                <span
+                  class="b5d-parameters-panel__pane-drag-handle bi bi-grip-vertical"
+                  draggable="true"
+                  [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+                  (dragstart)="startPaneDrag('description-matches', $event)"
+                  (dragend)="endPaneDrag()"
+                ></span>
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.matches') }}</span>
               </span>
             </div>
             <div
@@ -640,7 +568,7 @@
                               (change)="onDescriptionCandidateToggle(group.parameterId, candidate, $any($event.target).checked)"
                             />
                             <span>
-                              Fila {{ candidate.row }} | {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }}
+                              {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.rowLabel') }} {{ candidate.row }} | {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }}
                             </span>
                           </label>
                         }
@@ -653,13 +581,13 @@
               @if (costMatchCandidateGroups.length) {
                 <div class="b5d-parameters-panel__cost-matches">
                   <label class="b5d-parameters-panel__cost-catalog-selector">
-                    <span>Catalogo de costos</span>
+                    <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.costs') }}</span>
                     <select [ngModel]="selectedCostCatalogId" (ngModelChange)="onCostCatalogChange($event)">
                       @if (!availableCostCatalogs.length) {
-                        <option [ngValue]="null">Sin catalogos de costo</option>
+                          <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noCostCatalogs') }}</option>
                       }
                       @for (catalog of availableCostCatalogs; track catalog.id) {
-                        <option [ngValue]="catalog.id">{{ catalog.nombre || ('Catalogo ' + catalog.id) }}</option>
+                        <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.catalogLabel') + ' ' + catalog.id) }}</option>
                       }
                     </select>
                     <small>{{ selectedCostCatalogLabel }}</small>
@@ -667,7 +595,7 @@
                   @for (group of costMatchCandidateGroups; track group.parameterId) {
                     <div class="b5d-parameters-panel__cost-group">
                       <div class="b5d-parameters-panel__description-group-title">
-                        Costo: {{ group.parameterCode }} - {{ group.parameterDescription }}
+                        {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.costLabel') }} {{ group.parameterCode }} - {{ group.parameterDescription }}
                       </div>
                       <div class="b5d-parameters-panel__cost-group-list">
                         @for (candidate of group.candidates; track candidate.id) {
@@ -679,7 +607,7 @@
                               (change)="onCostConceptToggle(group.parameterId, candidate.id)"
                             />
                             <span>
-                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ formatValue(candidate.costo) }}
+                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ formatValue(candidate.precio_unitario) }}
                             </span>
                           </label>
                         }
@@ -707,51 +635,16 @@
             [style.grid-row]="getPaneGridRow('analysis')"
             [style.grid-column]="getPaneGridColumn('analysis')"
           >
-            <div class="b5d-parameters-panel__pane-title">
-              <span>Resultados de analisis</span>
-              <span class="b5d-parameters-panel__pane-actions">
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('analysis', 'up')"
-                  title="Mover arriba"
-                  (click)="movePaneOrder('analysis', 'up')"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  [disabled]="!canMovePane('analysis', 'down')"
-                  title="Mover abajo"
-                  (click)="movePaneOrder('analysis', 'down')"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Reducir zoom"
-                  (click)="decreasePaneZoom('analysis')"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Restablecer zoom"
-                  (click)="resetPaneZoom('analysis')"
-                >
-                  100%
-                </button>
-                <button
-                  type="button"
-                  class="b5d-parameters-panel__tool-button b5d-parameters-panel__tool-button--compact"
-                  title="Aumentar zoom"
-                  (click)="increasePaneZoom('analysis')"
-                >
-                  +
-                </button>
+            <div class="b5d-parameters-panel__pane-title" (dragover)="onPaneDragOver('analysis', $event)">
+              <span class="b5d-parameters-panel__pane-title-main">
+                <span
+                  class="b5d-parameters-panel__pane-drag-handle bi bi-grip-vertical"
+                  draggable="true"
+                  [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
+                  (dragstart)="startPaneDrag('analysis', $event)"
+                  (dragend)="endPaneDrag()"
+                ></span>
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.analysisResults') }}</span>
               </span>
             </div>
             <div
@@ -760,29 +653,32 @@
               (wheel)="onPaneZoomWheel($event, 'analysis')"
             >
               @if (boqLoading) {
-                <div class="b5d-parameters-panel__muted">Extrayendo datos BOQ para analisis...</div>
+                <div class="b5d-parameters-panel__muted">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.extractingBoq') }}</div>
               } @else if (boqError) {
                 <div class="b5d-parameters-panel__error">{{ boqError }}</div>
               } @else {
-                <table class="b5d-parameters-panel__boq-table" [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey">
+                <table
+                  class="b5d-parameters-panel__boq-table b5d-parameters-panel__analysis-table"
+                  [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey"
+                >
                   <thead>
                     <tr>
-                      <th>Fila</th>
-                      <th>Clave</th>
-                      <th>Descripcion</th>
-                      <th>Cantidad</th>
-                    <th>Unidad</th>
-                    <th>Valor evaluado</th>
-                    <th>Parametro</th>
-                    <th>Unidad parametro</th>
-                    <th>Rango</th>
-                    <th>Diferencia</th>
-                    <th>Resultado</th>
+                      <th data-b5d-column-key="row">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.row') }}</th>
+                      <th data-b5d-column-key="clave">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.code') }}</th>
+                      <th data-b5d-column-key="descripcion">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.description') }}</th>
+                      <th data-b5d-column-key="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.quantity') }}</th>
+                      <th data-b5d-column-key="unidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.unit') }}</th>
+                      <th data-b5d-column-key="evaluatedText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.evaluated') }}</th>
+                      <th data-b5d-column-key="matchedParameterCode">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.parameter') }}</th>
+                      <th data-b5d-column-key="matchedParameterUnit">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.parameterUnit') }}</th>
+                      <th data-b5d-column-key="rangeText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.range') }}</th>
+                      <th data-b5d-column-key="deltaText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.difference') }}</th>
+                      <th data-b5d-column-key="resultText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.result') }}</th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (analysisRow of boqAnalysisRows; track analysisRow.row + '-' + analysisRow.clave + '-' + analysisRow.descripcion) {
-                      <tr>
+                      <tr class="b5d-parameters-panel__analysis-row">
                         <td>{{ analysisRow.row }}</td>
                         <td>{{ analysisRow.clave || '-' }}</td>
                         <td>{{ analysisRow.descripcion || '-' }}</td>
@@ -798,7 +694,7 @@
                     } @empty {
                       <tr>
                         <td colspan="11" class="b5d-parameters-panel__muted">
-                          No se encontraron filas BOQ legibles en la hoja seleccionada.
+                          {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.noRows') }}
                         </td>
                       </tr>
                     }
@@ -813,7 +709,7 @@
 
     @if (!orderedVisiblePaneIds.length) {
       <div class="b5d-parameters-panel__empty-state">
-        <div class="b5d-parameters-panel__muted">Activa alguna vista de parametros desde la barra superior.</div>
+        <div class="b5d-parameters-panel__muted">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.emptyState') }}</div>
       </div>
     }
   </div>

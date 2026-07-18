@@ -17,6 +17,7 @@ export type TableFilterMode =
 export interface TableColumnDefinition<RowType> {
   key: string;
   label: string;
+  labelKey?: string;
   kind: TableColumnKind;
   widthPx?: number;
   hiddenByDefault?: boolean;
@@ -92,9 +93,11 @@ export function loadTableViewPreferences(
   storageKey: string,
   defaults: TableViewPreferences,
 ): TableViewPreferences {
-  if (typeof window === 'undefined' || !storageKey) return cloneTableViewPreferences(defaults);
+  if (!storageKey) return cloneTableViewPreferences(defaults);
   try {
-    const raw = window.localStorage.getItem(buildTableViewStorageKey(storageKey));
+    const storage = getSafeLocalStorage();
+    if (!storage) return cloneTableViewPreferences(defaults);
+    const raw = storage.getItem(buildTableViewStorageKey(storageKey));
     if (!raw) return cloneTableViewPreferences(defaults);
     const parsed = JSON.parse(raw) as Partial<TableViewPreferences> | null;
     if (!parsed || typeof parsed !== 'object') return cloneTableViewPreferences(defaults);
@@ -105,9 +108,11 @@ export function loadTableViewPreferences(
 }
 
 export function saveTableViewPreferences(storageKey: string, preferences: TableViewPreferences): void {
-  if (typeof window === 'undefined' || !storageKey) return;
+  if (!storageKey) return;
   try {
-    window.localStorage.setItem(buildTableViewStorageKey(storageKey), JSON.stringify(preferences));
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
+    storage.setItem(buildTableViewStorageKey(storageKey), JSON.stringify(preferences));
   } catch {
     // Ignore persistence errors.
   }
@@ -204,10 +209,10 @@ export function reorderTableColumn(preferences: TableViewPreferences, columnKey:
 
 export function moveTableColumn(preferences: TableViewPreferences, columnKey: string, targetIndex: number): void {
   const currentIndex = preferences.order.indexOf(columnKey);
-  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= preferences.order.length) return;
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex > preferences.order.length) return;
   const nextOrder = [...preferences.order];
   const [removed] = nextOrder.splice(currentIndex, 1);
-  nextOrder.splice(targetIndex, 0, removed);
+  nextOrder.splice(Math.min(targetIndex, nextOrder.length), 0, removed);
   preferences.order = nextOrder;
 }
 
@@ -330,3 +335,4 @@ function matchesTableFilter(value: unknown, filter: TableColumnFilterState, kind
 function buildTableViewStorageKey(storageKey: string): string {
   return `b5d-table-view:${storageKey}`;
 }
+import { getSafeLocalStorage } from '../browser-storage';

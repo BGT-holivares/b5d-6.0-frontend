@@ -1,4 +1,5 @@
 import { createRandomId } from '../random-id';
+import { getSafeLocalStorage, getSafeSessionStorage } from '../browser-storage';
 
 const DEBUG_STORAGE_KEY = 'b5d-debug-trace';
 const DEBUG_TRACE_BUFFER_KEY = 'b5d-debug-trace-buffer';
@@ -37,10 +38,11 @@ let replayedCompatibilityTrace = false;
 let lifecycleDiagnosticsInstalled = false;
 
 export function isB5dDebugEnabled(): boolean {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
+  const storage = getSafeLocalStorage();
+  if (!storage) return false;
 
   try {
-    return localStorage.getItem(DEBUG_STORAGE_KEY) === '1';
+    return storage.getItem(DEBUG_STORAGE_KEY) === '1';
   } catch {
     return false;
   }
@@ -69,9 +71,10 @@ export function logB5dDebug(message: string, data?: unknown): void {
 }
 
 export function clearB5dDebugTraceBuffer(): void {
-  if (typeof localStorage === 'undefined') return;
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   try {
-    localStorage.removeItem(DEBUG_TRACE_BUFFER_KEY);
+    storage.removeItem(DEBUG_TRACE_BUFFER_KEY);
   } catch {
     // Ignore storage errors.
   }
@@ -139,16 +142,18 @@ function ensureCompatibilityTraceReplay(): void {
 }
 
 function isB5dDebugReplayEnabled(): boolean {
-  if (typeof localStorage === 'undefined') return false;
+  const storage = getSafeLocalStorage();
+  if (!storage) return false;
   try {
-    return localStorage.getItem(DEBUG_TRACE_REPLAY_ENABLED_KEY) === '1';
+    return storage.getItem(DEBUG_TRACE_REPLAY_ENABLED_KEY) === '1';
   } catch {
     return false;
   }
 }
 
 function appendTraceLine(message: string, line: string): void {
-  if (typeof localStorage === 'undefined') return;
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   if (!shouldPersistTraceMessage(message)) return;
 
   try {
@@ -157,7 +162,7 @@ function appendTraceLine(message: string, line: string): void {
     while (currentBuffer.length > DEBUG_TRACE_LIMIT) {
       currentBuffer.shift();
     }
-    localStorage.setItem(DEBUG_TRACE_BUFFER_KEY, JSON.stringify(currentBuffer));
+    storage.setItem(DEBUG_TRACE_BUFFER_KEY, JSON.stringify(currentBuffer));
   } catch {
     // Ignora errores de almacenamiento; el log de consola sigue funcionando.
   }
@@ -168,10 +173,11 @@ function shouldPersistTraceMessage(message: string): boolean {
 }
 
 function readTraceBuffer(): string[] {
-  if (typeof localStorage === 'undefined') return [];
+  const storage = getSafeLocalStorage();
+  if (!storage) return [];
 
   try {
-    const raw = localStorage.getItem(DEBUG_TRACE_BUFFER_KEY);
+    const raw = storage.getItem(DEBUG_TRACE_BUFFER_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -188,20 +194,21 @@ function readTraceBufferTail(limit: number): string[] {
 
 function getB5dDebugTabId(): string {
   if (cachedTabId) return cachedTabId;
-  if (typeof sessionStorage === 'undefined') {
+  const storage = getSafeSessionStorage();
+  if (!storage) {
     cachedTabId = createRandomId('tab');
     return cachedTabId;
   }
 
   try {
-    const storedTabId = sessionStorage.getItem(DEBUG_TAB_ID_KEY);
+    const storedTabId = storage.getItem(DEBUG_TAB_ID_KEY);
     if (storedTabId) {
       cachedTabId = storedTabId;
       return storedTabId;
     }
 
     const newTabId = createRandomId('tab');
-    sessionStorage.setItem(DEBUG_TAB_ID_KEY, newTabId);
+    storage.setItem(DEBUG_TAB_ID_KEY, newTabId);
     cachedTabId = newTabId;
     return newTabId;
   } catch {

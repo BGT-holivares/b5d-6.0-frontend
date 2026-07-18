@@ -3,7 +3,12 @@ import { ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChange
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService, type CrearParametroPayload } from '../../services/backend-proyectos.service';
+import { LoadingPanelService } from '../../services/loading-panel.service';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import type { ParametroB5DOrm, ProyectoTrabajoOrm, TipoComparacionParametroOrm, TipoParametroOrm } from '../../types/b5d-orm';
+import { PARAMETERS_IMPORT_DIALOG_TRANSLATIONS } from './parameters-import-dialog.translations';
+import { createParameterImportPlan } from '../../utils/loading-panel/loading-plans';
 
 type ParameterImportField =
   | 'activo'
@@ -19,7 +24,7 @@ type ParameterImportField =
 
 type ParameterImportFieldDefinition = {
   key: ParameterImportField;
-  label: string;
+  labelKey: string;
   required: boolean;
   defaultValue: string;
 };
@@ -73,16 +78,16 @@ type ImportedParameterRow = {
 };
 
 const PARAMETER_IMPORT_FIELDS: ParameterImportFieldDefinition[] = [
-  { key: 'activo', label: 'Activo', required: false, defaultValue: '1' },
-  { key: 'clave', label: 'Clave', required: true, defaultValue: '' },
-  { key: 'descripcion', label: 'Descripcion', required: false, defaultValue: '' },
-  { key: 'tipo_comparacion', label: 'Tipo de comparacion', required: false, defaultValue: 'clave_exacta' },
-  { key: 'tipo_parametro', label: 'Tipo de parametro', required: false, defaultValue: 'cantidad' },
-  { key: 'tipo_edificacion', label: 'Tipo de edificacion', required: false, defaultValue: '' },
-  { key: 'unidad', label: 'Unidad', required: false, defaultValue: '' },
-  { key: 'minimo', label: 'Minimo', required: false, defaultValue: '' },
-  { key: 'maximo', label: 'Maximo', required: false, defaultValue: '' },
-  { key: 'promedio', label: 'Promedio', required: false, defaultValue: '' },
+  { key: 'activo', labelKey: 'parametersImport.field.active', required: false, defaultValue: '1' },
+  { key: 'clave', labelKey: 'parametersImport.field.key', required: true, defaultValue: '' },
+  { key: 'descripcion', labelKey: 'parametersImport.field.description', required: false, defaultValue: '' },
+  { key: 'tipo_comparacion', labelKey: 'parametersImport.field.comparisonType', required: false, defaultValue: 'clave_exacta' },
+  { key: 'tipo_parametro', labelKey: 'parametersImport.field.parameterType', required: false, defaultValue: 'cantidad' },
+  { key: 'tipo_edificacion', labelKey: 'parametersImport.field.buildingType', required: false, defaultValue: '' },
+  { key: 'unidad', labelKey: 'parametersImport.field.unit', required: false, defaultValue: '' },
+  { key: 'minimo', labelKey: 'parametersImport.field.minimum', required: false, defaultValue: '' },
+  { key: 'maximo', labelKey: 'parametersImport.field.maximum', required: false, defaultValue: '' },
+  { key: 'promedio', labelKey: 'parametersImport.field.average', required: false, defaultValue: '' },
 ];
 
 const FIELD_HEADER_ALIASES: Record<ParameterImportField, string[]> = {
@@ -105,6 +110,10 @@ const FIELD_HEADER_ALIASES: Record<ParameterImportField, string[]> = {
   styleUrl: './parameters-import-dialog.scss',
 })
 export class ParametersImportDialog implements OnChanges {
+  readonly i18n = inject(I18nService);
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+  readonly parametersImportDialogTranslations = PARAMETERS_IMPORT_DIALOG_TRANSLATIONS;
+
   @Input() visible = false;
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() existingParameters: ParametroB5DOrm[] = [];
@@ -129,6 +138,7 @@ export class ParametersImportDialog implements OnChanges {
   readonly fieldDefinitions = PARAMETER_IMPORT_FIELDS;
 
   private readonly backendProyectos = inject(BackendProyectosService);
+  private readonly loadingPanel = inject(LoadingPanelService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly closeDialogThreshold = 24;
 
@@ -147,6 +157,10 @@ export class ParametersImportDialog implements OnChanges {
       !this.loading &&
       this.fieldMappings.clave != null
     );
+  }
+
+  t(key: string): string {
+    return this.i18n.translateForComponent(this.parametersImportDialogTranslations, key);
   }
 
   get currentSheet(): WorkbookSheetState | null {
@@ -171,16 +185,16 @@ export class ParametersImportDialog implements OnChanges {
   }
 
   get selectedSheetLabel(): string {
-    return this.currentSheet?.name ?? 'Sin hoja';
+    return this.currentSheet?.name ?? this.t('parametersImport.noSheet');
   }
 
   get selectedHeaderLabel(): string {
     const sheet = this.currentSheet;
-    if (!sheet || sheet.selectedHeaderRowNumber == null) return 'No definida';
+    if (!sheet || sheet.selectedHeaderRowNumber == null) return this.t('parametersImport.noHeaderDefined');
     const candidate = sheet.headerCandidates.find((item) => item.rowNumber === sheet.selectedHeaderRowNumber);
-    if (!candidate) return `Fila ${sheet.selectedHeaderRowNumber}`;
+    if (!candidate) return `${this.t('parametersImport.rowLabel')} ${sheet.selectedHeaderRowNumber}`;
     const sample = this.getHeaderCandidateSnippet(candidate);
-    return sample ? `Fila ${candidate.rowNumber}: ${sample}` : `Fila ${candidate.rowNumber}`;
+    return sample ? `${this.t('parametersImport.rowLabel')} ${candidate.rowNumber}: ${sample}` : `${this.t('parametersImport.rowLabel')} ${candidate.rowNumber}`;
   }
 
   get selectedHeaderCandidates(): WorkbookHeaderCandidate[] {
@@ -193,7 +207,8 @@ export class ParametersImportDialog implements OnChanges {
 
   getFieldDefinitionLabel(fieldKey: ParameterImportField | null | undefined): string {
     if (!fieldKey) return '-';
-    return PARAMETER_IMPORT_FIELDS.find((fieldDefinition) => fieldDefinition.key === fieldKey)?.label ?? '-';
+    const fieldDefinition = PARAMETER_IMPORT_FIELDS.find((definition) => definition.key === fieldKey);
+    return fieldDefinition ? this.t(fieldDefinition.labelKey) : '-';
   }
 
   getHeaderCandidateSnippet(candidate: WorkbookHeaderCandidate): string {
@@ -202,7 +217,7 @@ export class ParametersImportDialog implements OnChanges {
 
   get mappingSummary(): string {
     const mappedFields = this.fieldDefinitions.filter((fieldDefinition) => this.fieldMappings[fieldDefinition.key] != null).length;
-    return `${mappedFields} de ${this.fieldDefinitions.length} columnas mapeadas`;
+    return `${mappedFields} ${this.t('parametersImport.of')} ${this.fieldDefinitions.length} ${this.t('parametersImport.mappedColumns')}`;
   }
 
   handleFileChange(event: Event): void {
@@ -220,7 +235,7 @@ export class ParametersImportDialog implements OnChanges {
     }
 
     this.isWorkbookProcessing = true;
-    this.processingMessage = 'Preparando archivo...';
+    this.processingMessage = this.t('parametersImport.preparingWorkbook');
     this.changeDetectorRef.detectChanges();
     void this.loadWorkbook(file);
   }
@@ -258,9 +273,9 @@ export class ParametersImportDialog implements OnChanges {
 
   getFieldMappingLabel(fieldKey: ParameterImportField): string {
     const mappedColumnIndex = this.fieldMappings[fieldKey];
-    if (mappedColumnIndex == null) return 'No usar';
+    if (mappedColumnIndex == null) return this.t('parametersImport.ignoreFieldShort');
     const column = this.selectedColumns.find((item) => item.index === mappedColumnIndex);
-    return column ? `${column.letter} - ${column.header || 'Sin encabezado'}` : 'No usar';
+    return column ? `${column.letter} - ${column.header || this.t('parametersImport.noHeader')}` : this.t('parametersImport.ignoreFieldShort');
   }
 
   getFieldMappingSample(fieldKey: ParameterImportField): string {
@@ -289,19 +304,22 @@ export class ParametersImportDialog implements OnChanges {
     if (!project || !sheet || this.importInProgress) return;
 
     if (sheet.selectedHeaderRowNumber == null) {
-      this.validationMessage = 'Selecciona una fila de encabezados.';
+      this.validationMessage = this.t('parametersImport.selectHeaderRow');
       return;
     }
 
     if (this.fieldMappings.clave == null) {
-      this.validationMessage = 'Debes asignar la columna de clave.';
+      this.validationMessage = this.t('parametersImport.assignKeyColumn');
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createParameterImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importParameters')),
+    );
     this.importInProgress = true;
     this.validationMessage = '';
     this.importMessage = '';
-    this.processingMessage = 'Importando parametros...';
+    this.processingMessage = this.t('parametersImport.importing');
     this.changeDetectorRef.detectChanges();
 
     const summary: ParameterImportSummary = {
@@ -314,15 +332,28 @@ export class ParametersImportDialog implements OnChanges {
 
     try {
       const rowsToImport = this.buildImportRows(sheet);
-      for (const importedRow of rowsToImport) {
+      for (let index = 0; index < rowsToImport.length; index += 1) {
+        const importedRow = rowsToImport[index];
         try {
           if (!importedRow.payload.clave && !importedRow.payload.descripcion) {
             summary.skipped += 1;
+            this.loadingPanel.setStepProgress(
+              loadingSessionId,
+              'importing',
+              ((index + 1) / Math.max(rowsToImport.length, 1)) * 100,
+              this.t('parametersImport.importingRows'),
+            );
             continue;
           }
 
           if (importedRow.existingMatch && importedRow.isNoChange) {
             summary.skipped += 1;
+            this.loadingPanel.setStepProgress(
+              loadingSessionId,
+              'importing',
+              ((index + 1) / Math.max(rowsToImport.length, 1)) * 100,
+              this.t('parametersImport.importingRows'),
+            );
             continue;
           }
 
@@ -335,22 +366,39 @@ export class ParametersImportDialog implements OnChanges {
             await firstValueFrom(this.backendProyectos.crearParametro(project.id, importedRow.payload));
             summary.created += 1;
           }
+          this.loadingPanel.setStepProgress(
+            loadingSessionId,
+            'importing',
+            ((index + 1) / Math.max(rowsToImport.length, 1)) * 100,
+            this.t('parametersImport.importingRows'),
+          );
         } catch (error) {
           summary.failed += 1;
-          summary.messages.push(`Fila ${importedRow.rowNumber}: ${this.resolveErrorMessage(error, 'No se pudo guardar el parametro.')}`);
+          summary.messages.push(`${this.t('parametersImport.rowLabel')} ${importedRow.rowNumber}: ${this.resolveErrorMessage(error, this.t('parametersImport.saveParameterError'))}`);
+          this.loadingPanel.setStepProgress(
+            loadingSessionId,
+            'importing',
+            ((index + 1) / Math.max(rowsToImport.length, 1)) * 100,
+            this.t('parametersImport.importingRows'),
+          );
         }
       }
 
-      this.importMessage = `Importación terminada: ${summary.created} creados, ${summary.updated} actualizados, ${summary.skipped} omitidos, ${summary.failed} fallidos.`;
+      this.loadingPanel.completeStep(loadingSessionId, 'importing', this.t('parametersImport.importComplete'));
+      this.importMessage = `${this.t('parametersImport.importComplete')}: ${summary.created} ${this.t('parametersImport.created')}, ${summary.updated} ${this.t('parametersImport.updated')}, ${summary.skipped} ${this.t('parametersImport.skipped')}, ${summary.failed} ${this.t('parametersImport.failed')}.`;
       this.importCompleted.emit(summary);
       if (summary.failed === 0) {
         this.closeRequested.emit();
       }
     } catch (error) {
-      this.validationMessage = this.resolveErrorMessage(error, 'No fue posible leer el archivo Excel.');
+      this.loadingPanel.abort(loadingSessionId);
+      this.validationMessage = this.resolveErrorMessage(error, this.t('parametersImport.readWorkbookError'));
     } finally {
       this.importInProgress = false;
       this.processingMessage = '';
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, this.t('parametersImport.importComplete'));
+      }
       this.changeDetectorRef.detectChanges();
     }
   }
@@ -359,17 +407,24 @@ export class ParametersImportDialog implements OnChanges {
   private async loadWorkbook(file: File): Promise<void> {
     this.resetWorkbookState();
     this.workbookFileName = file.name;
+    const loadingSessionId = this.loadingPanel.start(
+      createParameterImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importParameters')),
+    );
 
     try {
-      this.processingMessage = 'Cargando modulo de Excel...';
+      this.processingMessage = this.t('parametersImport.loadingXlsxModule');
+      this.loadingPanel.setStepProgress(loadingSessionId, 'loading', 35, this.t('parametersImport.loadingXlsxModule'));
       this.changeDetectorRef.detectChanges();
       await this.yieldToUi();
 
       const xlsxModule = await import('xlsx');
-      this.processingMessage = 'Leyendo archivo Excel...';
+      this.processingMessage = this.t('parametersImport.readingWorkbook');
+      this.loadingPanel.completeStep(loadingSessionId, 'loading', this.t('parametersImport.xlsxModuleReady'));
+      this.loadingPanel.setStepProgress(loadingSessionId, 'analyzing', 20, this.t('parametersImport.readingWorkbook'));
       this.changeDetectorRef.detectChanges();
       const workbookArrayBuffer = await file.arrayBuffer();
-      this.processingMessage = 'Analizando hojas...';
+      this.processingMessage = this.t('parametersImport.analyzingSheets');
+      this.loadingPanel.setStepProgress(loadingSessionId, 'analyzing', 60, this.t('parametersImport.analyzingSheets'));
       this.changeDetectorRef.detectChanges();
       await this.yieldToUi();
       const workbook = xlsxModule.read(workbookArrayBuffer, {
@@ -377,14 +432,15 @@ export class ParametersImportDialog implements OnChanges {
         cellDates: true,
       });
 
-      this.processingMessage = 'Detectando encabezados y vista previa...';
+      this.processingMessage = this.t('parametersImport.detectingHeaders');
+      this.loadingPanel.completeStep(loadingSessionId, 'analyzing', this.t('parametersImport.previewReady'));
       this.changeDetectorRef.detectChanges();
       this.sheetStates = workbook.SheetNames.map((sheetName: string, index: number) =>
         this.buildSheetState(xlsxModule, workbook.Sheets[sheetName], sheetName, index),
       );
 
       if (!this.sheetStates.length) {
-        this.workbookError = 'El archivo no contiene hojas visibles.';
+        this.workbookError = this.t('parametersImport.noVisibleSheets');
         return;
       }
 
@@ -397,9 +453,11 @@ export class ParametersImportDialog implements OnChanges {
       this.selectedHeaderCandidateRowNumber = sheet.selectedHeaderRowNumber;
       this.buildSheetColumns(sheet);
       this.applyColumnSuggestions(sheet);
-      this.processingMessage = 'Archivo listo para revisar.';
+      this.processingMessage = this.t('parametersImport.readyToReview');
+      this.loadingPanel.complete(loadingSessionId, this.t('parametersImport.readyToReview'));
     } catch (error) {
-      this.workbookError = this.resolveErrorMessage(error, 'No fue posible leer el archivo Excel.');
+      this.loadingPanel.abort(loadingSessionId);
+      this.workbookError = this.resolveErrorMessage(error, this.t('parametersImport.readWorkbookError'));
     } finally {
       this.isWorkbookProcessing = false;
       this.changeDetectorRef.detectChanges();
@@ -682,6 +740,8 @@ export class ParametersImportDialog implements OnChanges {
   private parseTipoParametro(value: string): TipoParametroOrm | null {
     const normalized = this.normalizeText(value);
     if (!normalized) return null;
+    if (normalized.includes('costo') && normalized.includes('%')) return 'costo_porcentaje';
+    if (normalized.includes('costo') && normalized.includes('porcentaje')) return 'costo_porcentaje';
     if (normalized.includes('costo')) return 'costo';
     if (normalized.includes('cantidad') || normalized.includes('quantity') || normalized.includes('qty')) return 'cantidad';
     return null;

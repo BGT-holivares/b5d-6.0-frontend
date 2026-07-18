@@ -7,7 +7,10 @@ function isMutatingMethod(method: string): boolean {
 }
 
 export const backendCsrfInterceptor: HttpInterceptorFn = (req, next) => {
-  if (!isMutatingMethod(req.method) || !req.url.startsWith(environment.backendBaseUrl)) {
+  const backendBaseUrl = environment.backendBaseUrl.replace(/\/+$/, '');
+  const isBackendRequest = req.url.startsWith('/api/') || (backendBaseUrl.length > 0 && req.url.startsWith(backendBaseUrl));
+
+  if (!isMutatingMethod(req.method) || !isBackendRequest) {
     return next(req);
   }
 

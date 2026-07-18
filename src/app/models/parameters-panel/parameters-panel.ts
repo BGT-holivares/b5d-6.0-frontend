@@ -4,8 +4,12 @@ import { firstValueFrom } from 'rxjs';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
-import { handlePanelZoomWheel } from '../../utils/panel-interactions/panel-interactions';
+import { getSafeLocalStorage } from '../../utils/browser-storage';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { handlePanelZoomWheel, startPointerDrag } from '../../utils/panel-interactions/panel-interactions';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import { PARAMETERS_PANEL_TRANSLATIONS } from './parameters-panel.translations';
 import {
   applyTableFilters,
   createDefaultTableViewPreferences,
@@ -13,7 +17,7 @@ import {
   getFilterModesForKind,
   getVisibleColumns,
   loadTableViewPreferences,
-  reorderTableColumn,
+  moveTableColumn,
   resetTableViewPreferences,
   saveTableViewPreferences,
   setTableFilterMode,
@@ -33,6 +37,7 @@ import type {
   WorkbookCellOrm,
   WorkbookSummarySheetOrm,
 } from '../../types/b5d-orm';
+import { isCostParameterType } from '../../utils/parameters/parameter-types';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import type { ToolbarActionId } from '../toolbar/toolbar';
@@ -86,7 +91,7 @@ type CostMatchCandidateGroup = {
     clave: string;
     descripcion: string;
     unidad: string;
-    costo: number | null;
+    precio_unitario: number | null;
   }[];
 };
 
@@ -111,6 +116,14 @@ type ParameterPaneId = 'parameter-list' | 'boq-preview' | 'description-matches' 
   styleUrl: './parameters-panel.scss',
 })
 export class ParametersPanel implements OnChanges {
+  readonly parametersPanelTranslations = PARAMETERS_PANEL_TRANSLATIONS;
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+  readonly i18n = inject(I18nService);
+
+  private t(key: string): string {
+    return this.i18n.translateForComponent(this.parametersPanelTranslations, key);
+  }
+
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() parameters: ParametroB5DOrm[] = [];
   @Input() concepts: ConceptoB5DOrm[] = [];
@@ -129,70 +142,80 @@ export class ParametersPanel implements OnChanges {
   readonly parameterTableColumns: TableColumnDefinition<ParametroB5DOrm>[] = [
     {
       key: 'activo',
-      label: 'Activo',
+      label: this.t('parameters.column.active'),
+      labelKey: 'parameters.column.active',
       kind: 'boolean',
       widthPx: 72,
       getValue: (row) => row.activo,
     },
     {
       key: 'clave',
-      label: 'Clave',
+      label: this.t('parameters.column.code'),
+      labelKey: 'parameters.column.code',
       kind: 'text',
       widthPx: 160,
       getValue: (row) => row.clave ?? '',
     },
     {
       key: 'descripcion',
-      label: 'Descripcion',
+      label: this.t('parameters.column.description'),
+      labelKey: 'parameters.column.description',
       kind: 'text',
       widthPx: 260,
       getValue: (row) => row.descripcion ?? '',
     },
     {
       key: 'tipo_comparacion',
-      label: 'Comparacion',
+      label: this.t('parameters.column.comparison'),
+      labelKey: 'parameters.column.comparison',
       kind: 'select',
       widthPx: 150,
       getValue: (row) => row.tipo_comparacion,
     },
     {
       key: 'tipo_parametro',
-      label: 'Tipo',
+      label: this.t('parameters.column.type'),
+      labelKey: 'parameters.column.type',
       kind: 'select',
       widthPx: 120,
       getValue: (row) => row.tipo_parametro,
     },
     {
       key: 'tipo_edificacion',
-      label: 'Edificacion',
+      label: this.t('parameters.column.buildingType'),
+      labelKey: 'parameters.column.buildingType',
       kind: 'text',
       widthPx: 160,
       getValue: (row) => row.tipo_edificacion ?? '',
     },
     {
       key: 'unidad',
-      label: 'Unidad',
+      label: this.t('parameters.column.unit'),
+      labelKey: 'parameters.column.unit',
       kind: 'text',
       widthPx: 110,
       getValue: (row) => row.unidad ?? '',
     },
     {
       key: 'minimo',
-      label: 'Minimo',
+      label: this.t('parameters.column.min'),
+      labelKey: 'parameters.column.min',
       kind: 'number',
       widthPx: 110,
       getValue: (row) => row.minimo,
     },
     {
       key: 'maximo',
-      label: 'Maximo',
+      label: this.t('parameters.column.max'),
+      labelKey: 'parameters.column.max',
       kind: 'number',
       widthPx: 110,
       getValue: (row) => row.maximo,
     },
     {
       key: 'promedio',
-      label: 'Promedio',
+      label: this.t('parameters.column.average'),
+      labelKey: 'parameters.column.average',
       kind: 'number',
       widthPx: 110,
       getValue: (row) => row.promedio,
@@ -209,6 +232,8 @@ export class ParametersPanel implements OnChanges {
     this.parameterTableStorageKey,
     this.parameterTableDefaults,
   );
+  parameterColumnChooserLeft = 0;
+  parameterColumnChooserTop = 0;
 
   selectedParameterType: TipoParametroOrm | 'all' = 'all';
   selectedBuildingType = 'all';
@@ -247,7 +272,11 @@ export class ParametersPanel implements OnChanges {
   parameterTableContextMenuX = 0;
   parameterTableContextMenuY = 0;
   parameterTableRefreshToken = 0;
+  draggedPaneId: ParameterPaneId | null = null;
   private lastAppliedStorageScopeKey = '';
+  private parameterColumnChooserPositionReady = false;
+  parameterColumnDragKey: string | null = null;
+  private readonly parameterColumnChooserWidth = 360;
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
@@ -281,18 +310,19 @@ export class ParametersPanel implements OnChanges {
     }
 
     if (changes['quantifications']) {
-      const quantificationIds = new Set(this.quantifications.map((row) => row.id));
-      if (this.selectedQuantificationId != null && quantificationIds.has(this.selectedQuantificationId)) {
-        // Keep selection.
-      } else {
-        const withWorkbook = this.quantifications.find((row) => row.tiene_libro_excel);
+      const workbookQuantifications = this.quantificationsWithWorkbook;
+      if (
+        this.selectedQuantificationId == null ||
+        !workbookQuantifications.some((row) => row.id === this.selectedQuantificationId)
+      ) {
+        const withWorkbook = workbookQuantifications[0] ?? null;
         this.selectedQuantificationId = withWorkbook?.id ?? null;
-        this.selectedSheetIndex = 0;
       }
       void this.loadBoqExtractedRows();
     }
 
     if (changes['activeProject']) {
+      this.selectedQuantificationId = null;
       void this.loadBoqExtractedRows();
     }
   }
@@ -349,7 +379,15 @@ export class ParametersPanel implements OnChanges {
 
   get visibleRows(): ParametroB5DOrm[] {
     const filteredByToolbar = this.workParameters.filter((row) => {
-      if (this.selectedParameterType !== 'all' && row.tipo_parametro !== this.selectedParameterType) return false;
+      if (
+        this.selectedParameterType !== 'all' &&
+        !(
+          row.tipo_parametro === this.selectedParameterType ||
+          (this.selectedParameterType === 'costo' && isCostParameterType(row.tipo_parametro))
+        )
+      ) {
+        return false;
+      }
       if (this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) return false;
       return true;
     });
@@ -381,7 +419,7 @@ export class ParametersPanel implements OnChanges {
       fallbackCatalogs.push({
         id: catalogId,
         identificador_original: null,
-        nombre: `Catalogo ${catalogId}`,
+        nombre: `${this.t('parameters.panel.catalogLabel')} ${catalogId}`,
         descripcion: null,
         grupo_cantidades_bim: null,
         propiedad_tipo_bim: null,
@@ -393,7 +431,7 @@ export class ParametersPanel implements OnChanges {
 
   get selectedCostCatalogLabel(): string {
     const selectedCatalog = this.availableCostCatalogs.find((catalog) => catalog.id === this.selectedCostCatalogId);
-    return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? 'Catalogo de costos';
+    return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? this.t('parameters.catalog.costs');
   }
 
   private getCostConceptsForSelectedCatalog(): ConceptoB5DOrm[] {
@@ -429,7 +467,7 @@ export class ParametersPanel implements OnChanges {
   get costMatchCandidateGroups(): CostMatchCandidateGroup[] {
     const groups: CostMatchCandidateGroup[] = [];
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'costo') continue;
+      if (!isCostParameterType(parameterRow.tipo_parametro)) continue;
       const candidates = this.getCostCandidateConcepts(parameterRow);
       if (!candidates.length) continue;
       groups.push({
@@ -441,7 +479,7 @@ export class ParametersPanel implements OnChanges {
           clave: conceptRow.clave ?? '-',
           descripcion: conceptRow.descripcion ?? '-',
           unidad: conceptRow.unidad ?? '-',
-          costo: this.resolveConceptUnitCost(conceptRow),
+          precio_unitario: this.resolveConceptUnitCost(conceptRow),
         })),
       });
     }
@@ -449,12 +487,12 @@ export class ParametersPanel implements OnChanges {
   }
 
   get comparisonLabel(): string {
-    if (this.selectedParameterType === 'all') return 'Costos y cantidades';
-    return this.selectedParameterType === 'costo' ? 'Costos' : 'Cantidades';
+    if (this.selectedParameterType === 'all') return this.t('parameters.filter.allTypes');
+    return this.selectedParameterType === 'costo' ? this.t('parameters.filter.costs') : this.t('parameters.filter.quantities');
   }
 
   get buildingLabel(): string {
-    return this.selectedBuildingType === 'all' ? 'Todos' : this.selectedBuildingType;
+    return this.selectedBuildingType === 'all' ? this.t('parameters.filter.allBuildings') : this.selectedBuildingType;
   }
 
   get quantificationsWithWorkbook(): CuantificacionB5DOrm[] {
@@ -528,18 +566,38 @@ export class ParametersPanel implements OnChanges {
     this.emitToolbarState();
   }
 
-  // Moves a pane one step up or down in the shared panel order.
-  movePaneOrder(paneId: ParameterPaneId, direction: 'up' | 'down'): void {
-    const currentIndex = this.paneOrder.indexOf(paneId);
-    if (currentIndex === -1) return;
+  startPaneDrag(paneId: ParameterPaneId, event: DragEvent): void {
+    this.draggedPaneId = paneId;
+    event.dataTransfer?.setData('text/plain', paneId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
 
-    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (nextIndex < 0 || nextIndex >= this.paneOrder.length) return;
+  onPaneDragOver(targetPaneId: ParameterPaneId, event: DragEvent): void {
+    event.preventDefault();
+    const draggedPaneId = this.draggedPaneId;
+    if (!draggedPaneId || draggedPaneId === targetPaneId) return;
+
+    const targetElement = event.currentTarget as HTMLElement | null;
+    const targetRect = targetElement?.getBoundingClientRect();
+    const beforeTarget = targetRect ? event.clientY < targetRect.top + targetRect.height / 2 : true;
+
+    const draggedIndex = this.paneOrder.indexOf(draggedPaneId);
+    const targetIndex = this.paneOrder.indexOf(targetPaneId);
+    if (draggedIndex < 0 || targetIndex < 0) return;
 
     const nextOrder = [...this.paneOrder];
-    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
+    const [removedPaneId] = nextOrder.splice(draggedIndex, 1);
+    const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    const insertIndex = beforeTarget ? adjustedTargetIndex : adjustedTargetIndex + 1;
+    nextOrder.splice(this.clamp(insertIndex, 0, nextOrder.length), 0, removedPaneId);
     this.paneOrder = nextOrder;
     this.emitToolbarState();
+  }
+
+  endPaneDrag(): void {
+    this.draggedPaneId = null;
   }
 
   // Returns the zero-based position of a visible pane in the current order.
@@ -555,14 +613,6 @@ export class ParametersPanel implements OnChanges {
       return (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) || this.costMatchCandidateGroups.length > 0;
     }
     return this.analysisVisible;
-  }
-
-  // Returns true when a pane can be moved in the requested direction.
-  canMovePane(paneId: ParameterPaneId, direction: 'up' | 'down'): boolean {
-    const currentIndex = this.paneOrder.indexOf(paneId);
-    if (currentIndex === -1) return false;
-    if (direction === 'up') return currentIndex > 0;
-    return currentIndex < this.paneOrder.length - 1;
   }
 
   // Returns the grid row assigned to the pane.
@@ -597,8 +647,24 @@ export class ParametersPanel implements OnChanges {
     this.emitToolbarState();
   }
 
+  private ensureParameterColumnChooserPosition(): void {
+    if (this.parameterColumnChooserPositionReady || typeof window === 'undefined') return;
+    this.parameterColumnChooserLeft = Math.max(16, window.innerWidth - this.parameterColumnChooserWidth - 24);
+    this.parameterColumnChooserTop = 120;
+    this.parameterColumnChooserPositionReady = true;
+  }
+
   toggleParameterTableChooser(): void {
     this.parameterTablePreferences.chooserOpen = !this.parameterTablePreferences.chooserOpen;
+    if (this.parameterTablePreferences.chooserOpen) {
+      this.ensureParameterColumnChooserPosition();
+    }
+    this.persistParameterTablePreferences();
+  }
+
+  closeParameterTableChooser(): void {
+    if (!this.parameterTablePreferences.chooserOpen) return;
+    this.parameterTablePreferences.chooserOpen = false;
     this.persistParameterTablePreferences();
   }
 
@@ -634,11 +700,56 @@ export class ParametersPanel implements OnChanges {
   toggleParameterTableColumnVisibility(columnKey: string): void {
     toggleTableColumnVisibility(this.parameterTablePreferences, columnKey);
     this.persistParameterTablePreferences();
+    this.parameterTableRefreshToken += 1;
   }
 
-  moveParameterTableColumn(columnKey: string, direction: 'left' | 'right'): void {
-    reorderTableColumn(this.parameterTablePreferences, columnKey, direction);
+  startParameterColumnChooserDrag(event: PointerEvent): void {
+    if (!this.parameterTablePreferences.chooserOpen) return;
+    if (event.button !== 0 || typeof window === 'undefined') return;
+
+    this.ensureParameterColumnChooserPosition();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const offsetX = event.clientX - this.parameterColumnChooserLeft;
+    const offsetY = event.clientY - this.parameterColumnChooserTop;
+
+    startPointerDrag(event, (moveEvent: PointerEvent) => {
+      const maxLeft = Math.max(16, window.innerWidth - this.parameterColumnChooserWidth - 16);
+      const maxTop = Math.max(76, window.innerHeight - 120);
+      this.parameterColumnChooserLeft = this.clamp(moveEvent.clientX - offsetX, 16, maxLeft);
+      this.parameterColumnChooserTop = this.clamp(moveEvent.clientY - offsetY, 76, maxTop);
+      this.changeDetectorRef.detectChanges();
+    });
+  }
+
+  onParameterColumnDragStart(columnKey: string, event: DragEvent): void {
+    this.parameterColumnDragKey = columnKey;
+    event.dataTransfer?.setData('text/plain', columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onParameterColumnDragOver(columnKey: string, event: DragEvent): void {
+    event.preventDefault();
+    const draggedColumnKey = this.parameterColumnDragKey;
+    if (!draggedColumnKey || draggedColumnKey === columnKey) return;
+
+    const targetElement = event.currentTarget as HTMLElement | null;
+    const targetRect = targetElement?.getBoundingClientRect();
+    const beforeTarget = targetRect ? event.clientY < targetRect.top + targetRect.height / 2 : true;
+    const targetIndex = this.parameterTablePreferences.order.indexOf(columnKey);
+    if (targetIndex < 0) return;
+
+    const nextIndex = beforeTarget ? targetIndex : targetIndex + 1;
+    moveTableColumn(this.parameterTablePreferences, draggedColumnKey, nextIndex);
     this.persistParameterTablePreferences();
+    this.parameterTableRefreshToken += 1;
+  }
+
+  onParameterColumnDragEnd(): void {
+    this.parameterColumnDragKey = null;
   }
 
   getParameterFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
@@ -671,6 +782,7 @@ export class ParametersPanel implements OnChanges {
   resetParameterTablePreferences(): void {
     resetTableViewPreferences(this.parameterTablePreferences, this.parameterTableDefaults);
     this.persistParameterTablePreferences();
+    this.parameterTableRefreshToken += 1;
   }
 
   toggleParameterFiltersVisible(): void {
@@ -679,9 +791,7 @@ export class ParametersPanel implements OnChanges {
   }
 
   resetParameterTableWidths(): void {
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(`b5d-resizable-table:${this.parameterTableResizableStorageKey}`);
-    }
+    getSafeLocalStorage()?.removeItem(`b5d-resizable-table:${this.parameterTableResizableStorageKey}`);
     this.parameterTableRefreshToken += 1;
   }
 
@@ -806,7 +916,7 @@ export class ParametersPanel implements OnChanges {
       parameterRow.activo = previousValue;
       this.synchronizeDescriptionSelections();
       this.emitToolbarState();
-      this.actionError = this.resolveErrorMessage(error, 'No fue posible actualizar el estado del parametro.');
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.updateState'));
     } finally {
       this.savingParameterActiveById.delete(parameterRow.id);
     }
@@ -842,7 +952,7 @@ export class ParametersPanel implements OnChanges {
       this.synchronizeDescriptionSelections();
       this.emitToolbarState();
     } catch (error) {
-      this.actionError = this.resolveErrorMessage(error, 'No fue posible actualizar el parametro.');
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.update'));
     } finally {
       this.savingParameterActiveById.delete(parameterRow.id);
     }
@@ -934,7 +1044,7 @@ export class ParametersPanel implements OnChanges {
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.emitToolbarState();
     } catch (error) {
-      this.actionError = this.resolveErrorMessage(error, 'No fue posible crear el parametro.');
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.create'));
     } finally {
       this.creatingInProgress = false;
     }
@@ -955,7 +1065,7 @@ export class ParametersPanel implements OnChanges {
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.emitToolbarState();
     } catch (error) {
-      this.actionError = this.resolveErrorMessage(error, 'No fue posible eliminar los parametros seleccionados.');
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.deleteSelected'));
     } finally {
       this.deletingInProgress = false;
     }
@@ -968,7 +1078,6 @@ export class ParametersPanel implements OnChanges {
 
   async selectBoqQuantification(quantificationId: number | null): Promise<void> {
     this.selectedQuantificationId = quantificationId;
-    this.selectedSheetIndex = 0;
     await this.loadBoqExtractedRows();
   }
 
@@ -1084,9 +1193,9 @@ export class ParametersPanel implements OnChanges {
   }
 
   resolveComparisonLabel(value: ParametroB5DOrm['tipo_comparacion']): string {
-    if (value === 'clave_exacta') return 'Clave exacta';
-    if (value === 'clave_parcial') return 'Clave parcial';
-    return 'Descripcion parcial';
+    if (value === 'clave_exacta') return this.t('parameters.comparison.exactCode');
+    if (value === 'clave_parcial') return this.t('parameters.comparison.partialCode');
+    return this.t('parameters.comparison.partialDescription');
   }
 
   formatValue(value: number | null): string {
@@ -1145,7 +1254,7 @@ export class ParametersPanel implements OnChanges {
   }
 
   get parameterTableResizableStorageKey(): string {
-    return `${this.parameterTableStorageKey}:${this.parameterTablePreferences.order.join('|')}:${this.parameterTablePreferences.hidden.join('|')}`;
+    return this.parameterTableStorageKey;
   }
 
   get parameterBoqAnalysisResizableStorageKey(): string {
@@ -1219,8 +1328,8 @@ export class ParametersPanel implements OnChanges {
 
   private async loadBoqExtractedRows(): Promise<void> {
     const projectId = this.activeProject?.id;
-    const quantificationId = this.selectedQuantificationId;
-    if (!projectId || !quantificationId) {
+    const selectedQuantification = this.quantificationsWithWorkbook.find((row) => row.id === this.selectedQuantificationId) ?? null;
+    if (!projectId || !selectedQuantification) {
       this.boqSheets = [];
       this.boqRows = [];
       return;
@@ -1229,19 +1338,23 @@ export class ParametersPanel implements OnChanges {
     this.boqLoading = true;
     this.boqError = '';
     try {
-      const summary = await this.workbookPreviewCache.getWorkbookSummary(projectId, quantificationId);
+      const summary = await this.workbookPreviewCache.getWorkbookSummary(projectId, selectedQuantification.id);
       this.boqSheets = summary.sheets;
       if (!this.boqSheets.some((sheet) => sheet.index === this.selectedSheetIndex)) {
         this.selectedSheetIndex = this.boqSheets[0]?.index ?? 0;
       }
 
-      const layers = await this.workbookPreviewCache.getWorkbookSheetLayers(projectId, quantificationId, this.selectedSheetIndex);
+      const layers = await this.workbookPreviewCache.getWorkbookSheetLayers(
+        projectId,
+        selectedQuantification.id,
+        this.selectedSheetIndex,
+      );
       this.boqRows = this.extractBoqRows(layers.cells);
       this.synchronizeDescriptionSelections();
       this.synchronizeCostSelections();
     } catch (error) {
       this.boqRows = [];
-      this.boqError = this.resolveErrorMessage(error, 'No fue posible extraer los datos BOQ.');
+      this.boqError = this.resolveErrorMessage(error, this.t('parameters.error.extractBoq'));
     } finally {
       this.boqLoading = false;
     }
@@ -1340,12 +1453,12 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText: '-',
         deltaText: '-',
-        resultText: 'Sin parametro',
+        resultText: this.t('parameters.analysis.noParameter'),
         resultKind: 'none',
       };
     }
 
-    if (matchedParameter.tipo_parametro === 'costo') {
+    if (isCostParameterType(matchedParameter.tipo_parametro)) {
       return this.buildCostAnalysisRow(boqRow, matchedParameter);
     }
 
@@ -1362,7 +1475,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Sin cantidad',
+        resultText: this.t('parameters.analysis.noQuantity'),
         resultKind: 'warning',
       };
     }
@@ -1377,7 +1490,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Unidad no compatible',
+        resultText: this.t('parameters.analysis.incompatibleUnit'),
         resultKind: 'warning',
       };
     }
@@ -1394,7 +1507,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: `${this.formatValue(convertedValue)} ${unitLabel}`,
         rangeText,
         deltaText,
-        resultText: 'Fuera de rango',
+        resultText: this.t('parameters.analysis.outOfRange'),
         resultKind: 'error',
       };
     }
@@ -1407,7 +1520,7 @@ export class ParametersPanel implements OnChanges {
       evaluatedText: `${this.formatValue(convertedValue)} ${unitLabel}`,
       rangeText,
       deltaText: '+0',
-      resultText: 'En rango',
+      resultText: this.t('parameters.analysis.inRange'),
       resultKind: 'ok',
     };
   }
@@ -1461,7 +1574,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Sin concepto con costo',
+        resultText: this.t('parameters.analysis.noCostConcept'),
         resultKind: 'warning',
       };
     }
@@ -1476,7 +1589,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Sin cantidad',
+        resultText: this.t('parameters.analysis.noQuantity'),
         resultKind: 'warning',
       };
     }
@@ -1491,7 +1604,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Unidad no compatible',
+        resultText: this.t('parameters.analysis.incompatibleUnit'),
         resultKind: 'warning',
       };
     }
@@ -1506,7 +1619,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText: '-',
         rangeText,
         deltaText: '-',
-        resultText: 'Sin costo en el catalogo seleccionado',
+        resultText: this.t('parameters.analysis.noSelectedCatalogCost'),
         resultKind: 'warning',
       };
     }
@@ -1526,7 +1639,7 @@ export class ParametersPanel implements OnChanges {
         evaluatedText,
         rangeText,
         deltaText,
-        resultText: 'Fuera de rango',
+        resultText: this.t('parameters.analysis.outOfRange'),
         resultKind: 'error',
       };
     }
@@ -1539,7 +1652,7 @@ export class ParametersPanel implements OnChanges {
       evaluatedText,
       rangeText,
       deltaText: '+0',
-      resultText: 'En rango',
+      resultText: this.t('parameters.analysis.inRange'),
       resultKind: 'ok',
     };
   }
@@ -1621,13 +1734,10 @@ export class ParametersPanel implements OnChanges {
   }
 
   private resolveConceptUnitCost(concept: ConceptoB5DOrm): number | null {
-    const candidates = [concept.costo, concept.costo_mn, concept.costo_me];
-    for (const candidate of candidates) {
-      const numericCandidate = this.parseNumericLikeValue(candidate);
-      if (numericCandidate == null) continue;
-      return numericCandidate;
+    if (concept.es_agrupador) {
+      return this.parseNumericLikeValue(concept.importe);
     }
-    return null;
+    return this.parseNumericLikeValue(concept.precio_unitario);
   }
 
   private parseNumericLikeValue(value: unknown): number | null {
@@ -1748,7 +1858,7 @@ export class ParametersPanel implements OnChanges {
   private synchronizeCostSelections(): void {
     const nextSelectionMap = new Map<number, number>();
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'costo') continue;
+      if (!isCostParameterType(parameterRow.tipo_parametro)) continue;
       const candidateConcepts = this.getCostCandidateConcepts(parameterRow);
       if (!candidateConcepts.length) continue;
 

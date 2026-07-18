@@ -1,6 +1,6 @@
 <div class="b5d-xlsx-preview">
   @if (effectiveLoading) {
-    <div class="b5d-xlsx-preview__message">Cargando libro Excel...</div>
+    <div class="b5d-xlsx-preview__message">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingWorkbook') }}</div>
   } @else if (effectiveError) {
     <div class="b5d-xlsx-preview__message b5d-xlsx-preview__message--error">{{ effectiveError }}</div>
   } @else if (renderedSheet) {
@@ -73,6 +73,6 @@
       </div>
     </div>
   } @else {
-    <div class="b5d-xlsx-preview__message">{{ emptyMessage }}</div>
+    <div class="b5d-xlsx-preview__message">{{ emptyMessage || i18n.translateForComponent(globalTranslations, 'common.placeholder.selectWorksheet') }}</div>
   }
 </div>

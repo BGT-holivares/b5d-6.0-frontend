@@ -1,9 +1,9 @@
 <main class="b5d-login-screen">
   <form class="b5d-login-card" (ngSubmit)="iniciarSesion()">
-    <h1>Iniciar sesión</h1>
+    <h1>{{ t('loginScreen.title') }}</h1>
 
     <label>
-      <span>Usuario</span>
+      <span>{{ t('loginScreen.username') }}</span>
       <input
         type="text"
         name="username"
@@ -14,7 +14,7 @@
     </label>
 
     <label>
-      <span>Contraseña</span>
+      <span>{{ t('loginScreen.password') }}</span>
       <input
         type="password"
         name="password"
@@ -29,7 +29,7 @@
     }
 
     <button type="submit" [disabled]="cargando()">
-      {{ cargando() ? 'Ingresando...' : 'Entrar' }}
+      {{ cargando() ? t('loginScreen.submitting') : t('loginScreen.submit') }}
     </button>
   </form>
 </main>

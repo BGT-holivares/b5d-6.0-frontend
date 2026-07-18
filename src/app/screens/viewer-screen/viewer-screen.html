@@ -1,5 +1,6 @@
 <main class="b5d-viewer-screen">
-  <app-toolbar
+<!-- Manual attention needed: remaining screen copy. -->
+<app-toolbar
     [cargando]="visorIfc.cargando()"
     [loadingStage]="visorIfc.loadingStage()"
     [toolbarContentVisible]="toolbarContentVisible()"
@@ -8,6 +9,7 @@
     [activeMeasurementMode]="activeMeasurementMode()"
     [activeLengthMeasurementMode]="activeLengthMeasurementMode()"
     [activeCountMeasurementMode]="activeCountMeasurementMode()"
+    [modelLightingEnabled]="modelLightingEnabled()"
     [floatingPanelVisibility]="floatingPanelVisibility()"
     [homeToolbarState]="homeToolbarState()"
     [windowMode]="windowMode()"
@@ -21,6 +23,7 @@
     (toggleFloatingPanel)="toggleFloatingPanel($event)"
     (toolbarContentVisibleChange)="setToolbarContentVisible($event)"
   />
+  <app-loading-panel />
   <input
     #inputB5d
     hidden
@@ -32,6 +35,13 @@
   @if (b5dMensaje()) {
     <div class="b5d-viewer-screen__b5d-status">
       {{ b5dMensaje() }}
+      @if (importDebugTrace().length) {
+        <div class="b5d-viewer-screen__b5d-status-debug">
+          @for (line of importDebugTrace(); track line) {
+            <div class="b5d-viewer-screen__b5d-status-debug-line">{{ line }}</div>
+          }
+        </div>
+      }
     </div>
   }
 
@@ -451,22 +461,22 @@
             />
           }
           @case ('parameters') {
-            <app-parameters-panel
-              [activeProject]="proyectoB5dActivo()"
-              [parameters]="parametrosB5d()"
-              [concepts]="b5dConcepts()"
-              [catalogs]="b5dCatalogs()"
+          <app-parameters-panel
+            [activeProject]="proyectoB5dActivo()"
+            [parameters]="parametrosB5d()"
+            [concepts]="b5dConcepts()"
+            [catalogs]="b5dCatalogs()"
               [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
               [b5dLoading]="b5dCargando()"
               [quantifications]="cuantificacionesB5d()"
               [conceptKeys]="b5dConceptKeys()"
               [informacionSeleccionada]="sharedSelectionInfo()"
               [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-              [storageScopeKey]="uiStorageScopeKey"
-              (toolbarStateChange)="onParametersToolbarStateChange($event)"
-              (rowsChange)="onParametersRowsChange($event)"
-              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
-            />
+            [storageScopeKey]="uiStorageScopeKey"
+            (toolbarStateChange)="onParametersToolbarStateChange($event)"
+            (rowsChange)="onParametersRowsChange($event)"
+            (conceptSelectionRequested)="onConceptSelectionRequested($event)"
+          />
           }
           @case ('report') {
             <app-parameters-report-panel
@@ -478,6 +488,7 @@
               [b5dLoading]="b5dCargando()"
               [quantifications]="cuantificacionesB5d()"
               [conceptKeys]="b5dConceptKeys()"
+              [storageScopeKey]="uiStorageScopeKey"
               (conceptSelectionRequested)="onConceptSelectionRequested($event)"
             />
           }
@@ -489,8 +500,11 @@
         [mode]="catalogStructureDialogMode()"
         [catalog]="catalogStructureDialogCatalog()"
         [catalogs]="b5dCatalogs()"
+        [projectId]="proyectoB5dActivo()?.id ?? null"
         [loading]="catalogStructureDialogLoading()"
         (saveRequested)="guardarEstructuraCatalogoV2($event)"
+        (metadataImportRequested)="importarMetadatosCatalogo($event)"
+        (costImportRequested)="importarCostosCatalogo($event)"
         (closeRequested)="cerrarDialogoEstructuraCatalogo()"
       />
       <app-parameters-import-dialog
@@ -501,6 +515,24 @@
         (closeRequested)="cerrarDialogoImportacionParametros()"
         (importCompleted)="onParametersImportCompleted($event)"
       />
+      @defer (when parameterB5dImportDialogVisible()) {
+        <app-parameters-b5d-import-dialog
+          [visible]="parameterB5dImportDialogVisible()"
+          [activeProject]="proyectoB5dActivo()"
+          [loading]="b5dCargando()"
+          (closeRequested)="cerrarDialogoImportacionParametrosB5d()"
+          (importCompleted)="onParametersB5dImportCompleted($event)"
+        />
+      }
+      @defer (when parameterXdbImportDialogVisible()) {
+        <app-parameters-xdb-import-dialog
+          [visible]="parameterXdbImportDialogVisible()"
+          [activeProjectId]="proyectoB5dActivo()?.id ?? null"
+          [loading]="b5dCargando()"
+          (closeRequested)="cerrarDialogoImportacionParametrosXdb()"
+          (importCompleted)="onParametersXdbImportCompleted($event)"
+        />
+      }
       <span
         class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
         (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top')"

@@ -2,9 +2,14 @@ import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { BackendProyectosService } from '../../services/backend-proyectos.service';
+import { LoadingPanelService } from '../../services/loading-panel.service';
 import { WorkbookPreviewCacheService } from '../../services/workbook-preview-cache.service';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
+import { I18nService } from '../../utils/i18n/i18n.service';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
+import { getSafeLocalStorage } from '../../utils/browser-storage';
 import { buildScopedStorageKey } from '../../utils/ui-state-storage';
+import { BOQ_PANEL_TRANSLATIONS } from './boq-panel.translations';
 import {
   clampPanelPercent,
   handlePanelZoomWheel,
@@ -15,6 +20,7 @@ import {
 import { XlsxPreview } from '../xlsx-preview/xlsx-preview';
 import type { ToolbarActionId } from '../toolbar/toolbar';
 import type { HomeToolbarState } from '../../types/home-toolbar';
+import { createWorkbookSavePlan, createWorkbookUploadPlan } from '../../utils/loading-panel/loading-plans';
 import {
   applyTableFilters,
   createDefaultTableViewPreferences,
@@ -22,7 +28,7 @@ import {
   getFilterModesForKind,
   getVisibleColumns,
   loadTableViewPreferences,
-  reorderTableColumn,
+  moveTableColumn,
   resetTableViewPreferences,
   saveTableViewPreferences,
   setTableFilterMode,
@@ -52,6 +58,11 @@ type QuantificationTableColumnKey = 'tipo' | 'nombre' | 'descripcion' | 'comenta
   styleUrl: './boq-panel.scss',
 })
 export class BoqPanel implements OnChanges, OnDestroy {
+  readonly boqPanelTranslations = BOQ_PANEL_TRANSLATIONS;
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
+  readonly i18n = inject(I18nService);
+  readonly loadingPanel = inject(LoadingPanelService);
+
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
   @Input() cuantificacionesB5d: CuantificacionB5DOrm[] = [];
   @Input() b5dLoading = false;
@@ -65,6 +76,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
     {
       key: 'tipo',
       label: 'Tipo',
+      labelKey: 'boqPanel.column.type',
       kind: 'number',
       widthPx: 120,
       getValue: (row) => row.tipo,
@@ -72,13 +84,15 @@ export class BoqPanel implements OnChanges, OnDestroy {
     {
       key: 'nombre',
       label: 'Nombre',
+      labelKey: 'boqPanel.column.name',
       kind: 'text',
       widthPx: 200,
       getValue: (row) => row.nombre ?? '',
     },
     {
       key: 'descripcion',
-      label: 'Descripcion',
+      label: 'Descripción',
+      labelKey: 'boqPanel.column.description',
       kind: 'text',
       widthPx: 260,
       getValue: (row) => row.descripcion ?? '',
@@ -86,6 +100,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
     {
       key: 'comentarios',
       label: 'Comentarios',
+      labelKey: 'boqPanel.column.comments',
       kind: 'text',
       widthPx: 260,
       getValue: (row) => row.comentarios ?? '',
@@ -93,6 +108,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
     {
       key: 'fecha',
       label: 'Fecha',
+      labelKey: 'boqPanel.column.date',
       kind: 'date',
       widthPx: 170,
       getValue: (row) => row.fecha ?? '',
@@ -109,9 +125,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
     this.quantificationTableStorageKey,
     this.quantificationTableDefaults,
   );
+  quantificationColumnChooserLeft = 0;
+  quantificationColumnChooserTop = 0;
 
   leftPanelWidth = 420;
   panelOrder: ('list' | 'preview')[] = ['list', 'preview'];
+  private draggedPanelOrderId: 'list' | 'preview' | null = null;
+  private panelOrderDragTargetId: 'list' | 'preview' | null = null;
   boqTableContextMenuVisible = false;
   boqTableContextMenuX = 0;
   boqTableContextMenuY = 0;
@@ -146,6 +166,9 @@ export class BoqPanel implements OnChanges, OnDestroy {
   selectedWorkbookRowHeightPx = '';
   selectedWorkbookColumnWidthPx = '';
   private lastAppliedStorageScopeKey = '';
+  private quantificationColumnChooserPositionReady = false;
+  quantificationColumnDragKey: string | null = null;
+  private readonly quantificationColumnChooserWidth = 360;
 
   // Keeps selection and workbook preview synchronized when backend rows change.
   ngOnChanges(changes: SimpleChanges): void {
@@ -191,6 +214,10 @@ export class BoqPanel implements OnChanges, OnDestroy {
     fileInput.click();
   }
 
+  t(key: string): string {
+    return this.i18n.translateForComponent(this.boqPanelTranslations, key);
+  }
+
   // Uploads the selected workbook file and refreshes the preview from backend bytes.
   async onWorkbookFileSelected(event: Event): Promise<void> {
     const inputElement = event.target as HTMLInputElement | null;
@@ -203,23 +230,32 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
     const normalizedFileName = selectedFile.name.trim().toLowerCase();
     if (!normalizedFileName.endsWith('.xlsx') && !normalizedFileName.endsWith('.xlsm')) {
-      this.workbookError = 'Solo se permiten archivos .xlsx o .xlsm.';
+      this.workbookError = this.t('boqPanel.invalidWorkbookFile');
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createWorkbookUploadPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.uploadWorkbook')),
+    );
     this.workbookUploadInProgress = true;
     this.workbookError = '';
     try {
       const updatedQuantification = await firstValueFrom(
         this.backendProyectos.subirLibroExcelCuantificacion(projectId, selectedQuantificationId, selectedFile),
       );
+      this.loadingPanel.completeStep(loadingSessionId, 'uploading', this.t('boqPanel.workbookImported'));
       this.replaceQuantificationRow(updatedQuantification);
       this.workbookPreviewCache.clearQuantification(projectId, selectedQuantificationId);
       await this.loadSelectedWorkbookPreview();
+      this.loadingPanel.completeStep(loadingSessionId, 'parsing', this.t('boqPanel.previewUpdated'));
     } catch {
-      this.workbookError = 'No se pudo subir el archivo Excel de esta cuantificacion.';
+      this.loadingPanel.abort(loadingSessionId);
+      this.workbookError = this.t('boqPanel.uploadWorkbookError');
     } finally {
       this.workbookUploadInProgress = false;
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, this.t('boqPanel.workbookImported'));
+      }
       if (inputElement) {
         inputElement.value = '';
       }
@@ -294,7 +330,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
     }
 
     this.pendingWorkbookCellChanges.set(this.selectedSheetName, sheetChanges);
-    this.workbookInfoMessage = `Cambio local aplicado en ${normalizedCellAddress}.`;
+    this.workbookInfoMessage = `${this.t('boqPanel.localChangeApplied')} ${normalizedCellAddress}.`;
   }
 
   // Applies a formula-only update to the selected cell and keeps current displayed value.
@@ -308,13 +344,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
     if (!this.selectedSheetName || !this.selectedWorkbookRowNumber) return;
     const heightPixels = Number.parseFloat(this.selectedWorkbookRowHeightPx);
     if (!Number.isFinite(heightPixels) || heightPixels <= 0) {
-      this.workbookError = 'La altura de fila debe ser numerica y mayor a 0.';
+      this.workbookError = this.t('boqPanel.invalidRowHeight');
       return;
     }
     const rowUpdates = this.pendingWorkbookRowLayoutChanges.get(this.selectedSheetName) ?? new Map<number, number>();
     rowUpdates.set(this.selectedWorkbookRowNumber, heightPixels);
     this.pendingWorkbookRowLayoutChanges.set(this.selectedSheetName, rowUpdates);
-    this.workbookInfoMessage = `Altura pendiente para fila ${this.selectedWorkbookRowNumber}.`;
+    this.workbookInfoMessage = `${this.t('boqPanel.pendingRowHeight')} ${this.selectedWorkbookRowNumber}.`;
   }
 
   // Stages column width update in pixels for the selected column.
@@ -322,14 +358,14 @@ export class BoqPanel implements OnChanges, OnDestroy {
     if (!this.selectedSheetName || !this.selectedWorkbookColumnNumber) return;
     const widthPixels = Number.parseFloat(this.selectedWorkbookColumnWidthPx);
     if (!Number.isFinite(widthPixels) || widthPixels <= 0) {
-      this.workbookError = 'El ancho de columna debe ser numerico y mayor a 0.';
+      this.workbookError = this.t('boqPanel.invalidColumnWidth');
       return;
     }
     const columnUpdates =
       this.pendingWorkbookColumnLayoutChanges.get(this.selectedSheetName) ?? new Map<number, number>();
     columnUpdates.set(this.selectedWorkbookColumnNumber, widthPixels);
     this.pendingWorkbookColumnLayoutChanges.set(this.selectedSheetName, columnUpdates);
-    this.workbookInfoMessage = `Ancho pendiente para columna ${this.columnLabelFromIndex(this.selectedWorkbookColumnNumber - 1)}.`;
+    this.workbookInfoMessage = `${this.t('boqPanel.pendingColumnWidth')} ${this.columnLabelFromIndex(this.selectedWorkbookColumnNumber - 1)}.`;
   }
 
   // Sends pending workbook cell changes to backend and refreshes the sheet preview.
@@ -346,10 +382,13 @@ export class BoqPanel implements OnChanges, OnDestroy {
     const columnLayoutUpdates =
       this.pendingWorkbookColumnLayoutChanges.get(this.selectedSheetName) ?? new Map<number, number>();
     if (!sheetChanges.length && !rowLayoutUpdates.size && !columnLayoutUpdates.size) {
-      this.workbookInfoMessage = 'No hay cambios pendientes por guardar.';
+      this.workbookInfoMessage = this.t('boqPanel.noPendingChanges');
       return;
     }
 
+    const loadingSessionId = this.loadingPanel.start(
+      createWorkbookSavePlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.saveWorkbook')),
+    );
     this.workbookSavingChanges = true;
     this.workbookError = '';
     this.workbookInfoMessage = '';
@@ -372,18 +411,24 @@ export class BoqPanel implements OnChanges, OnDestroy {
             [...columnLayoutUpdates.entries()].map(([columnNumber, widthPx]) => ({ col: columnNumber, widthPx })),
           ),
         );
+      this.loadingPanel.completeStep(loadingSessionId, 'saving', this.t('boqPanel.savedChanges'));
       }
       this.replaceQuantificationRow(response.cuantificacion);
       this.workbookPreviewCache.clearQuantification(projectId, selectedQuantification.id);
       this.pendingWorkbookCellChanges.delete(this.selectedSheetName);
       this.pendingWorkbookRowLayoutChanges.delete(this.selectedSheetName);
       this.pendingWorkbookColumnLayoutChanges.delete(this.selectedSheetName);
-      this.workbookInfoMessage = 'Cambios guardados en LibroExcel.';
+      this.workbookInfoMessage = this.t('boqPanel.savedToWorkbook');
       await this.loadSelectedWorkbookPreview();
+      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', this.t('boqPanel.previewUpdated'));
     } catch {
-      this.workbookError = 'No fue posible guardar los cambios de la hoja Excel.';
+      this.loadingPanel.abort(loadingSessionId);
+      this.workbookError = this.t('boqPanel.saveWorkbookError');
     } finally {
       this.workbookSavingChanges = false;
+      if (this.loadingPanel.state().visible) {
+        this.loadingPanel.complete(loadingSessionId, this.t('boqPanel.savedChanges'));
+      }
       this.changeDetectorRef.detectChanges();
     }
   }
@@ -427,7 +472,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
   }
 
   get etiquetaTienePlantilla(): string {
-    return this.cuantificacionSeleccionada?.tiene_libro_excel ? 'Si' : 'No';
+    return this.cuantificacionSeleccionada?.tiene_libro_excel ? this.t('boqPanel.yes') : this.t('boqPanel.no');
   }
 
   get visibleQuantificationColumns(): TableColumnDefinition<CuantificacionB5DOrm>[] {
@@ -441,7 +486,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
   get groupedQuantifications(): QuantificationGroupRow[] {
     const groupedRows = new Map<string, CuantificacionB5DOrm[]>();
     for (const quantification of this.quantificationsForTable) {
-      const groupName = (quantification.grupo || '').trim() || 'Sin grupo';
+      const groupName = (quantification.grupo || '').trim() || this.t('boqPanel.noGroup');
       if (!groupedRows.has(groupName)) {
         groupedRows.set(groupName, []);
       }
@@ -466,8 +511,8 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   // Provides accessible text for quantification type icons.
   getQuantificationTypeLabel(quantificationType: number | null): string {
-    if (quantificationType === 1) return 'Esquema de cuantificacion';
-    return 'Cuantificacion';
+    if (quantificationType === 1) return this.t('boqPanel.option.scheme');
+    return this.t('boqPanel.option.quantification');
   }
 
   // Formats backend UTC datetimes to a user-friendly local timestamp.
@@ -496,10 +541,32 @@ export class BoqPanel implements OnChanges, OnDestroy {
     return `${datePart} ${hourValue}:${minuteValue}:${secondValue} ${normalizedPeriod}`;
   }
 
-  // Swaps the BOQ list and preview panels.
-  togglePanelOrder(): void {
+  startBoqPanelOrderDrag(panelId: 'list' | 'preview', event: DragEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.draggedPanelOrderId = panelId;
+    this.panelOrderDragTargetId = null;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', panelId);
+    }
+  }
+
+  onBoqPanelOrderDragOver(targetPanelId: 'list' | 'preview', event: DragEvent): void {
+    event.preventDefault();
+    const draggedPanelId = this.draggedPanelOrderId;
+    if (!draggedPanelId || draggedPanelId === targetPanelId) return;
+    if (this.panelOrderDragTargetId === targetPanelId) return;
+
+    this.panelOrderDragTargetId = targetPanelId;
     this.panelOrder = swapPanelOrder([this.panelOrder[0], this.panelOrder[1]] as const);
     this.changeDetectorRef.detectChanges();
+  }
+
+  endBoqPanelOrderDrag(): void {
+    this.draggedPanelOrderId = null;
+    this.panelOrderDragTargetId = null;
   }
 
   // Returns the grid column assigned to the BOQ layout.
@@ -575,6 +642,15 @@ export class BoqPanel implements OnChanges, OnDestroy {
 
   toggleQuantificationTableChooser(): void {
     this.quantificationTablePreferences.chooserOpen = !this.quantificationTablePreferences.chooserOpen;
+    if (this.quantificationTablePreferences.chooserOpen) {
+      this.ensureQuantificationColumnChooserPosition();
+    }
+    this.persistQuantificationTablePreferences();
+  }
+
+  closeQuantificationTableChooser(): void {
+    if (!this.quantificationTablePreferences.chooserOpen) return;
+    this.quantificationTablePreferences.chooserOpen = false;
     this.persistQuantificationTablePreferences();
   }
 
@@ -604,11 +680,56 @@ export class BoqPanel implements OnChanges, OnDestroy {
   toggleQuantificationTableColumnVisibility(columnKey: string): void {
     toggleTableColumnVisibility(this.quantificationTablePreferences, columnKey);
     this.persistQuantificationTablePreferences();
+    this.boqTableRefreshToken += 1;
   }
 
-  moveQuantificationTableColumn(columnKey: string, direction: 'left' | 'right'): void {
-    reorderTableColumn(this.quantificationTablePreferences, columnKey, direction);
+  startQuantificationColumnChooserDrag(event: PointerEvent): void {
+    if (!this.quantificationTablePreferences.chooserOpen) return;
+    if (event.button !== 0 || typeof window === 'undefined') return;
+
+    this.ensureQuantificationColumnChooserPosition();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const offsetX = event.clientX - this.quantificationColumnChooserLeft;
+    const offsetY = event.clientY - this.quantificationColumnChooserTop;
+
+    startPointerDrag(event, (moveEvent) => {
+      const maxLeft = Math.max(16, window.innerWidth - this.quantificationColumnChooserWidth - 16);
+      const maxTop = Math.max(76, window.innerHeight - 120);
+      this.quantificationColumnChooserLeft = this.clamp(moveEvent.clientX - offsetX, 16, maxLeft);
+      this.quantificationColumnChooserTop = this.clamp(moveEvent.clientY - offsetY, 76, maxTop);
+      this.changeDetectorRef.detectChanges();
+    });
+  }
+
+  onQuantificationColumnDragStart(columnKey: string, event: DragEvent): void {
+    this.quantificationColumnDragKey = columnKey;
+    event.dataTransfer?.setData('text/plain', columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onQuantificationColumnDragOver(columnKey: string, event: DragEvent): void {
+    event.preventDefault();
+    const draggedColumnKey = this.quantificationColumnDragKey;
+    if (!draggedColumnKey || draggedColumnKey === columnKey) return;
+
+    const targetElement = event.currentTarget as HTMLElement | null;
+    const targetRect = targetElement?.getBoundingClientRect();
+    const beforeTarget = targetRect ? event.clientY < targetRect.top + targetRect.height / 2 : true;
+    const targetIndex = this.quantificationTablePreferences.order.indexOf(columnKey);
+    if (targetIndex < 0) return;
+
+    const nextIndex = beforeTarget ? targetIndex : targetIndex + 1;
+    moveTableColumn(this.quantificationTablePreferences, draggedColumnKey, nextIndex);
     this.persistQuantificationTablePreferences();
+    this.boqTableRefreshToken += 1;
+  }
+
+  onQuantificationColumnDragEnd(): void {
+    this.quantificationColumnDragKey = null;
   }
 
   getQuantificationFilterModes(columnKey: string): ReturnType<typeof getFilterModesForKind> {
@@ -659,7 +780,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
       this.replaceQuantificationRow(updated);
       this.workbookPreviewCache.clearQuantification(this.activeProject.id, updated.id);
     } catch {
-      this.workbookError = 'No se pudo guardar la cuantificacion.';
+      this.workbookError = this.t('boqPanel.saveQuantificationError');
     } finally {
       this.savingQuantificationRowById.delete(quantificationRow.id);
     }
@@ -696,7 +817,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
   }
 
   get quantificationTableResizableStorageKey(): string {
-    return `${this.quantificationTableStorageKey}:${this.quantificationTablePreferences.order.join('|')}:${this.quantificationTablePreferences.hidden.join('|')}`;
+    return this.quantificationTableStorageKey;
   }
 
   private get quantificationTableStorageKey(): string {
@@ -706,13 +827,19 @@ export class BoqPanel implements OnChanges, OnDestroy {
   resetQuantificationTablePreferences(): void {
     resetTableViewPreferences(this.quantificationTablePreferences, this.quantificationTableDefaults);
     this.persistQuantificationTablePreferences();
+    this.boqTableRefreshToken += 1;
   }
 
   resetQuantificationTableWidths(): void {
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(`b5d-resizable-table:${this.quantificationTableResizableStorageKey}`);
-    }
+    getSafeLocalStorage()?.removeItem(`b5d-resizable-table:${this.quantificationTableResizableStorageKey}`);
     this.boqTableRefreshToken += 1;
+  }
+
+  private ensureQuantificationColumnChooserPosition(): void {
+    if (this.quantificationColumnChooserPositionReady || typeof window === 'undefined') return;
+    this.quantificationColumnChooserLeft = Math.max(16, window.innerWidth - this.quantificationColumnChooserWidth - 24);
+    this.quantificationColumnChooserTop = 120;
+    this.quantificationColumnChooserPositionReady = true;
   }
 
   // Recomputes the preview view after zoom controls change the scale.
@@ -770,13 +897,18 @@ export class BoqPanel implements OnChanges, OnDestroy {
       return;
     }
 
+    if (!selection.tiene_libro_excel) {
+      this.workbookLoading = false;
+      return;
+    }
+
     try {
       const projectId = this.activeProject?.id ?? null;
       if (!projectId) return;
       const workbookSummary = await this.workbookPreviewCache.getWorkbookSummary(projectId, selection.id);
       if (localToken !== this.workbookLoadToken) return;
       if (!workbookSummary.sheets.length) {
-        this.workbookError = 'El libro Excel no contiene hojas visibles para mostrar.';
+        this.workbookError = this.t('boqPanel.noVisibleSheets');
         return;
       }
 
@@ -791,7 +923,7 @@ export class BoqPanel implements OnChanges, OnDestroy {
       this.selectedSheetName = targetSheetName;
     } catch {
       if (localToken === this.workbookLoadToken) {
-        this.workbookError = 'No se pudo leer el contenido Excel de esta cuantificacion.';
+        this.workbookError = this.t('boqPanel.readWorkbookError');
       }
     } finally {
       if (localToken === this.workbookLoadToken) {

@@ -8,7 +8,7 @@
           [class.b5d-properties-panel__tab--active]="activeTab === pestana.id"
           (click)="activeTab = pestana.id"
         >
-          {{ pestana.etiqueta }}
+          {{ i18n.translateForComponent(propertiesPanelTranslations, pestana.etiquetaKey) }}
         </button>
       }
     </nav>
@@ -23,47 +23,47 @@
       @if (activeTab === 'properties') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'identity', titulo: 'Tipo / Elemento', filas: filasIdentidad() }"
+          [ngTemplateOutletContext]="{ llave: 'identity', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.identity'), filas: filasIdentidad() }"
         />
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'geometry', titulo: 'Geometry', filas: filasGeometria() }"
+          [ngTemplateOutletContext]="{ llave: 'geometry', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.geometry'), filas: filasGeometria() }"
         />
       }
 
       @if (activeTab === 'quantities') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'archicad', titulo: 'ArchiCADQuantities', filas: filasCantidades('archicad') }"
+          [ngTemplateOutletContext]="{ llave: 'archicad', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.archicadQuantities'), filas: filasCantidades('archicad') }"
         />
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'quantities', titulo: 'BaseQuantities', filas: filasCantidades('base') }"
+          [ngTemplateOutletContext]="{ llave: 'quantities', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.baseQuantities'), filas: filasCantidades('base') }"
         />
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'other', titulo: 'Otras cantidades IFC', filas: filasCantidades('other') }"
+          [ngTemplateOutletContext]="{ llave: 'other', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.otherQuantities'), filas: filasCantidades('other') }"
         />
       }
 
       @if (activeTab === 'location') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'location', titulo: 'Location', filas: filasUbicacion() }"
+          [ngTemplateOutletContext]="{ llave: 'location', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.location'), filas: filasUbicacion() }"
         />
       }
 
       @if (activeTab === 'classification') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'classification', titulo: 'Classification', filas: filasClasificacion() }"
+          [ngTemplateOutletContext]="{ llave: 'classification', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.classification'), filas: filasClasificacion() }"
         />
       }
 
       @if (activeTab === 'relations') {
         <ng-container
           [ngTemplateOutlet]="seccion"
-          [ngTemplateOutletContext]="{ llave: 'relations', titulo: 'Relaciones', filas: filasRelaciones() }"
+          [ngTemplateOutletContext]="{ llave: 'relations', titulo: i18n.translateForComponent(propertiesPanelTranslations, 'propertiesPanel.section.relations'), filas: filasRelaciones() }"
         />
       }
     </div>
