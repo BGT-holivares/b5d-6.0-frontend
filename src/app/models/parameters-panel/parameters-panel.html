@@ -1,4 +1,3 @@
-﻿<!-- Manual attention needed: remaining panel copy. -->
 <section class="b5d-parameters-panel">
   <header class="b5d-parameters-panel__header">
     <strong>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.title') }}</strong>
@@ -19,9 +18,9 @@
     <label>
       <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.parameterType') }}</span>
       <select [(ngModel)]="selectedParameterType" (ngModelChange)="onFilterChange()">
-        <option value="all">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.all') }}</option>
         <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
         <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+        <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
       </select>
     </label>
 
@@ -35,6 +34,58 @@
       </select>
     </label>
   </div>
+
+  <div class="b5d-parameters-panel__catalog-bar">
+    <label class="b5d-parameters-panel__catalog-selector">
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.parameterCatalog') }}</span>
+      <select
+        [ngModel]="selectedParameterCatalogId"
+        (ngModelChange)="onParameterCatalogChange($event)"
+        [disabled]="parameterCatalogActionInProgress || !activeProject"
+      >
+        @if (!availableParameterCatalogs.length) {
+          <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noParameterCatalogs') }}</option>
+        }
+        @for (catalog of availableParameterCatalogs; track catalog.id) {
+          <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.catalogLabel') + ' ' + catalog.id) }}</option>
+        }
+      </select>
+    </label>
+
+    <button
+      type="button"
+      class="b5d-parameters-panel__tool-button"
+      [disabled]="parameterCatalogActionInProgress || !activeProject"
+      (click)="toggleParameterCatalogCreate()"
+    >
+      {{
+        creatingParameterCatalogVisible
+          ? i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.cancelCreate')
+          : i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createBlank')
+      }}
+    </button>
+  </div>
+
+  @if (creatingParameterCatalogVisible) {
+    <div class="b5d-parameters-panel__catalog-create">
+      <label>
+        <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.name') }}</span>
+        <input type="text" [(ngModel)]="creatingParameterCatalogName" [disabled]="parameterCatalogActionInProgress" />
+      </label>
+      <label>
+        <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.description') }}</span>
+        <textarea rows="2" [(ngModel)]="creatingParameterCatalogDescription" [disabled]="parameterCatalogActionInProgress"></textarea>
+      </label>
+      <div class="b5d-parameters-panel__catalog-create-actions">
+        <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="cancelParameterCatalogCreate()">
+          {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.cancelCreate') }}
+        </button>
+        <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="saveParameterCatalogCreate()">
+          {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createBlank') }}
+        </button>
+      </div>
+    </div>
+  }
 
   @if (actionError) {
     <div class="b5d-parameters-panel__error">{{ actionError }}</div>
@@ -459,62 +510,6 @@
           ></div>
         }
 
-        @if (boqPreviewVisible) {
-          <section
-            class="b5d-parameters-panel__pane"
-            [style.grid-row]="getPaneGridRow('boq-preview')"
-            [style.grid-column]="getPaneGridColumn('boq-preview')"
-          >
-            <div class="b5d-parameters-panel__pane-title" (dragover)="onPaneDragOver('boq-preview', $event)">
-              <span class="b5d-parameters-panel__pane-title-main">
-                <span
-                  class="b5d-parameters-panel__pane-drag-handle bi bi-grip-vertical"
-                  draggable="true"
-                  [title]="i18n.translateForComponent(globalTranslations, 'common.action.drag')"
-                  (dragstart)="startPaneDrag('boq-preview', $event)"
-                  (dragend)="endPaneDrag()"
-                ></span>
-                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.boqView') }}</span>
-              </span>
-            </div>
-            <div class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--stacked">
-              <div class="b5d-parameters-panel__boq-controls">
-                <label>
-                  <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.quantification') }}</span>
-                  <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectBoqQuantification($event)">
-                    @if (!quantificationsWithWorkbook.length) {
-                      <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noWorkbook') }}</option>
-                    }
-                    @for (quantification of quantificationsWithWorkbook; track quantification.id) {
-                      <option [ngValue]="quantification.id">{{ quantification.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.quantificationLabel') + ' ' + quantification.id) }}</option>
-                    }
-                  </select>
-                </label>
-                <label>
-                  <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.sheet') }}</span>
-                  <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectBoqSheet($event)" [disabled]="!boqSheets.length">
-                    @for (sheet of boqSheets; track sheet.index) {
-                      <option [ngValue]="sheet.index">{{ sheet.name }}</option>
-                    }
-                  </select>
-                </label>
-              </div>
-
-              <div class="b5d-parameters-panel__preview-frame">
-                <app-xlsx-preview
-                  [loadFromLayers]="true"
-                  [projectId]="activeProject?.id ?? null"
-                  [quantificationId]="selectedQuantificationId"
-                  [sheetIndex]="selectedSheetIndex"
-                  [zoomPercent]="boqPreviewZoomPercent"
-              [emptyMessage]="i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationDetail')"
-                  (cellSelected)="onBoqPreviewCellSelected($event)"
-                  (zoomRequested)="onBoqPreviewZoomRequested($event)"
-                />
-              </div>
-            </div>
-          </section>
-        }
       </div>
     }
 
@@ -529,7 +524,11 @@
 
     @if (bottomRowPaneIds.length) {
       <div class="b5d-parameters-panel__workspace-row">
-        @if ((descriptionMatchesVisible && descriptionMatchCandidateGroups.length) || costMatchCandidateGroups.length) {
+        @if (
+          (descriptionMatchesVisible && descriptionMatchCandidateGroups.length) ||
+          costMatchCandidateGroups.length ||
+          costPercentMatchCandidateGroups.length
+        ) {
           <section
             class="b5d-parameters-panel__pane"
             [style.grid-row]="getPaneGridRow('description-matches')"
@@ -597,7 +596,7 @@
                       <div class="b5d-parameters-panel__description-group-title">
                         {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.costLabel') }} {{ group.parameterCode }} - {{ group.parameterDescription }}
                       </div>
-                      <div class="b5d-parameters-panel__cost-group-list">
+                      <div class="b5d-parameters-panel__description-group-list">
                         @for (candidate of group.candidates; track candidate.id) {
                           <label class="b5d-parameters-panel__cost-option">
                             <input
@@ -607,9 +606,33 @@
                               (change)="onCostConceptToggle(group.parameterId, candidate.id)"
                             />
                             <span>
-                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ formatValue(candidate.precio_unitario) }}
+                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.costValueLabel') }} {{ formatValue(candidate.precio_unitario) }}
                             </span>
                           </label>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              @if (costPercentMatchCandidateGroups.length) {
+                <div class="b5d-parameters-panel__cost-matches">
+                  <div class="b5d-parameters-panel__description-group-title">
+                    {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}
+                  </div>
+                  @for (group of costPercentMatchCandidateGroups; track group.parameterId) {
+                    <div class="b5d-parameters-panel__cost-group">
+                      <div class="b5d-parameters-panel__description-group-title">
+                        {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.costPercentLabel') }} {{ group.parameterCode }} - {{ group.parameterDescription }}
+                      </div>
+                      <div class="b5d-parameters-panel__description-group-list">
+                        @for (candidate of group.candidates; track candidate.id) {
+                          <div>
+                            <span>
+                              {{ candidate.clave || '-' }} | {{ candidate.descripcion || '-' }} | {{ candidate.unidad || '-' }} | {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.costPercentValueLabel') }} {{ formatValue(candidate.porcentaje) }}%
+                            </span>
+                          </div>
                         }
                       </div>
                     </div>
@@ -652,23 +675,31 @@
               [style.zoom]="getPaneZoomFactor('analysis')"
               (wheel)="onPaneZoomWheel($event, 'analysis')"
             >
+              <div class="b5d-parameters-panel__preview-label">{{ analysisPreviewLabel }}</div>
               @if (boqLoading) {
                 <div class="b5d-parameters-panel__muted">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.extractingBoq') }}</div>
               } @else if (boqError) {
                 <div class="b5d-parameters-panel__error">{{ boqError }}</div>
               } @else {
                 <table
-                  class="b5d-parameters-panel__boq-table b5d-parameters-panel__analysis-table"
+                  class="b5d-parameters-panel__analysis-table"
                   [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey"
                 >
                   <thead>
                     <tr>
                       <th data-b5d-column-key="row">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.row') }}</th>
                       <th data-b5d-column-key="clave">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.code') }}</th>
-                      <th data-b5d-column-key="descripcion">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.description') }}</th>
+                      <th
+                        data-b5d-column-key="descripcion"
+                        [style.width.px]="340"
+                        [style.min-width.px]="300"
+                        [style.max-width.px]="420"
+                      >
+                        {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.description') }}
+                      </th>
                       <th data-b5d-column-key="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.quantity') }}</th>
                       <th data-b5d-column-key="unidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.unit') }}</th>
-                      <th data-b5d-column-key="evaluatedText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.evaluated') }}</th>
+                      <th data-b5d-column-key="evaluatedText">{{ analysisEvaluatedLabel }}</th>
                       <th data-b5d-column-key="matchedParameterCode">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.parameter') }}</th>
                       <th data-b5d-column-key="matchedParameterUnit">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.parameterUnit') }}</th>
                       <th data-b5d-column-key="rangeText">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.range') }}</th>
@@ -681,7 +712,17 @@
                       <tr class="b5d-parameters-panel__analysis-row">
                         <td>{{ analysisRow.row }}</td>
                         <td>{{ analysisRow.clave || '-' }}</td>
-                        <td>{{ analysisRow.descripcion || '-' }}</td>
+                        <td
+                          data-b5d-column-key="descripcion"
+                          [style.width.px]="340"
+                          [style.min-width.px]="300"
+                          [style.max-width.px]="420"
+                          [style.white-space]="'normal'"
+                          [style.word-break]="'break-word'"
+                          [style.vertical-align]="'top'"
+                        >
+                          {{ analysisRow.descripcion || '-' }}
+                        </td>
                         <td>{{ formatValue(analysisRow.cantidad) }}</td>
                         <td>{{ analysisRow.unidad || '-' }}</td>
                         <td>{{ analysisRow.evaluatedText }}</td>

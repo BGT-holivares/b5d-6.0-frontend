@@ -2,6 +2,8 @@ export interface UsuarioSesionOrm {
   id: number;
   username: string;
   email: string;
+  organizacion_id?: number | null;
+  rol_organizacion?: 'admin' | 'editor' | 'viewer' | null;
   is_staff: boolean;
   is_superuser: boolean;
   permissions: string[];
@@ -39,6 +41,8 @@ export interface ProyectoTrabajoOrm {
   ifc_nombre_archivo: string | null;
   ifc_tamano_bytes: number | null;
   ifc_fecha_referencia: string | null;
+  organizacion_id?: number | null;
+  catalogo_parametro_activo_id?: number | null;
   debug_trace?: string[];
 }
 
@@ -57,8 +61,6 @@ export interface ConceptoB5DOrm {
   cantidad?: number | null;
   importe?: number | null;
   porcentaje_padre?: number | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface VinculoConceptoBimOrm {
@@ -70,8 +72,6 @@ export interface VinculoConceptoBimOrm {
   propiedad_cantidad_bim: string | null;
   factor_conversion: number | null;
   descripcion: string | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface CatalogoB5DOrm {
@@ -83,8 +83,16 @@ export interface CatalogoB5DOrm {
   propiedad_tipo_bim?: string | null;
   catalogo_externo?: string | null;
   catalog_metadata?: CatalogMetadataOrm | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
+}
+
+export interface CatalogoParametroB5DOrm {
+  id: number;
+  organizacion_id: number | null;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  fecha_creacion: string | null;
+  fecha_actualizacion: string | null;
 }
 
 export interface CatalogMetadataOrm {
@@ -100,8 +108,6 @@ export interface CatalogMetadataOrm {
   fecha_ultimo_calculo: string | null;
   fecha_inicio: string | null;
   fecha_termino: string | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface CuantificacionB5DOrm {
@@ -137,8 +143,6 @@ export interface ParametroB5DOrm {
   maximo: number | null;
   promedio: number | null;
   activo: boolean;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface ConceptoB5DDraftOrm {
@@ -153,8 +157,6 @@ export interface ConceptoB5DDraftOrm {
   agrupador_padre_id: number | null;
   unidad: string | null;
   orden: number | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface VinculoConceptoBimDraftOrm {
@@ -166,12 +168,11 @@ export interface VinculoConceptoBimDraftOrm {
   propiedad_cantidad_bim: string | null;
   factor_conversion: number | null;
   descripcion: string | null;
-  optimistic_lock_field?: number | null;
-  gc_record?: number | null;
 }
 
 export interface SaveB5DProyectPayloadOrm {
   catalogo_activo_id?: number | null;
+  catalogo_parametro_activo_id?: number | null;
   conceptos: ConceptoB5DDraftOrm[];
   vinculos: VinculoConceptoBimDraftOrm[];
 }
@@ -179,6 +180,7 @@ export interface SaveB5DProyectPayloadOrm {
 export interface GuardarProyectoB5DResponseOrm {
   proyecto: ProyectoTrabajoOrm;
   catalogos?: ResultadosOrm<CatalogoB5DOrm>;
+  catalogos_parametro?: ResultadosOrm<CatalogoParametroB5DOrm>;
   conceptos: ResultadosOrm<ConceptoB5DOrm>;
   vinculos: ResultadosOrm<VinculoConceptoBimOrm>;
 }

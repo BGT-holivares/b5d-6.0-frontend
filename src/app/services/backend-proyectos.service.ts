@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import type {
   CatalogoB5DOrm,
+  CatalogoParametroB5DOrm,
   CatalogMetadataOrm,
   ConceptoB5DOrm,
   SaveB5DProyectPayloadOrm,
@@ -69,6 +70,11 @@ export interface CrearCatalogoPayload {
   propiedad_tipo_bim?: string;
   grupo_cantidades_bim?: string;
   copiar_vinculos_desde_catalogo_id?: number | null;
+}
+
+export interface CrearCatalogoParametroPayload {
+  nombre: string;
+  descripcion?: string;
 }
 
 export interface ImportarCatalogoAxaResponse {
@@ -222,6 +228,13 @@ export interface PrevisualizarParametrosB5dResponse {
       origenes: string[];
     }>;
   };
+}
+
+export interface AdministrarCatalogosParametroResponse {
+  proyecto: ProyectoTrabajoOrm;
+  catalogos: ResultadosOrm<CatalogoParametroB5DOrm>;
+  catalogo_parametro_activo_id: number | null;
+  catalogo?: CatalogoParametroB5DOrm;
 }
 
 export interface EditarConceptoPayload {
@@ -429,6 +442,35 @@ export class BackendProyectosService {
     return this.http.post<CatalogoB5DOrm | { catalogo: CatalogoB5DOrm }>(
       this.url(`/api/proyectos/${proyectoId}/catalogos/`),
       payload,
+      this.requestOptions,
+    );
+  }
+
+  listarCatalogosParametro(proyectoId: number): Observable<AdministrarCatalogosParametroResponse> {
+    return this.http.get<AdministrarCatalogosParametroResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
+      this.requestOptions,
+    );
+  }
+
+  crearCatalogoParametro(
+    proyectoId: number,
+    payload: CrearCatalogoParametroPayload,
+  ): Observable<AdministrarCatalogosParametroResponse> {
+    return this.http.post<AdministrarCatalogosParametroResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
+      payload,
+      this.requestOptions,
+    );
+  }
+
+  seleccionarCatalogoParametro(
+    proyectoId: number,
+    catalogoParametroId: number,
+  ): Observable<AdministrarCatalogosParametroResponse> {
+    return this.http.patch<AdministrarCatalogosParametroResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
+      { catalogo_parametro_id: catalogoParametroId },
       this.requestOptions,
     );
   }

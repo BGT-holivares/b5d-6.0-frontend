@@ -191,6 +191,11 @@
               @if (costPreviewMessage) {
                 <div class="b5d-catalog-dialog__message b5d-catalog-dialog__message--info">{{ costPreviewMessage }}</div>
               }
+              @if (isDebugEnabled && costPreviewDebugMessage) {
+                <div class="b5d-catalog-dialog__message b5d-catalog-dialog__message--info" style="white-space: pre-wrap;">
+                  {{ costPreviewDebugMessage }}
+                </div>
+              }
 
               <div class="b5d-catalog-dialog__inline-actions">
                 <button
@@ -236,7 +241,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    @for (row of costPreviewRows; track row.catalogo_concepto_id ?? row.firma) {
+                    @for (row of costPreviewRows; track $index) {
                       <tr [class.b5d-catalog-dialog__table-row--disabled]="!row.puede_importarse">
                         <td class="b5d-catalog-dialog__table-cell--center">
                           @if (row.catalogo_concepto_id !== null) {

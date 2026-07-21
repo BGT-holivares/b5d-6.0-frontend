@@ -55,7 +55,6 @@ export type ToolbarActionId =
   | 'measurement-count-selected'
   | 'measurement-count-manual'
   | 'parameter-toggle-list'
-  | 'parameter-toggle-boq'
   | 'parameter-toggle-matches'
   | 'parameter-toggle-analysis'
   | 'import-parameters-excel'
@@ -178,7 +177,6 @@ export class Toolbar {
     selectedLinkIds: [],
     canPasteConcept: false,
     parameterListVisible: true,
-    parameterBoqVisible: true,
     parameterDescriptionMatchesVisible: true,
     parameterAnalysisVisible: true,
   };
@@ -513,14 +511,6 @@ export class Toolbar {
             variant: 'small',
           },
           {
-            labelKey: 'toolbar.home.parameter.boq',
-            iconText: 'B',
-            action: 'parameter-toggle-boq',
-            disabled: this.isHomeActionDisabled('parameter-toggle-boq'),
-            selected: this.homeToolbarState.parameterBoqVisible !== false,
-            variant: 'small',
-          },
-          {
             labelKey: 'toolbar.home.parameter.matches',
             iconText: 'M',
             action: 'parameter-toggle-matches',
@@ -635,7 +625,6 @@ export class Toolbar {
       if (actionId === 'import-parameters-xdb') return !this.activeProject;
       if (
         actionId === 'parameter-toggle-list' ||
-        actionId === 'parameter-toggle-boq' ||
         actionId === 'parameter-toggle-matches' ||
         actionId === 'parameter-toggle-analysis'
       ) {

@@ -11,40 +11,43 @@
       </header>
 
       <div class="b5d-parameters-import-dialog__body">
-        <label class="b5d-parameters-import-dialog__field">
-          <span>{{ t('parametersImport.fileLabel') }}</span>
-          <div class="b5d-parameters-import-dialog__file-row">
-            <input
-              type="text"
-              class="b5d-parameters-import-dialog__input b5d-parameters-import-dialog__input--file"
-              [value]="workbookFileName || i18n.translateForComponent(globalTranslations, 'common.placeholder.selectFile')"
-              readonly
-            />
-            <label class="b5d-parameters-import-dialog__file-button" [class.b5d-parameters-import-dialog__file-button--disabled]="importInProgress || loading">
-              {{ i18n.translateForComponent(globalTranslations, 'common.action.chooseFile') }}
+        <section class="b5d-parameters-import-dialog__section">
+          <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.sourceTitle') }}</div>
+          <label class="b5d-parameters-import-dialog__field">
+            <span>{{ t('parametersImport.fileLabel') }}</span>
+            <div class="b5d-parameters-import-dialog__file-row">
               <input
-                type="file"
-                accept=".xlsx,.xlsm"
-                [disabled]="importInProgress || loading"
-                (change)="handleFileChange($event)"
+                type="text"
+                class="b5d-parameters-import-dialog__input b5d-parameters-import-dialog__input--file"
+                [value]="workbookFileName || i18n.translateForComponent(globalTranslations, 'common.placeholder.selectFile')"
+                readonly
               />
-            </label>
-          </div>
-          <div class="b5d-parameters-import-dialog__hint">
-            {{ t('parametersImport.fileHint') }}
-          </div>
-        </label>
+              <label class="b5d-parameters-import-dialog__file-button" [class.b5d-parameters-import-dialog__file-button--disabled]="importInProgress || loading">
+                {{ i18n.translateForComponent(globalTranslations, 'common.action.chooseFile') }}
+                <input
+                  type="file"
+                  accept=".xlsx,.xlsm"
+                  [disabled]="importInProgress || loading"
+                  (change)="handleFileChange($event)"
+                />
+              </label>
+            </div>
+            <div class="b5d-parameters-import-dialog__hint">
+              {{ t('parametersImport.fileHint') }}
+            </div>
+          </label>
 
-        @if (isWorkbookProcessing || importInProgress) {
-          <div class="b5d-parameters-import-dialog__processing">
-            <div class="b5d-parameters-import-dialog__processing-label">
-              {{ processingMessage || (importInProgress ? t('parametersImport.importing') : t('parametersImport.processing')) }}
+          @if (isWorkbookProcessing || importInProgress) {
+            <div class="b5d-parameters-import-dialog__processing">
+              <div class="b5d-parameters-import-dialog__processing-label">
+                {{ processingMessage || (importInProgress ? t('parametersImport.importing') : t('parametersImport.processing')) }}
+              </div>
+              <div class="b5d-parameters-import-dialog__progress">
+                <span class="b5d-parameters-import-dialog__progress-bar"></span>
+              </div>
             </div>
-            <div class="b5d-parameters-import-dialog__progress">
-              <span class="b5d-parameters-import-dialog__progress-bar"></span>
-            </div>
-          </div>
-        }
+          }
+        </section>
 
         @if (workbookError) {
           <div class="b5d-parameters-import-dialog__message b5d-parameters-import-dialog__message--error">{{ workbookError }}</div>
@@ -52,7 +55,7 @@
 
         @if (currentSheet) {
           <section class="b5d-parameters-import-dialog__section">
-            <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.tableDetection') }}</div>
+            <div class="b5d-parameters-import-dialog__section-title">{{ t('parametersImport.setupTitle') }}</div>
 
             <div class="b5d-parameters-import-dialog__two-columns">
               <label class="b5d-parameters-import-dialog__field">
@@ -91,6 +94,19 @@
 
             <div class="b5d-parameters-import-dialog__hint">
               {{ mappingSummary }}. {{ t('parametersImport.headerHint') }}
+            </div>
+
+            <label class="b5d-parameters-import-dialog__field">
+              <span>{{ t('parametersImport.field.buildingType') }}</span>
+              <input
+                class="b5d-parameters-import-dialog__input"
+                type="text"
+                [(ngModel)]="buildingTypeValue"
+                [placeholder]="buildingTypePlaceholder"
+              />
+            </label>
+            <div class="b5d-parameters-import-dialog__hint">
+              {{ t('parametersImport.buildingTypeHint') }}
             </div>
           </section>
 

@@ -8,29 +8,10 @@ const DEBUG_TRACE_REPLAY_ENABLED_KEY = 'b5d-debug-trace-replay';
 const DEBUG_TRACE_LIMIT = 500;
 const DEBUG_TRACE_REPLAY_TAIL = 60;
 const DEBUG_RUN_ID = createRandomId('run');
-const DEBUG_PERSISTED_PREFIXES = [
-  'browser:',
-  'authGuard:',
-  'guestGuard:',
-  'login-screen:',
-  'inicializarPanelesB5d:',
-  'cargarProyectoReciente:',
-  'cargarDatosProyectoB5d:',
-  'restorePersistedIfcFileForProject:',
-  'restoreViewerCanvas:',
-  'cargarArchivo:',
-  'quitarArchivoIfcCargado:',
-  'local-viewer-sync: initialized',
-  'local-viewer-sync: message received',
-  'handleLocalViewerSyncMessage:',
-  'processPendingLocalViewerSyncMessages:',
-  'applyRemoteIfcSelection:',
-  'applyRemoteIfcFile:',
-  'applyRemoteIfcClear:',
-  'ngOnInit:',
-  'ngAfterViewInit:',
-  'ngOnDestroy:',
-  'restoreWindowMode:',
+const DEBUG_ALWAYS_VISIBLE_PREFIXES = [
+  'parameters-xdb-import-dialog:',
+  'parameters-b5d-import-dialog:',
+  'catalog-structure-dialog: cost preview',
 ];
 
 let cachedTabId: string | null = null;
@@ -56,9 +37,7 @@ export function getB5dDebugContext(): { tabId: string; runId: string } {
 }
 
 export function logB5dDebug(message: string, data?: unknown): void {
-  if (!isB5dDebugEnabled()) return;
-
-  ensureCompatibilityTraceReplay();
+  if (!shouldLogAlwaysVisibleMessage(message)) return;
 
   const context = getB5dDebugContext();
   const line = formatTraceLine(context, message, data);
@@ -168,8 +147,12 @@ function appendTraceLine(message: string, line: string): void {
   }
 }
 
+function shouldLogAlwaysVisibleMessage(message: string): boolean {
+  return DEBUG_ALWAYS_VISIBLE_PREFIXES.some((prefix) => message.startsWith(prefix));
+}
+
 function shouldPersistTraceMessage(message: string): boolean {
-  return DEBUG_PERSISTED_PREFIXES.some((prefix) => message.startsWith(prefix));
+  return shouldLogAlwaysVisibleMessage(message);
 }
 
 function readTraceBuffer(): string[] {

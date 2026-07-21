@@ -139,7 +139,9 @@ export class ParametersReportPanel implements OnChanges {
       void this.loadReportWorkbook();
     }
 
-    if (changes['parameters'] || changes['concepts'] || changes['catalogs'] || changes['activeCatalogId']) {
+    const dataInputsChanged = !!(changes['parameters'] || changes['concepts'] || changes['catalogs'] || changes['activeCatalogId']);
+    const reportDataReady = !this.b5dLoading && (dataInputsChanged || !!changes['b5dLoading']);
+    if (reportDataReady && (changes['b5dLoading'] || dataInputsChanged)) {
       this.syncSelectedCatalog();
       this.syncSelectedWbsLevel();
       this.syncManualWbsSelections();
@@ -248,7 +250,9 @@ export class ParametersReportPanel implements OnChanges {
   }
 
   get manualWbsRows(): ParametersReportData['costRows'] {
-    return this.reportData.costRows.filter((row) => row.parameterId != null && row.conceptoCostoId == null);
+    return [...this.reportData.costRows, ...this.reportData.percentCostRows].filter(
+      (row) => row.parameterId != null && row.conceptoCostoId == null,
+    );
   }
 
   getManualWbsSelection(parameterId: number | null): number | null {
@@ -284,11 +288,15 @@ export class ParametersReportPanel implements OnChanges {
   }
 
   get showQuantitySection(): boolean {
-    return this.selectedParameterScope !== 'cost';
+    return this.selectedParameterScope === 'all' || this.selectedParameterScope === 'quantity';
   }
 
   get showCostSection(): boolean {
-    return this.selectedParameterScope !== 'quantity';
+    return this.selectedParameterScope === 'all' || this.selectedParameterScope === 'cost';
+  }
+
+  get showCostPercentSection(): boolean {
+    return this.selectedParameterScope === 'all' || this.selectedParameterScope === 'cost-percent';
   }
 
   get showUnassignedSection(): boolean {
@@ -302,6 +310,7 @@ export class ParametersReportPanel implements OnChanges {
     return (
       (this.showQuantitySection && (this.reportData.quantityRows.length > 0 || this.reportData.quantitySummary.total > 0)) ||
       (this.showCostSection && (this.reportData.costRows.length > 0 || this.reportData.costSummary.total > 0)) ||
+      (this.showCostPercentSection && (this.reportData.percentCostRows.length > 0 || this.reportData.percentCostSummary.total > 0)) ||
       (this.showUnassignedSection && this.reportData.unassignedRows.length > 0)
     );
   }
@@ -848,8 +857,18 @@ export class ParametersReportPanel implements OnChanges {
         slices: [],
         background: 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
       },
+      percentCostSummary: {
+        total: 0,
+        inRange: 0,
+        underLimit: 0,
+        aboveLimit: 0,
+        withoutParameter: 0,
+        slices: [],
+        background: 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
+      },
       quantityRows: [],
       costRows: [],
+      percentCostRows: [],
       unassignedRows: [],
     };
   }

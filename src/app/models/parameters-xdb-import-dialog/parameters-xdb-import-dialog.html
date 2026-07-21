@@ -54,23 +54,34 @@
           <div class="b5d-parameters-xdb-dialog__hint">
             {{ i18n.translateForComponent(translations, 'parametersXdbImport.modeHint') }}
           </div>
-          <div class="b5d-parameters-xdb-dialog__mode-switch">
-            <button
-              type="button"
-              class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--toggle"
-              [class.b5d-parameters-xdb-dialog__button--selected]="!isGroupingMode"
-              (click)="setGroupingMode('hojas')"
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.modeLabel') }}</span>
+            <select
+              class="b5d-parameters-xdb-dialog__input b5d-parameters-xdb-dialog__select"
+              [ngModel]="modoAgrupacion"
+              (ngModelChange)="setGroupingMode($event)"
             >
-              {{ i18n.translateForComponent(translations, modeLeavesLabelKey) }}
-            </button>
-            <button
-              type="button"
-              class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--toggle"
-              [class.b5d-parameters-xdb-dialog__button--selected]="isGroupingMode"
-              (click)="setGroupingMode('agrupadores')"
+              <option value="hojas">{{ i18n.translateForComponent(translations, 'parametersXdbImport.modeLeaves') }}</option>
+              <option value="agrupadores">{{ i18n.translateForComponent(translations, 'parametersXdbImport.modeGrouping') }}</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="b5d-parameters-xdb-dialog__section">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.parameterTypeTitle') }}</div>
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.parameterTypeLabel') }}</span>
+            <select
+              class="b5d-parameters-xdb-dialog__input b5d-parameters-xdb-dialog__select"
+              [ngModel]="tipoParametro"
+              (ngModelChange)="setParameterType($event)"
             >
-              {{ i18n.translateForComponent(translations, modeGroupingLabelKey) }}
-            </button>
+              <option value="costo">{{ i18n.translateForComponent(translations, 'parametersXdbImport.parameterTypeCost') }}</option>
+              <option value="costo_porcentaje">{{ i18n.translateForComponent(translations, 'parametersXdbImport.parameterTypeCostPercent') }}</option>
+            </select>
+          </label>
+          <div class="b5d-parameters-xdb-dialog__hint">
+            {{ i18n.translateForComponent(translations, selectedParameterTypeHintKey) }}
           </div>
         </div>
 
@@ -95,14 +106,6 @@
             <div class="b5d-parameters-xdb-dialog__hint">{{ i18n.translateForComponent(translations, 'parametersXdbImport.noFiles') }}</div>
           </div>
         }
-
-        <div class="b5d-parameters-xdb-dialog__section">
-          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.outputTitle') }}</div>
-          <div class="b5d-parameters-xdb-dialog__hint">
-            {{ i18n.translateForComponent(translations, outputHintKey) }}
-          </div>
-          <div class="b5d-parameters-xdb-dialog__pill">{{ i18n.translateForComponent(translations, 'parametersXdbImport.outputPercent') }}</div>
-        </div>
 
         <div class="b5d-parameters-xdb-dialog__section b5d-parameters-xdb-dialog__section--preview">
           <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, previewTitleKey) }}</div>
@@ -137,6 +140,11 @@
             @if (previewMessage) {
               <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ previewMessage }}</div>
             }
+            @if (isDebugEnabled && previewDebugMessage) {
+              <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info" style="white-space: pre-wrap;">
+                {{ previewDebugMessage }}
+              </div>
+            }
             <div class="b5d-parameters-xdb-dialog__table-wrapper b5d-parameters-xdb-dialog__table-wrapper--wide">
               <table class="b5d-parameters-xdb-dialog__table">
                 <thead>
@@ -152,7 +160,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (row of previewRows; track row.firma) {
+                  @for (row of previewRows; track $index) {
                     <tr>
                       <td class="b5d-parameters-xdb-dialog__table-cell--strong" [title]="row.firma">{{ row.firma }}</td>
                       <td>{{ row.clave }}</td>

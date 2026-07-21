@@ -28,6 +28,7 @@ import {
 } from '../../utils/table-view/table-view';
 import type {
   CatalogoB5DOrm,
+  CatalogoParametroB5DOrm,
   ConceptoB5DOrm,
   CuantificacionB5DOrm,
   ParametroB5DOrm,
@@ -41,7 +42,6 @@ import { isCostParameterType } from '../../utils/parameters/parameter-types';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import type { ToolbarActionId } from '../toolbar/toolbar';
-import { XlsxPreview } from '../xlsx-preview/xlsx-preview';
 
 type ParameterDraftRow = {
   clave: string;
@@ -95,6 +95,19 @@ type CostMatchCandidateGroup = {
   }[];
 };
 
+type CostPercentMatchCandidateGroup = {
+  parameterId: number;
+  parameterCode: string;
+  parameterDescription: string;
+  candidates: {
+    id: number;
+    clave: string;
+    descripcion: string;
+    unidad: string;
+    porcentaje: number | null;
+  }[];
+};
+
 type ParameterTableColumnKey =
   | 'activo'
   | 'clave'
@@ -107,11 +120,11 @@ type ParameterTableColumnKey =
   | 'maximo'
   | 'promedio';
 
-type ParameterPaneId = 'parameter-list' | 'boq-preview' | 'description-matches' | 'analysis';
+type ParameterPaneId = 'parameter-list' | 'description-matches' | 'analysis';
 
 @Component({
   selector: 'app-parameters-panel',
-  imports: [FormsModule, ResizableTableDirective, XlsxPreview],
+  imports: [FormsModule, ResizableTableDirective],
   templateUrl: './parameters-panel.html',
   styleUrl: './parameters-panel.scss',
 })
@@ -129,6 +142,8 @@ export class ParametersPanel implements OnChanges {
   @Input() concepts: ConceptoB5DOrm[] = [];
   @Input() catalogs: CatalogoB5DOrm[] = [];
   @Input() activeCatalogId: number | null = null;
+  @Input() parameterCatalogs: CatalogoParametroB5DOrm[] = [];
+  @Input() activeParameterCatalogId: number | null = null;
   @Input() b5dLoading = false;
   @Input() tableFiltersVisible = false;
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
@@ -138,6 +153,7 @@ export class ParametersPanel implements OnChanges {
   @Output() rowsChange = new EventEmitter<ParametroB5DOrm[]>();
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
   @Output() conceptSelectionRequested = new EventEmitter<string>();
+  @Output() parameterCatalogChanged = new EventEmitter<void>();
 
   readonly parameterTableColumns: TableColumnDefinition<ParametroB5DOrm>[] = [
     {
@@ -235,10 +251,15 @@ export class ParametersPanel implements OnChanges {
   parameterColumnChooserLeft = 0;
   parameterColumnChooserTop = 0;
 
-  selectedParameterType: TipoParametroOrm | 'all' = 'all';
+  selectedParameterType: TipoParametroOrm = 'cantidad';
   selectedBuildingType = 'all';
   selectedParameterIds = new Set<number>();
   workParameters: ParametroB5DOrm[] = [];
+  selectedParameterCatalogId: number | null = null;
+  creatingParameterCatalogVisible = false;
+  creatingParameterCatalogName = '';
+  creatingParameterCatalogDescription = '';
+  parameterCatalogActionInProgress = false;
   creatingParameterInline = false;
   creatingAnchorParameterId: number | null = null;
   creatingDraft: ParameterDraftRow = this.getEmptyDraft();
@@ -248,7 +269,6 @@ export class ParametersPanel implements OnChanges {
 
   selectedQuantificationId: number | null = null;
   selectedSheetIndex = 0;
-  boqPreviewZoomPercent = 100;
   parameterListZoomPercent = 100;
   descriptionMatchesZoomPercent = 100;
   analysisZoomPercent = 100;
@@ -261,10 +281,9 @@ export class ParametersPanel implements OnChanges {
   costConceptSelectionByParameterId = new Map<number, number>();
   selectedCostCatalogId: number | null = null;
   parameterListVisible = true;
-  boqPreviewVisible = true;
   descriptionMatchesVisible = true;
   analysisVisible = true;
-  paneOrder: ParameterPaneId[] = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
+  paneOrder: ParameterPaneId[] = ['parameter-list', 'description-matches', 'analysis'];
   topLeftPaneWidth = 540;
   bottomLeftPaneWidth = 420;
   topWorkspaceHeight = 390;
@@ -309,6 +328,14 @@ export class ParametersPanel implements OnChanges {
       this.emitToolbarState();
     }
 
+    if (changes['activeParameterCatalogId']) {
+      this.selectedParameterCatalogId = this.activeParameterCatalogId;
+    }
+
+    if (changes['parameterCatalogs']) {
+      this.syncParameterCatalogSelection();
+    }
+
     if (changes['quantifications']) {
       const workbookQuantifications = this.quantificationsWithWorkbook;
       if (
@@ -349,11 +376,11 @@ export class ParametersPanel implements OnChanges {
   }
 
   get topRowPaneIds(): ParameterPaneId[] {
-    return this.orderedVisiblePaneIds.slice(0, 2);
+    return this.orderedVisiblePaneIds.slice(0, 1);
   }
 
   get bottomRowPaneIds(): ParameterPaneId[] {
-    return this.orderedVisiblePaneIds.slice(2, 4);
+    return this.orderedVisiblePaneIds.slice(1, 4);
   }
 
   get showTopVerticalSplitter(): boolean {
@@ -379,15 +406,7 @@ export class ParametersPanel implements OnChanges {
 
   get visibleRows(): ParametroB5DOrm[] {
     const filteredByToolbar = this.workParameters.filter((row) => {
-      if (
-        this.selectedParameterType !== 'all' &&
-        !(
-          row.tipo_parametro === this.selectedParameterType ||
-          (this.selectedParameterType === 'costo' && isCostParameterType(row.tipo_parametro))
-        )
-      ) {
-        return false;
-      }
+      if (row.tipo_parametro !== this.selectedParameterType) return false;
       if (this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) return false;
       return true;
     });
@@ -434,6 +453,15 @@ export class ParametersPanel implements OnChanges {
     return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? this.t('parameters.catalog.costs');
   }
 
+  get availableParameterCatalogs(): CatalogoParametroB5DOrm[] {
+    return this.parameterCatalogs;
+  }
+
+  get selectedParameterCatalogLabel(): string {
+    const selectedCatalog = this.availableParameterCatalogs.find((catalog) => catalog.id === this.selectedParameterCatalogId);
+    return selectedCatalog?.nombre ?? this.t('parameters.panel.noParameterCatalogs');
+  }
+
   private getCostConceptsForSelectedCatalog(): ConceptoB5DOrm[] {
     const selectedCatalogId = this.selectedCostCatalogId ?? this.activeCatalogId;
     if (selectedCatalogId == null) return this.concepts;
@@ -467,7 +495,7 @@ export class ParametersPanel implements OnChanges {
   get costMatchCandidateGroups(): CostMatchCandidateGroup[] {
     const groups: CostMatchCandidateGroup[] = [];
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (!isCostParameterType(parameterRow.tipo_parametro)) continue;
+      if (parameterRow.tipo_parametro !== 'costo') continue;
       const candidates = this.getCostCandidateConcepts(parameterRow);
       if (!candidates.length) continue;
       groups.push({
@@ -486,9 +514,44 @@ export class ParametersPanel implements OnChanges {
     return groups;
   }
 
+  get costPercentMatchCandidateGroups(): CostPercentMatchCandidateGroup[] {
+    const groups: CostPercentMatchCandidateGroup[] = [];
+    for (const parameterRow of this.activeParametersForAnalysis) {
+      if (parameterRow.tipo_parametro !== 'costo_porcentaje') continue;
+      const candidates = this.getCostCandidateConcepts(parameterRow);
+      if (!candidates.length) continue;
+      groups.push({
+        parameterId: parameterRow.id,
+        parameterCode: parameterRow.clave ?? '-',
+        parameterDescription: parameterRow.descripcion ?? '-',
+        candidates: candidates.map((conceptRow) => ({
+          id: conceptRow.id,
+          clave: conceptRow.clave ?? '-',
+          descripcion: conceptRow.descripcion ?? '-',
+          unidad: conceptRow.unidad ?? '-',
+          porcentaje: this.resolveConceptPercentage(conceptRow),
+        })),
+      });
+    }
+    return groups;
+  }
+
   get comparisonLabel(): string {
-    if (this.selectedParameterType === 'all') return this.t('parameters.filter.allTypes');
-    return this.selectedParameterType === 'costo' ? this.t('parameters.filter.costs') : this.t('parameters.filter.quantities');
+    if (this.selectedParameterType === 'cantidad') return this.t('parameters.filter.quantities');
+    if (this.selectedParameterType === 'costo') return this.t('parameters.filter.costs');
+    return this.t('parameters.parameter.costPercent');
+  }
+
+  get analysisPreviewLabel(): string {
+    if (this.selectedParameterType === 'cantidad') return this.t('parameters.panel.previewQuantity');
+    if (this.selectedParameterType === 'costo') return this.t('parameters.panel.previewCost');
+    return this.t('parameters.panel.previewCostPercent');
+  }
+
+  get analysisEvaluatedLabel(): string {
+    if (this.selectedParameterType === 'cantidad') return this.t('parameters.analysis.evaluatedQuantity');
+    if (this.selectedParameterType === 'costo') return this.t('parameters.analysis.evaluatedCost');
+    return this.t('parameters.analysis.evaluatedCostPercent');
   }
 
   get buildingLabel(): string {
@@ -529,10 +592,6 @@ export class ParametersPanel implements OnChanges {
       this.toggleParameterListVisible();
       return;
     }
-    if (action === 'parameter-toggle-boq') {
-      this.toggleBoqPreviewVisible();
-      return;
-    }
     if (action === 'parameter-toggle-matches') {
       this.toggleDescriptionMatchesVisible();
       return;
@@ -548,11 +607,6 @@ export class ParametersPanel implements OnChanges {
 
   toggleParameterListVisible(): void {
     this.parameterListVisible = !this.parameterListVisible;
-    this.emitToolbarState();
-  }
-
-  toggleBoqPreviewVisible(): void {
-    this.boqPreviewVisible = !this.boqPreviewVisible;
     this.emitToolbarState();
   }
 
@@ -608,9 +662,12 @@ export class ParametersPanel implements OnChanges {
   // Returns true when a pane is visible in the workspace.
   isPaneVisible(paneId: ParameterPaneId): boolean {
     if (paneId === 'parameter-list') return this.parameterListVisible;
-    if (paneId === 'boq-preview') return this.boqPreviewVisible;
     if (paneId === 'description-matches') {
-      return (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) || this.costMatchCandidateGroups.length > 0;
+      return (
+        (this.descriptionMatchesVisible && this.descriptionMatchCandidateGroups.length > 0) ||
+        this.costMatchCandidateGroups.length > 0 ||
+        this.costPercentMatchCandidateGroups.length > 0
+      );
     }
     return this.analysisVisible;
   }
@@ -618,7 +675,7 @@ export class ParametersPanel implements OnChanges {
   // Returns the grid row assigned to the pane.
   getPaneGridRow(paneId: ParameterPaneId): string {
     if (!this.showHorizontalSplitter) return '1';
-    return this.getPaneVisibleIndex(paneId) < 2 ? '1' : '3';
+    return this.getPaneVisibleIndex(paneId) < this.topRowPaneIds.length ? '1' : '3';
   }
 
   // Returns the grid column assigned to the pane.
@@ -627,20 +684,19 @@ export class ParametersPanel implements OnChanges {
     if (paneIndex === -1) return '1 / 4';
     if (!(this.showTopVerticalSplitter || this.showBottomVerticalSplitter)) return '1 / 2';
 
-    const rowPaneIds = paneIndex < 2 ? this.topRowPaneIds : this.bottomRowPaneIds;
+    const rowPaneIds = paneIndex < this.topRowPaneIds.length ? this.topRowPaneIds : this.bottomRowPaneIds;
     if (rowPaneIds.length === 1) return '1 / 4';
     return rowPaneIds[0] === paneId ? '1 / 2' : '3 / 4';
   }
 
   resetTableViews(): void {
-    this.selectedParameterType = 'all';
+    this.selectedParameterType = 'cantidad';
     this.selectedBuildingType = 'all';
     this.resetParameterTableViews();
     this.parameterListVisible = true;
-    this.boqPreviewVisible = true;
     this.descriptionMatchesVisible = true;
     this.analysisVisible = true;
-    this.paneOrder = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
+    this.paneOrder = ['parameter-list', 'description-matches', 'analysis'];
     this.topLeftPaneWidth = 540;
     this.bottomLeftPaneWidth = 420;
     this.topWorkspaceHeight = 390;
@@ -798,9 +854,8 @@ export class ParametersPanel implements OnChanges {
   resetParameterTableViews(): void {
     this.resetParameterTablePreferences();
     this.resetParameterTableWidths();
-    this.paneOrder = ['parameter-list', 'boq-preview', 'description-matches', 'analysis'];
+    this.paneOrder = ['parameter-list', 'description-matches', 'analysis'];
     this.parameterListZoomPercent = 100;
-    this.boqPreviewZoomPercent = 100;
     this.descriptionMatchesZoomPercent = 100;
     this.analysisZoomPercent = 100;
   }
@@ -817,6 +872,20 @@ export class ParametersPanel implements OnChanges {
     }
 
     this.selectedCostCatalogId = this.availableCostCatalogs[0]?.id ?? null;
+  }
+
+  private syncParameterCatalogSelection(): void {
+    const availableCatalogIds = new Set(this.availableParameterCatalogs.map((catalog) => catalog.id));
+    if (this.activeParameterCatalogId != null && availableCatalogIds.has(this.activeParameterCatalogId)) {
+      this.selectedParameterCatalogId = this.activeParameterCatalogId;
+      return;
+    }
+
+    if (this.selectedParameterCatalogId != null && availableCatalogIds.has(this.selectedParameterCatalogId)) {
+      return;
+    }
+
+    this.selectedParameterCatalogId = this.availableParameterCatalogs[0]?.id ?? null;
   }
 
   startInternalResize(
@@ -885,6 +954,75 @@ export class ParametersPanel implements OnChanges {
 
   onFilterChange(): void {
     this.emitToolbarState();
+  }
+
+  toggleParameterCatalogCreate(): void {
+    if (this.parameterCatalogActionInProgress) return;
+    if (this.creatingParameterCatalogVisible) {
+      this.cancelParameterCatalogCreate();
+      return;
+    }
+    this.creatingParameterCatalogVisible = !this.creatingParameterCatalogVisible;
+    this.creatingParameterCatalogName = '';
+    this.creatingParameterCatalogDescription = '';
+    this.actionError = '';
+  }
+
+  cancelParameterCatalogCreate(): void {
+    this.creatingParameterCatalogVisible = false;
+    this.creatingParameterCatalogName = '';
+    this.creatingParameterCatalogDescription = '';
+    this.actionError = '';
+  }
+
+  async saveParameterCatalogCreate(): Promise<void> {
+    if (!this.activeProject || this.parameterCatalogActionInProgress) return;
+    const nombre = this.creatingParameterCatalogName.trim();
+    if (!nombre) {
+      this.actionError = this.t('parameters.catalog.errorName');
+      return;
+    }
+
+    this.parameterCatalogActionInProgress = true;
+    this.actionError = '';
+    try {
+      const response = await firstValueFrom(
+        this.backendProyectos.crearCatalogoParametro(this.activeProject.id, {
+          nombre,
+          descripcion: this.creatingParameterCatalogDescription.trim() || undefined,
+        }),
+      );
+      this.selectedParameterCatalogId = response.catalogo_parametro_activo_id ?? response.catalogo?.id ?? null;
+      this.creatingParameterCatalogVisible = false;
+      this.creatingParameterCatalogName = '';
+      this.creatingParameterCatalogDescription = '';
+      this.parameterCatalogChanged.emit();
+    } catch (error) {
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.catalog.errorCreate'));
+    } finally {
+      this.parameterCatalogActionInProgress = false;
+    }
+  }
+
+  async onParameterCatalogChange(catalogId: number | null): Promise<void> {
+    this.selectedParameterCatalogId = catalogId;
+    if (!this.activeProject || catalogId == null) return;
+    if (catalogId === this.activeParameterCatalogId) return;
+
+    this.parameterCatalogActionInProgress = true;
+    this.actionError = '';
+    try {
+      const response = await firstValueFrom(
+        this.backendProyectos.seleccionarCatalogoParametro(this.activeProject.id, catalogId),
+      );
+      this.selectedParameterCatalogId = response.catalogo_parametro_activo_id ?? catalogId;
+      this.parameterCatalogChanged.emit();
+    } catch (error) {
+      this.selectedParameterCatalogId = this.activeParameterCatalogId;
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.catalog.errorSelect'));
+    } finally {
+      this.parameterCatalogActionInProgress = false;
+    }
   }
 
   onCostCatalogChange(catalogId: number | null): void {
@@ -1133,38 +1271,8 @@ export class ParametersPanel implements OnChanges {
     );
   }
 
-  // Returns the zoom factor used by the internal BOQ preview pane.
-  getBoqPreviewZoomFactor(): number {
-    return this.getPaneZoomFactor('boq-preview');
-  }
-
-  // Increases only the internal BOQ preview zoom level.
-  increaseBoqPreviewZoom(): void {
-    this.increasePaneZoom('boq-preview');
-  }
-
-  // Decreases only the internal BOQ preview zoom level.
-  decreaseBoqPreviewZoom(): void {
-    this.decreasePaneZoom('boq-preview');
-  }
-
-  // Restores the BOQ preview zoom to default value.
-  resetBoqPreviewZoom(): void {
-    this.resetPaneZoom('boq-preview');
-  }
-
-  // Applies zoom requests emitted by the embedded workbook preview.
-  onBoqPreviewZoomRequested(direction: 'in' | 'out'): void {
-    if (direction === 'in') {
-      this.increaseBoqPreviewZoom();
-      return;
-    }
-    this.decreaseBoqPreviewZoom();
-  }
-
   private getPaneZoomPercent(paneId: ParameterPaneId): number {
     if (paneId === 'parameter-list') return this.parameterListZoomPercent;
-    if (paneId === 'boq-preview') return this.boqPreviewZoomPercent;
     if (paneId === 'description-matches') return this.descriptionMatchesZoomPercent;
     return this.analysisZoomPercent;
   }
@@ -1173,10 +1281,6 @@ export class ParametersPanel implements OnChanges {
     const nextZoomPercent = this.clamp(zoomPercent, 20, 300);
     if (paneId === 'parameter-list') {
       this.parameterListZoomPercent = nextZoomPercent;
-      return;
-    }
-    if (paneId === 'boq-preview') {
-      this.boqPreviewZoomPercent = nextZoomPercent;
       return;
     }
     if (paneId === 'description-matches') {
@@ -1228,7 +1332,6 @@ export class ParametersPanel implements OnChanges {
       parametersTotal: this.visibleRows.length,
       selectedParameterIds: [...this.selectedParameterIds],
       parameterListVisible: this.parameterListVisible,
-      parameterBoqVisible: this.boqPreviewVisible,
       parameterDescriptionMatchesVisible: this.descriptionMatchesVisible,
       parameterAnalysisVisible: this.analysisVisible,
       tableFiltersVisible: this.tableFiltersVisible,
@@ -1579,33 +1682,51 @@ export class ParametersPanel implements OnChanges {
       };
     }
 
-    const boqQuantity = boqRow.cantidad;
-    if (boqQuantity == null) {
-      return {
-        ...boqRow,
-        matchedParameterCode: matchedParameter.clave ?? '-',
-        matchedParameterDescription: matchedParameter.descripcion ?? '-',
-        matchedParameterUnit: matchedParameter.unidad ?? '-',
-        evaluatedText: '-',
-        rangeText,
-        deltaText: '-',
-        resultText: this.t('parameters.analysis.noQuantity'),
-        resultKind: 'warning',
-      };
-    }
+    if (matchedParameter.tipo_parametro === 'costo_porcentaje') {
+      const conceptPercentage = this.resolveConceptPercentage(matchedConcept);
+      if (conceptPercentage == null) {
+        return {
+          ...boqRow,
+          matchedParameterCode: matchedParameter.clave ?? '-',
+          matchedParameterDescription: matchedParameter.descripcion ?? '-',
+          matchedParameterUnit: matchedParameter.unidad ?? '-',
+          evaluatedText: '-',
+          rangeText,
+          deltaText: '-',
+          resultText: this.t('parameters.analysis.noSelectedCatalogCost'),
+          resultKind: 'warning',
+        };
+      }
 
-    const conceptQuantity = this.convertQuantityToUnit(boqQuantity, boqRow.unidad, matchedConcept.unidad ?? '');
-    if (conceptQuantity == null) {
+      const delta = this.computeRangeDelta(conceptPercentage, rangeMin, rangeMax);
+      const unitLabel = matchedParameter.unidad?.trim() || '%';
+      const evaluatedText = `${this.formatValue(conceptPercentage)} ${unitLabel}`;
+      const deltaText = `${delta >= 0 ? '+' : ''}${this.formatValue(delta)} ${unitLabel}`;
+
+      if (delta !== 0) {
+        return {
+          ...boqRow,
+          matchedParameterCode: matchedParameter.clave ?? '-',
+          matchedParameterDescription: matchedParameter.descripcion ?? '-',
+          matchedParameterUnit: matchedParameter.unidad ?? '-',
+          evaluatedText,
+          rangeText,
+          deltaText,
+          resultText: this.t('parameters.analysis.outOfRange'),
+          resultKind: 'error',
+        };
+      }
+
       return {
         ...boqRow,
         matchedParameterCode: matchedParameter.clave ?? '-',
         matchedParameterDescription: matchedParameter.descripcion ?? '-',
         matchedParameterUnit: matchedParameter.unidad ?? '-',
-        evaluatedText: '-',
+        evaluatedText,
         rangeText,
-        deltaText: '-',
-        resultText: this.t('parameters.analysis.incompatibleUnit'),
-        resultKind: 'warning',
+        deltaText: '+0',
+        resultText: this.t('parameters.analysis.inRange'),
+        resultKind: 'ok',
       };
     }
 
@@ -1624,11 +1745,9 @@ export class ParametersPanel implements OnChanges {
       };
     }
 
-    const totalCost = conceptQuantity * unitCost;
-    const delta = this.computeRangeDelta(totalCost, rangeMin, rangeMax);
+    const delta = this.computeRangeDelta(unitCost, rangeMin, rangeMax);
     const unitLabel = matchedParameter.unidad?.trim() || 'u';
-    const conceptUnitLabel = matchedConcept.unidad?.trim() || boqRow.unidad?.trim() || 'u';
-    const evaluatedText = `${this.formatValue(conceptQuantity)} ${conceptUnitLabel} x ${this.formatValue(unitCost)} = ${this.formatValue(totalCost)} ${unitLabel}`;
+    const evaluatedText = `${this.formatValue(unitCost)} ${unitLabel}`;
     const deltaText = `${delta >= 0 ? '+' : ''}${this.formatValue(delta)} ${unitLabel}`;
     if (delta !== 0) {
       return {
@@ -1655,6 +1774,10 @@ export class ParametersPanel implements OnChanges {
       resultText: this.t('parameters.analysis.inRange'),
       resultKind: 'ok',
     };
+  }
+
+  private resolveConceptPercentage(concept: ConceptoB5DOrm): number | null {
+    return this.parseNumericLikeValue(concept.porcentaje_padre ?? null);
   }
 
   private findMatchingConcept(boqRow: BoqExtractedRow, concepts: ConceptoB5DOrm[] = this.activeConceptsForAnalysis): ConceptoB5DOrm | null {
@@ -1734,10 +1857,7 @@ export class ParametersPanel implements OnChanges {
   }
 
   private resolveConceptUnitCost(concept: ConceptoB5DOrm): number | null {
-    if (concept.es_agrupador) {
-      return this.parseNumericLikeValue(concept.importe);
-    }
-    return this.parseNumericLikeValue(concept.precio_unitario);
+    return this.parseNumericLikeValue(concept.importe);
   }
 
   private parseNumericLikeValue(value: unknown): number | null {
@@ -1808,15 +1928,22 @@ export class ParametersPanel implements OnChanges {
 
   private normalizeText(value: string): string {
     return value
+      .replace(/_x000d_/gi, ' ')
+      .replace(/\r\n?|\n/g, ' ')
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
   private stringValue(value: unknown): string {
     if (value == null) return '';
-    return String(value).trim();
+    return String(value)
+      .replace(/_x000d_/gi, ' ')
+      .replace(/\r\n?|\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private buildBoqRowKey(boqRow: BoqExtractedRow): string {
@@ -1858,7 +1985,7 @@ export class ParametersPanel implements OnChanges {
   private synchronizeCostSelections(): void {
     const nextSelectionMap = new Map<number, number>();
     for (const parameterRow of this.activeParametersForAnalysis) {
-      if (!isCostParameterType(parameterRow.tipo_parametro)) continue;
+      if (parameterRow.tipo_parametro !== 'costo') continue;
       const candidateConcepts = this.getCostCandidateConcepts(parameterRow);
       if (!candidateConcepts.length) continue;
 

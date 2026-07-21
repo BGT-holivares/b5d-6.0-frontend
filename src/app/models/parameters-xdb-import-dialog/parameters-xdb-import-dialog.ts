@@ -7,6 +7,7 @@ import { LoadingPanelService } from '../../services/loading-panel.service';
 import { createParameterImportPlan } from '../../utils/loading-panel/loading-plans';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
+import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
 import { PARAMETERS_XDB_IMPORT_DIALOG_TRANSLATIONS } from './parameters-xdb-import-dialog.translations';
 
 type XdbImportCandidate = {
@@ -17,6 +18,7 @@ type XdbImportCandidate = {
 
 type XdbPreviewRow = PrevisualizarParametrosXdbResponse['preview']['resultados'][number];
 type XdbGroupingMode = 'hojas' | 'agrupadores';
+type XdbParameterType = 'costo' | 'costo_porcentaje';
 
 export type XdbParameterImportSummary = {
   created: number;
@@ -46,11 +48,12 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
 
   folderName = '';
   candidates: XdbImportCandidate[] = [];
-  tipoParametro: 'costo_porcentaje' = 'costo_porcentaje';
+  tipoParametro: XdbParameterType = 'costo_porcentaje';
   modoAgrupacion: XdbGroupingMode = 'hojas';
   previewRows: XdbPreviewRow[] = [];
   validationMessage = '';
   previewMessage = '';
+  previewDebugMessage = '';
   processingMessage = '';
   importMessage = '';
   previewLoading = false;
@@ -65,6 +68,8 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
   private previewProgressTimer: ReturnType<typeof setInterval> | null = null;
   private previewStatusTimer: ReturnType<typeof setInterval> | null = null;
   private previewStatusPollingInFlight = false;
+  private previewStatusLastSignature = '';
+  private backendPreviewTraceCount = 0;
   private importProgressTimeout: ReturnType<typeof setTimeout> | null = null;
   private importProgressInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -104,12 +109,6 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     return this.modoAgrupacion === 'agrupadores';
   }
 
-  get outputHintKey(): string {
-    return this.isGroupingMode
-      ? 'parametersXdbImport.outputHintGrouping'
-      : 'parametersXdbImport.outputHint';
-  }
-
   get previewTitleKey(): string {
     return this.isGroupingMode
       ? 'parametersXdbImport.previewTitleGrouping'
@@ -122,17 +121,25 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
       : 'parametersXdbImport.previewHint';
   }
 
-  get modeLeavesLabelKey(): string {
-    return 'parametersXdbImport.modeLeaves';
+  get selectedParameterTypeHintKey(): string {
+    return this.tipoParametro === 'costo'
+      ? 'parametersXdbImport.parameterTypeHintCost'
+      : 'parametersXdbImport.parameterTypeHintCostPercent';
   }
 
-  get modeGroupingLabelKey(): string {
-    return 'parametersXdbImport.modeGrouping';
+  get isDebugEnabled(): boolean {
+    return isB5dDebugEnabled();
   }
 
   setGroupingMode(mode: XdbGroupingMode): void {
     if (this.modoAgrupacion === mode) return;
     this.modoAgrupacion = mode;
+    this.markPreviewStale();
+  }
+
+  setParameterType(tipoParametro: XdbParameterType): void {
+    if (this.tipoParametro === tipoParametro) return;
+    this.tipoParametro = tipoParametro;
     this.markPreviewStale();
   }
 
@@ -143,6 +150,7 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = '';
+    this.previewDebugMessage = '';
 
     const xdbFiles = files
       .filter((file) => file.name.toLowerCase().endsWith('.xdb'))
@@ -234,9 +242,20 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     return this.previewRows.length > 0;
   }
 
-  formatPercentage(value: number | null | undefined): string {
-    if (value == null || Number.isNaN(value)) return '-';
-    return `${value.toFixed(2)}%`;
+  formatPercentage(value: number | string | null | undefined): string {
+    const numericValue = this.toNumericValue(value);
+    if (numericValue == null) return '-';
+    return `${numericValue.toFixed(2)}%`;
+  }
+
+  private toNumericValue(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+      const numericValue = Number(value.trim());
+      return Number.isFinite(numericValue) ? numericValue : null;
+    }
+    return null;
   }
 
   private resetState(): void {
@@ -254,6 +273,7 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = false;
     this.previewProgress = 0;
     this.isImporting = false;
+    this.previewDebugMessage = '';
     this.tipoParametro = 'costo_porcentaje';
     this.modoAgrupacion = 'hojas';
     this.previewRequestId += 1;
@@ -268,6 +288,14 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
       this.clearPreviewState('parametersXdbImport.previewEmpty', false);
       return;
     }
+
+    logB5dDebug('parameters-xdb-import-dialog: preview request start', {
+      projectId: this.activeProjectId,
+      tipoParametro: this.tipoParametro,
+      modoAgrupacion: this.modoAgrupacion,
+      selectedFiles: selectedFiles.map((file) => file.name),
+      selectedCount: selectedFiles.length,
+    });
 
     this.startPreviewProgress();
     this.startPreviewStatusPolling(requestId);
@@ -291,11 +319,32 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
             'parametersXdbImport.previewReady',
           )
         : this.i18n.translateForComponent(this.translations, 'parametersXdbImport.previewEmpty');
+      logB5dDebug('parameters-xdb-import-dialog: preview received', {
+        projectId: this.activeProjectId,
+        tipoParametro: this.tipoParametro,
+        modoAgrupacion: this.modoAgrupacion,
+        summary: response.summary,
+        previewCount: this.previewRows.length,
+        sample: this.previewRows.slice(0, 3).map((row) => ({
+          firma: row.firma,
+          clave: row.clave,
+          cantidad_conceptos: row.cantidad_conceptos,
+          cantidad_origenes: row.cantidad_origenes,
+          minimo: row.minimo,
+          maximo: row.maximo,
+          promedio: row.promedio,
+        })),
+      });
+      this.previewDebugMessage = isB5dDebugEnabled() ? this.buildPreviewDebugMessage(response) : '';
     } catch (error) {
       if (requestId !== this.previewRequestId) return;
       this.previewRows = [];
       this.previewDirty = false;
       this.previewMessage = this.resolveErrorMessage(error, this.i18n.translateForComponent(this.translations, 'parametersXdbImport.previewError'));
+      this.previewDebugMessage = isB5dDebugEnabled()
+        ? this.resolveErrorMessage(error, 'Error al cargar la vista previa de parámetros XDB.')
+        : '';
+      logB5dDebug('parameters-xdb-import-dialog: preview error', error);
     } finally {
       if (requestId !== this.previewRequestId) return;
       this.previewLoading = false;
@@ -311,8 +360,11 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = true;
     this.previewRows = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersXdbImport.previewPending');
+    this.previewDebugMessage = '';
     this.previewLoading = false;
     this.previewProgress = 0;
+    this.previewStatusLastSignature = '';
+    this.backendPreviewTraceCount = 0;
     this.previewRequestId += 1;
   }
 
@@ -322,9 +374,33 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = dirty;
     this.previewRows = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, messageKey);
+    this.previewDebugMessage = '';
     this.previewLoading = false;
     this.previewProgress = 0;
+    this.previewStatusLastSignature = '';
+    this.backendPreviewTraceCount = 0;
     this.previewRequestId += 1;
+  }
+
+  private buildPreviewDebugMessage(response: PrevisualizarParametrosXdbResponse): string {
+    const preview = response.preview.resultados;
+    const sample = preview.slice(0, 3).map((row, index) => {
+      const parts = [
+        `${index + 1}. firma=${row.firma || '-'}`,
+        `clave=${row.clave || '-'}`,
+        `conceptos=${row.cantidad_conceptos}`,
+        `origenes=${row.cantidad_origenes}`,
+        `min=${this.formatPercentage(row.minimo)}`,
+        `max=${this.formatPercentage(row.maximo)}`,
+        `prom=${this.formatPercentage(row.promedio)}`,
+      ];
+      return parts.join(' | ');
+    });
+    return [
+      `summary.count=${response.summary.count} tipo_parametro=${response.summary.tipo_parametro}`,
+      `preview.length=${preview.length} selectedFiles=${this.selectedCount} totalFiles=${this.totalCount} grouping=${this.modoAgrupacion}`,
+      ...sample,
+    ].join('\n');
   }
 
   private startPreviewProgress(): void {
@@ -359,6 +435,8 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
   private startPreviewStatusPolling(requestId: number): void {
     this.stopPreviewStatusPolling();
     if (!this.activeProjectId) return;
+    this.previewStatusLastSignature = '';
+    this.backendPreviewTraceCount = 0;
 
     this.previewStatusTimer = setInterval(() => {
       if (
@@ -376,13 +454,32 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
         .then((proyecto) => {
           if (requestId !== this.previewRequestId || !this.previewLoading) return;
 
+          const backendTrace = proyecto.debug_trace ?? [];
+          if (backendTrace.length < this.backendPreviewTraceCount) {
+            this.backendPreviewTraceCount = 0;
+          }
+          for (const line of backendTrace.slice(this.backendPreviewTraceCount)) {
+            logB5dDebug('parameters-xdb-import-dialog: backend trace', line);
+          }
+          this.backendPreviewTraceCount = backendTrace.length;
+
           const mensajeProgreso = proyecto.mensaje_progreso?.trim();
           const progresoBackend = Math.max(0, Math.min(95, proyecto.progreso_porcentaje ?? 0));
+          const signature = `${mensajeProgreso ?? ''}|${progresoBackend}`;
           if (mensajeProgreso) {
             this.previewMessage = mensajeProgreso;
           }
           if (progresoBackend > 0) {
             this.previewProgress = Math.max(this.previewProgress, progresoBackend);
+          }
+          if (signature !== this.previewStatusLastSignature) {
+            this.previewStatusLastSignature = signature;
+            logB5dDebug('parameters-xdb-import-dialog: status update', {
+              projectId: this.activeProjectId,
+              message: mensajeProgreso || null,
+              progress: progresoBackend,
+              requestId,
+            });
           }
           this.changeDetectorRef.detectChanges();
         })

@@ -128,6 +128,7 @@ export class ParametersImportDialog implements OnChanges {
   validationMessage = '';
   importMessage = '';
   processingMessage = '';
+  buildingTypeValue = '';
   isWorkbookProcessing = false;
   importInProgress = false;
   selectedSheetIndex = 0;
@@ -220,6 +221,10 @@ export class ParametersImportDialog implements OnChanges {
     return `${mappedFields} ${this.t('parametersImport.of')} ${this.fieldDefinitions.length} ${this.t('parametersImport.mappedColumns')}`;
   }
 
+  get buildingTypePlaceholder(): string {
+    return this.t('parametersImport.buildingTypePlaceholder');
+  }
+
   handleFileChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
@@ -228,6 +233,7 @@ export class ParametersImportDialog implements OnChanges {
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = '';
+    this.buildingTypeValue = '';
 
     if (!file) {
       this.resetWorkbookState();
@@ -543,7 +549,7 @@ export class ParametersImportDialog implements OnChanges {
     const descripcion = this.getMappedCellValue(row, 'descripcion');
     const tipoComparacionValue = this.getMappedCellValue(row, 'tipo_comparacion');
     const tipoParametroValue = this.getMappedCellValue(row, 'tipo_parametro');
-    const tipoEdificacion = this.getMappedCellValue(row, 'tipo_edificacion');
+    const tipoEdificacion = this.getFieldValueFromRow(row, 'tipo_edificacion');
     const unidad = this.getMappedCellValue(row, 'unidad');
 
     return {
@@ -693,6 +699,9 @@ export class ParametersImportDialog implements OnChanges {
   }
 
   private getFieldValueFromRow(row: WorkbookRow, field: ParameterImportField): string {
+    if (field === 'tipo_edificacion') {
+      return this.getMappedCellValue(row, field) || this.buildingTypeValue.trim() || '';
+    }
     return this.getMappedCellValue(row, field) || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
   }
 
@@ -706,7 +715,10 @@ export class ParametersImportDialog implements OnChanges {
       };
     }
 
-    const defaultValue = this.fieldDefinitions.find((item) => item.key === field)?.defaultValue ?? '';
+    const defaultValue =
+      field === 'tipo_edificacion'
+        ? this.buildingTypeValue.trim() || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || ''
+        : this.fieldDefinitions.find((item) => item.key === field)?.defaultValue ?? '';
     return {
       value: defaultValue || '-',
       usesDefaultValue: !!defaultValue,
@@ -852,6 +864,7 @@ export class ParametersImportDialog implements OnChanges {
     this.selectedSheetIndex = 0;
     this.selectedHeaderCandidateRowNumber = null;
     this.fieldMappings = this.createEmptyFieldMappings();
+    this.buildingTypeValue = '';
   }
 
   private resetState(): void {

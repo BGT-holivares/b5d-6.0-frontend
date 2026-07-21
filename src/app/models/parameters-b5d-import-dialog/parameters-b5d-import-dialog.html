@@ -71,18 +71,25 @@
           </div>
         }
 
-        <div class="b5d-parameters-xdb-dialog__section">
-          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersB5dImport.outputTitle') }}</div>
-          <div class="b5d-parameters-xdb-dialog__hint">
-            {{ i18n.translateForComponent(translations, 'parametersB5dImport.outputHint') }}
-          </div>
-          <div class="b5d-parameters-xdb-dialog__pill">{{ i18n.translateForComponent(translations, 'parametersB5dImport.outputQuantity') }}</div>
-        </div>
-
         <div class="b5d-parameters-xdb-dialog__section b5d-parameters-xdb-dialog__section--preview">
           <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewTitle') }}</div>
           <div class="b5d-parameters-xdb-dialog__hint">
             {{ i18n.translateForComponent(translations, 'parametersB5dImport.previewHint') }}
+          </div>
+          <div class="b5d-parameters-xdb-dialog__inline-actions">
+            <button
+              type="button"
+              class="b5d-parameters-xdb-dialog__button"
+              [disabled]="!canGeneratePreview || previewLoading"
+              (click)="generatePreview()"
+            >
+              {{ i18n.translateForComponent(translations, 'parametersB5dImport.previewGenerate') }}
+            </button>
+            @if (previewDirty && !previewLoading) {
+              <span class="b5d-parameters-xdb-dialog__counter">
+                {{ i18n.translateForComponent(translations, 'parametersB5dImport.previewPending') }}
+              </span>
+            }
           </div>
 
           @if (previewLoading) {
@@ -96,6 +103,11 @@
           } @else if (hasPreview) {
             @if (previewMessage) {
               <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ previewMessage }}</div>
+            }
+            @if (isDebugEnabled && previewDebugMessage) {
+              <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info" style="white-space: pre-wrap;">
+                {{ previewDebugMessage }}
+              </div>
             }
             <div class="b5d-parameters-xdb-dialog__table-wrapper b5d-parameters-xdb-dialog__table-wrapper--wide">
               <table class="b5d-parameters-xdb-dialog__table">
@@ -112,7 +124,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (row of previewRows; track row.firma) {
+                  @for (row of previewRows; track $index) {
                     <tr>
                       <td class="b5d-parameters-xdb-dialog__table-cell--strong" [title]="row.clave">{{ row.clave }}</td>
                       <td>{{ row.descripcion }}</td>

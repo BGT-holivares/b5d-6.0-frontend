@@ -29,7 +29,6 @@ export interface HomeToolbarState {
   parametersTotal?: number;
   selectedParameterIds?: number[];
   parameterListVisible?: boolean;
-  parameterBoqVisible?: boolean;
   parameterDescriptionMatchesVisible?: boolean;
   parameterAnalysisVisible?: boolean;
   tableFiltersVisible?: boolean;

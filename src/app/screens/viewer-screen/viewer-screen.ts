@@ -54,6 +54,7 @@ import { VIEWER_SCREEN_TRANSLATIONS } from './viewer-screen.translations';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type {
   CatalogoB5DOrm,
+  CatalogoParametroB5DOrm,
   ConceptoB5DOrm,
   CuantificacionB5DOrm,
   ParametroB5DOrm,
@@ -123,15 +124,13 @@ type ViewerUiState = {
   };
   parametersPanel?: {
     parameterListVisible?: boolean;
-    boqPreviewVisible?: boolean;
     descriptionMatchesVisible?: boolean;
     analysisVisible?: boolean;
-    paneOrder?: ('parameter-list' | 'boq-preview' | 'description-matches' | 'analysis')[];
+    paneOrder?: ('parameter-list' | 'description-matches' | 'analysis')[];
     topLeftPaneWidth?: number;
     bottomLeftPaneWidth?: number;
     topWorkspaceHeight?: number;
     parameterListZoomPercent?: number;
-    boqPreviewZoomPercent?: number;
     descriptionMatchesZoomPercent?: number;
     analysisZoomPercent?: number;
   };
@@ -202,6 +201,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   );
   readonly b5dLinks = signal<VinculoConceptoBimOrm[]>([]);
   readonly b5dCatalogs = signal<CatalogoB5DOrm[]>([]);
+  readonly b5dParameterCatalogs = signal<CatalogoParametroB5DOrm[]>([]);
   readonly cuantificacionesB5d = signal<CuantificacionB5DOrm[]>([]);
   readonly parametrosB5d = signal<ParametroB5DOrm[]>([]);
   readonly b5dCargando = signal(false);
@@ -233,7 +233,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     parametersTotal: 0,
     selectedParameterIds: [],
     parameterListVisible: true,
-    parameterBoqVisible: true,
     parameterDescriptionMatchesVisible: true,
     parameterAnalysisVisible: true,
     tableFiltersVisible: false,
@@ -1189,10 +1188,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
         this.parametersPanel.parameterListVisible = parametersState.parameterListVisible;
         shouldDetectChanges = true;
       }
-      if (typeof parametersState.boqPreviewVisible === 'boolean') {
-        this.parametersPanel.boqPreviewVisible = parametersState.boqPreviewVisible;
-        shouldDetectChanges = true;
-      }
       if (typeof parametersState.descriptionMatchesVisible === 'boolean') {
         this.parametersPanel.descriptionMatchesVisible = parametersState.descriptionMatchesVisible;
         shouldDetectChanges = true;
@@ -1203,18 +1198,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       }
       if (
         Array.isArray(parametersState.paneOrder) &&
-        parametersState.paneOrder.length === 4 &&
+        parametersState.paneOrder.length === 3 &&
         parametersState.paneOrder.includes('parameter-list') &&
-        parametersState.paneOrder.includes('boq-preview') &&
         parametersState.paneOrder.includes('description-matches') &&
         parametersState.paneOrder.includes('analysis')
       ) {
-        this.parametersPanel.paneOrder = [...parametersState.paneOrder] as (
-          | 'parameter-list'
-          | 'boq-preview'
-          | 'description-matches'
-          | 'analysis'
-        )[];
+        this.parametersPanel.paneOrder = [...parametersState.paneOrder] as ('parameter-list' | 'description-matches' | 'analysis')[];
         shouldDetectChanges = true;
       }
       if (typeof parametersState.topLeftPaneWidth === 'number' && Number.isFinite(parametersState.topLeftPaneWidth)) {
@@ -1231,10 +1220,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       }
       if (typeof parametersState.parameterListZoomPercent === 'number' && Number.isFinite(parametersState.parameterListZoomPercent)) {
         this.parametersPanel.parameterListZoomPercent = parametersState.parameterListZoomPercent;
-        shouldDetectChanges = true;
-      }
-      if (typeof parametersState.boqPreviewZoomPercent === 'number' && Number.isFinite(parametersState.boqPreviewZoomPercent)) {
-        this.parametersPanel.boqPreviewZoomPercent = parametersState.boqPreviewZoomPercent;
         shouldDetectChanges = true;
       }
       if (
@@ -1310,7 +1295,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       parametersPanel: this.parametersPanel
         ? {
             parameterListVisible: this.parametersPanel.parameterListVisible,
-            boqPreviewVisible: this.parametersPanel.boqPreviewVisible,
             descriptionMatchesVisible: this.parametersPanel.descriptionMatchesVisible,
             analysisVisible: this.parametersPanel.analysisVisible,
             paneOrder: [...this.parametersPanel.paneOrder],
@@ -1318,7 +1302,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             bottomLeftPaneWidth: this.parametersPanel.bottomLeftPaneWidth,
             topWorkspaceHeight: this.parametersPanel.topWorkspaceHeight,
             parameterListZoomPercent: this.parametersPanel.parameterListZoomPercent,
-            boqPreviewZoomPercent: this.parametersPanel.boqPreviewZoomPercent,
             descriptionMatchesZoomPercent: this.parametersPanel.descriptionMatchesZoomPercent,
             analysisZoomPercent: this.parametersPanel.analysisZoomPercent,
           }
@@ -1934,8 +1917,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
             unidad: conceptItem.unidad ?? null,
             orden: conceptItem.orden ?? null,
-            optimistic_lock_field: conceptItem.optimistic_lock_field ?? null,
-            gc_record: conceptItem.gc_record ?? null,
           })),
           vinculos: this.b5dLinks().map((linkItem) => ({
             id: String(linkItem.id),
@@ -1946,12 +1927,15 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
             propiedad_cantidad_bim: linkItem.propiedad_cantidad_bim ?? null,
             factor_conversion: linkItem.factor_conversion ?? 1,
             descripcion: linkItem.descripcion ?? null,
-            optimistic_lock_field: linkItem.optimistic_lock_field ?? null,
-            gc_record: linkItem.gc_record ?? null,
           })),
         };
 
-    const savedSnapshot = await firstValueFrom(this.backendProyectos.guardarProyecto(proyectoId, draftPayload));
+    const savedSnapshot = await firstValueFrom(
+      this.backendProyectos.guardarProyecto(proyectoId, {
+        ...draftPayload,
+        catalogo_parametro_activo_id: this.proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null,
+      }),
+    );
     if (draftVersionAtStart !== this.draftChangeVersion) {
       this.debugB5d('persistirCambiosB5dEnServidor: stale response ignored', {
         proyectoId,
@@ -1963,6 +1947,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     this.proyectoB5dActivo.set(savedSnapshot.proyecto);
     if (savedSnapshot.catalogos?.resultados) {
       this.b5dCatalogs.set(savedSnapshot.catalogos.resultados);
+    }
+    if (savedSnapshot.catalogos_parametro?.resultados) {
+      this.b5dParameterCatalogs.set(savedSnapshot.catalogos_parametro.resultados);
     }
     this.b5dConcepts.set(this.normalizarConceptosB5d(savedSnapshot.conceptos.resultados));
     this.b5dLinks.set(savedSnapshot.vinculos.resultados);
@@ -1989,7 +1976,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       await this.persistirCambiosB5dEnServidor(proyecto.id, this.draftChangeVersion);
     } catch (error) {
       this.hasPendingDraftChanges = true;
-      console.warn('No se pudo guardar automaticamente el borrador B5D.', error);
+      this.debugB5d('persistirCambiosB5dEnServidor: auto-save failed', error);
     } finally {
       this.autoSaveInProgress = false;
       if (this.hasPendingDraftChanges) this.scheduleAutoSave();
@@ -2015,11 +2002,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
   private async cargarDatosProyectoB5d(proyectoId: number): Promise<void> {
     this.debugB5d('cargarDatosProyectoB5d: start', proyectoId);
-    const [estado, conceptos, vinculos, catalogos, cuantificaciones, parametros] = await Promise.all([
+    const [estado, conceptos, vinculos, catalogos, catalogosParametro, cuantificaciones, parametros] = await Promise.all([
       firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId)),
       firstValueFrom(this.backendProyectos.listarConceptos(proyectoId)),
       firstValueFrom(this.backendProyectos.listarVinculosBim(proyectoId)),
       firstValueFrom(this.backendProyectos.listarCatalogos(proyectoId)),
+      firstValueFrom(this.backendProyectos.listarCatalogosParametro(proyectoId)),
       firstValueFrom(this.backendProyectos.listarCuantificaciones(proyectoId)),
       firstValueFrom(this.backendProyectos.listarParametros(proyectoId)),
     ]);
@@ -2028,6 +2016,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       conceptos: conceptos.resultados.length,
       vinculos: vinculos.resultados.length,
       catalogos: catalogos.resultados.length,
+      catalogosParametro: catalogosParametro.catalogos.resultados.length,
       cuantificaciones: cuantificaciones.resultados.length,
       parametros: parametros.resultados.length,
     });
@@ -2036,10 +2025,18 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     this.b5dConcepts.set(this.normalizarConceptosB5d(conceptos.resultados));
     this.b5dLinks.set(vinculos.resultados);
     this.b5dCatalogs.set(catalogos.resultados);
+    this.b5dParameterCatalogs.set(catalogosParametro.catalogos.resultados);
     this.limpiarCopiasDeCatalogosInexistentes(catalogos.resultados);
     this.cuantificacionesB5d.set(cuantificaciones.resultados);
     this.parametrosB5d.set(parametros.resultados);
     this.debugB5d('cargarDatosProyectoB5d: end', proyectoId);
+  }
+
+  // Refreshes the project snapshot after the active parameter catalog changes.
+  async onParametersCatalogChanged(): Promise<void> {
+    const proyecto = this.proyectoB5dActivo();
+    if (!proyecto) return;
+    await this.cargarDatosProyectoB5d(proyecto.id);
   }
 
   // Extracts the created catalog from either a raw catalog or a wrapped response.
@@ -2700,7 +2697,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       this.volumeMeasurementSummary.set(summary);
     } catch (error) {
       if (requestId !== this.measurementVolumeRequestId) return;
-      console.warn('No se pudo calcular el volumen seleccionado:', error);
+      this.debugB5d('measurementVolume: selected volume calculation failed', error);
       this.volumeMeasurementSummary.set({
         totalVolume: null,
         selectedCount: Object.values(selectionMap).reduce((count, localIdSet) => count + localIdSet.size, 0),
@@ -3092,7 +3089,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       'home-coStru-dup',
       'home-coStru-info',
       'parameter-toggle-list',
-      'parameter-toggle-boq',
       'parameter-toggle-matches',
       'parameter-toggle-analysis',
       'import-parameters-excel',

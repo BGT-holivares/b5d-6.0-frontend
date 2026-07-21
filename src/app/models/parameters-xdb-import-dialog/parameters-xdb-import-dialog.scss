@@ -78,6 +78,10 @@
   font-size: var(--font-size-sm);
 }
 
+.b5d-parameters-xdb-dialog__select {
+  padding-right: 34px;
+}
+
 .b5d-parameters-xdb-dialog__input--file {
   flex: 1 1 auto;
 }
@@ -128,23 +132,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-
-.b5d-parameters-xdb-dialog__mode-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.b5d-parameters-xdb-dialog__button--toggle {
-  min-width: 0;
-  padding-inline: 14px;
-}
-
-.b5d-parameters-xdb-dialog__button--selected {
-  border-color: var(--b5d-brand-primary);
-  background: var(--b5d-brand-primary-soft);
-  color: var(--b5d-brand-primary-strong);
 }
 
 .b5d-parameters-xdb-dialog__counter {
@@ -206,23 +193,62 @@
 }
 
 .b5d-parameters-xdb-dialog__table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
+  border-spacing: 0;
   table-layout: fixed;
 }
 
 .b5d-parameters-xdb-dialog__table th,
 .b5d-parameters-xdb-dialog__table td {
-  padding: 8px;
-  border: 1px solid var(--bd-muted);
+  padding: 3px 5px;
+  border: 0;
+  border-bottom: 1px solid var(--bd-soft);
   vertical-align: top;
   text-align: left;
   font-size: var(--font-size-xs);
+  word-break: break-word;
 }
 
 .b5d-parameters-xdb-dialog__table th {
-  background: var(--b5d-surface-panel-alt);
+  background: var(--b5d-surface-ghost);
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(1),
+.b5d-parameters-xdb-dialog__table td:nth-child(1) {
+  min-width: 240px;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(2),
+.b5d-parameters-xdb-dialog__table td:nth-child(2) {
+  min-width: 120px;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(3),
+.b5d-parameters-xdb-dialog__table td:nth-child(3) {
+  min-width: 320px;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(4),
+.b5d-parameters-xdb-dialog__table td:nth-child(4) {
+  min-width: 80px;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(5),
+.b5d-parameters-xdb-dialog__table td:nth-child(5) {
+  min-width: 86px;
+}
+
+.b5d-parameters-xdb-dialog__table th:nth-child(6),
+.b5d-parameters-xdb-dialog__table td:nth-child(6),
+.b5d-parameters-xdb-dialog__table th:nth-child(7),
+.b5d-parameters-xdb-dialog__table td:nth-child(7),
+.b5d-parameters-xdb-dialog__table th:nth-child(8),
+.b5d-parameters-xdb-dialog__table td:nth-child(8) {
+  min-width: 92px;
 }
 
 .b5d-parameters-xdb-dialog__table-cell--strong {

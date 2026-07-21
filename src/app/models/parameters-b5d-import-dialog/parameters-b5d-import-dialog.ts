@@ -8,6 +8,7 @@ import { I18nService } from '../../utils/i18n/i18n.service';
 import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import type { ProyectoTrabajoOrm } from '../../types/b5d-orm';
 import { createParameterImportPlan } from '../../utils/loading-panel/loading-plans';
+import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
 import { PARAMETERS_B5D_IMPORT_DIALOG_TRANSLATIONS } from './parameters-b5d-import-dialog.translations';
 
 type B5dImportCandidate = {
@@ -51,9 +52,11 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
   previewRows: B5dPreviewRow[] = [];
   validationMessage = '';
   previewMessage = '';
+  previewDebugMessage = '';
   processingMessage = '';
   importMessage = '';
   previewLoading = false;
+  previewDirty = false;
   previewProgress = 0;
   isImporting = false;
 
@@ -92,6 +95,14 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     return !!this.activeProject && !this.isImporting && !this.loading && this.selectedCount > 0;
   }
 
+  get canGeneratePreview(): boolean {
+    return !!this.activeProject && !this.isImporting && !this.loading && this.selectedCount > 0;
+  }
+
+  get isDebugEnabled(): boolean {
+    return isB5dDebugEnabled();
+  }
+
   t(key: string): string {
     return this.i18n.translateForComponent(this.translations, key);
   }
@@ -103,6 +114,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = '';
+    this.previewDebugMessage = '';
 
     const b5dFiles = files
       .filter((file) => file.name.toLowerCase().endsWith('.b5d'))
@@ -118,27 +130,27 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
 
     if (!this.candidates.length) {
       this.validationMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.noFilesFound');
-      this.previewRows = [];
-      this.previewMessage = '';
-      this.previewLoading = false;
-      this.previewProgress = 0;
-      this.stopPreviewProgress();
+      this.clearPreviewState('parametersB5dImport.noFilesFound', false);
       this.previewRequestId += 1;
       return;
     }
 
-    void this.refreshPreview();
+    this.markPreviewStale();
   }
 
   toggleCandidate(relativePath: string, enabled: boolean): void {
     this.candidates = this.candidates.map((candidate) =>
       candidate.relativePath === relativePath ? { ...candidate, enabled } : candidate,
     );
-    void this.refreshPreview();
+    this.markPreviewStale();
   }
 
   setAllCandidates(enabled: boolean): void {
     this.candidates = this.candidates.map((candidate) => ({ ...candidate, enabled }));
+    this.markPreviewStale();
+  }
+
+  generatePreview(): void {
     void this.refreshPreview();
   }
 
@@ -193,10 +205,21 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     return this.previewRows.length > 0;
   }
 
-  formatValue(value: number | null | undefined): string {
-    if (value == null || Number.isNaN(value)) return '-';
-    const rounded = Number(value.toFixed(4));
+  formatValue(value: number | string | null | undefined): string {
+    const numericValue = this.toNumericValue(value);
+    if (numericValue == null) return '-';
+    const rounded = Number(numericValue.toFixed(4));
     return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  }
+
+  private toNumericValue(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+      const numericValue = Number(value.trim());
+      return Number.isFinite(numericValue) ? numericValue : null;
+    }
+    return null;
   }
 
   private resetState(): void {
@@ -209,9 +232,11 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.previewMessage = '';
     this.processingMessage = '';
     this.importMessage = '';
+    this.previewDirty = false;
     this.previewLoading = false;
     this.previewProgress = 0;
     this.isImporting = false;
+    this.previewDebugMessage = '';
     this.previewRequestId += 1;
   }
 
@@ -221,11 +246,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     const requestId = ++this.previewRequestId;
     const selectedFiles = this.selectedCandidates.map((candidate) => candidate.file);
     if (!selectedFiles.length) {
-      this.previewRows = [];
-      this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewEmpty');
-      this.previewLoading = false;
-      this.previewProgress = 0;
-      this.stopPreviewProgress();
+      this.clearPreviewState('parametersB5dImport.previewEmpty', false);
       return;
     }
 
@@ -241,19 +262,83 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       );
       if (requestId !== this.previewRequestId) return;
       this.previewRows = response.preview.resultados;
+      this.previewDirty = false;
       this.previewMessage = this.previewRows.length
         ? this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewReady')
         : this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewEmpty');
+      logB5dDebug('parameters-b5d-import-dialog: preview received', {
+        projectId: this.activeProject?.id,
+        summary: response.summary,
+        previewCount: this.previewRows.length,
+        sample: this.previewRows.slice(0, 3).map((row) => ({
+          firma: row.firma,
+          clave: row.clave,
+          cantidad_conceptos: row.cantidad_conceptos,
+          cantidad_origenes: row.cantidad_origenes,
+          minimo: row.minimo,
+          maximo: row.maximo,
+          promedio: row.promedio,
+        })),
+      });
+      this.previewDebugMessage = isB5dDebugEnabled() ? this.buildPreviewDebugMessage(response) : '';
     } catch (error) {
       if (requestId !== this.previewRequestId) return;
       this.previewRows = [];
+      this.previewDirty = false;
       this.previewMessage = this.resolveErrorMessage(error, this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewError'));
+      this.previewDebugMessage = isB5dDebugEnabled()
+        ? this.resolveErrorMessage(error, 'Error al cargar la vista previa de parámetros B5D.')
+        : '';
+      logB5dDebug('parameters-b5d-import-dialog: preview error', error);
     } finally {
       if (requestId !== this.previewRequestId) return;
       this.previewLoading = false;
       this.stopPreviewProgress();
       this.changeDetectorRef.detectChanges();
     }
+  }
+
+  private markPreviewStale(): void {
+    this.stopPreviewProgress();
+    this.previewDirty = true;
+    this.previewRows = [];
+    this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewPending');
+    this.previewDebugMessage = '';
+    this.previewLoading = false;
+    this.previewProgress = 0;
+    this.previewRequestId += 1;
+  }
+
+  private clearPreviewState(messageKey: string, dirty: boolean): void {
+    this.stopPreviewProgress();
+    this.previewDirty = dirty;
+    this.previewRows = [];
+    this.previewMessage = this.i18n.translateForComponent(this.translations, messageKey);
+    this.previewDebugMessage = '';
+    this.previewLoading = false;
+    this.previewProgress = 0;
+    this.previewRequestId += 1;
+  }
+
+  private buildPreviewDebugMessage(response: PrevisualizarParametrosB5dResponse): string {
+    const preview = response.preview.resultados;
+    const sample = preview.slice(0, 3).map((row, index) => {
+      const parts = [
+        `${index + 1}. firma=${row.firma || '-'}`,
+        `clave=${row.clave || '-'}`,
+        `conceptos=${row.cantidad_conceptos}`,
+        `origenes=${row.cantidad_origenes}`,
+        `min=${this.formatValue(row.minimo)}`,
+        `max=${this.formatValue(row.maximo)}`,
+        `prom=${this.formatValue(row.promedio)}`,
+      ];
+      return parts.join(' | ');
+    });
+    return [
+      `summary.count=${response.summary.count} tipo_parametro=${response.summary.tipo_parametro}`,
+      `preview.length=${preview.length} selectedFiles=${this.selectedCount} totalFiles=${this.totalCount}`,
+      ...sample,
+    ].join('\n');
   }
 
   private startPreviewProgress(): void {

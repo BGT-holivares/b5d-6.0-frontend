@@ -147,23 +147,80 @@
 }
 
 .b5d-catalog-dialog__table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
+  border-spacing: 0;
   table-layout: fixed;
 }
 
 .b5d-catalog-dialog__table th,
 .b5d-catalog-dialog__table td {
-  padding: 8px;
-  border: 1px solid var(--bd-muted);
+  padding: 3px 5px;
+  border: 0;
+  border-bottom: 1px solid var(--bd-soft);
   vertical-align: top;
   text-align: left;
   font-size: var(--font-size-xs);
+  word-break: break-word;
 }
 
 .b5d-catalog-dialog__table th {
-  background: var(--b5d-surface-panel-alt);
+  background: var(--b5d-surface-ghost);
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.b5d-catalog-dialog__table th:nth-child(1),
+.b5d-catalog-dialog__table td:nth-child(1) {
+  min-width: 60px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(2),
+.b5d-catalog-dialog__table td:nth-child(2) {
+  min-width: 220px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(3),
+.b5d-catalog-dialog__table td:nth-child(3) {
+  min-width: 120px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(4),
+.b5d-catalog-dialog__table td:nth-child(4) {
+  min-width: 360px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(5),
+.b5d-catalog-dialog__table td:nth-child(5),
+.b5d-catalog-dialog__table th:nth-child(7),
+.b5d-catalog-dialog__table td:nth-child(7) {
+  min-width: 86px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(6),
+.b5d-catalog-dialog__table td:nth-child(6) {
+  min-width: 120px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(8),
+.b5d-catalog-dialog__table td:nth-child(8),
+.b5d-catalog-dialog__table th:nth-child(9),
+.b5d-catalog-dialog__table td:nth-child(9),
+.b5d-catalog-dialog__table th:nth-child(10),
+.b5d-catalog-dialog__table td:nth-child(10),
+.b5d-catalog-dialog__table th:nth-child(11),
+.b5d-catalog-dialog__table td:nth-child(11),
+.b5d-catalog-dialog__table th:nth-child(12),
+.b5d-catalog-dialog__table td:nth-child(12),
+.b5d-catalog-dialog__table th:nth-child(13),
+.b5d-catalog-dialog__table td:nth-child(13) {
+  min-width: 92px;
+}
+
+.b5d-catalog-dialog__table th:nth-child(14),
+.b5d-catalog-dialog__table td:nth-child(14) {
+  min-width: 160px;
 }
 
 .b5d-catalog-dialog__table-row--disabled {

@@ -1,8 +1,7 @@
 import type { ConceptoB5DOrm, ParametroB5DOrm, WorkbookCellOrm } from '../../types/b5d-orm';
-import { isCostParameterType } from './parameter-types';
 
 export type ReportComparisonGranularity = 'individual' | 'wbs';
-export type ReportParameterScope = 'all' | 'quantity' | 'cost';
+export type ReportParameterScope = 'all' | 'quantity' | 'cost' | 'cost-percent';
 
 interface ReportComparisonOptions {
   comparisonGranularity?: ReportComparisonGranularity;
@@ -134,8 +133,10 @@ export interface UnassignedReportRow extends BoqExtractedRow {
 export interface ParametersReportData {
   quantitySummary: ReportSummaryBlock;
   costSummary: ReportSummaryBlock;
+  percentCostSummary: ReportSummaryBlock;
   quantityRows: QuantityReportRow[];
   costRows: CostReportRow[];
+  percentCostRows: CostReportRow[];
   unassignedRows: UnassignedReportRow[];
 }
 
@@ -213,17 +214,23 @@ export function buildParametersReportData(
   const decimalPlaces = normalizeDecimalPlaces(options.decimalPlaces);
   const manualWbsConceptSelectionByParameterId = options.manualWbsConceptSelectionByParameterId ?? new Map<number, number>();
   const manualParameterSelectionByConceptKey = options.manualParameterSelectionByConceptKey ?? new Map<string, number>();
-  const includeQuantity = parameterScope !== 'cost';
-  const includeCost = parameterScope !== 'quantity';
+  const includeQuantity = parameterScope === 'all' || parameterScope === 'quantity';
+  const includeCost = parameterScope === 'all' || parameterScope === 'cost';
+  const includePercentCost = parameterScope === 'all' || parameterScope === 'cost-percent';
   const activeQuantityParameters = includeQuantity ? parameters.filter((row) => row.activo && row.tipo_parametro === 'cantidad') : [];
-  const activeCostParameters = includeCost ? parameters.filter((row) => row.activo && isCostParameterType(row.tipo_parametro)) : [];
+  const activeCostParameters = includeCost ? parameters.filter((row) => row.activo && row.tipo_parametro === 'costo') : [];
+  const activePercentCostParameters = includePercentCost ? parameters.filter((row) => row.activo && row.tipo_parametro === 'costo_porcentaje') : [];
   const selectedCatalogConcepts = selectedCatalogId == null ? concepts : concepts.filter((row) => row.catalogo_id === selectedCatalogId);
   const catalogWbsIndex = comparisonGranularity === 'wbs' ? buildCatalogWbsIndex(selectedCatalogConcepts) : null;
   const quantityRowsSource = includeQuantity ? prepareBoqRowsForComparison(boqRows, comparisonGranularity, wbsLevel) : [];
   const costRowsSource = includeCost ? prepareCatalogRowsForComparison(selectedCatalogConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex) : [];
+  const percentCostRowsSource = includePercentCost
+    ? prepareCatalogRowsForComparison(selectedCatalogConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex)
+    : [];
 
   const quantityRows: QuantityReportRow[] = [];
   const costRows: CostReportRow[] = [];
+  const percentCostRows: CostReportRow[] = [];
   const unassignedRows: UnassignedReportRow[] = [];
 
   const quantityCounts: Record<ReportCategoryKey, number> = {
@@ -233,6 +240,12 @@ export function buildParametersReportData(
     'without-parameter': 0,
   };
   const costCounts: Record<ReportCategoryKey, number> = {
+    'in-range': 0,
+    'under-limit': 0,
+    'above-limit': 0,
+    'without-parameter': 0,
+  };
+  const percentCostCounts: Record<ReportCategoryKey, number> = {
     'in-range': 0,
     'under-limit': 0,
     'above-limit': 0,
@@ -277,11 +290,43 @@ export function buildParametersReportData(
     costRows.push(costResult.row);
   }
 
+  for (const costRow of percentCostRowsSource) {
+    const conceptKey = getReportConceptKey(costRow);
+    const manualParameterId = manualParameterSelectionByConceptKey.get(conceptKey) ?? null;
+    const manualParameter = manualParameterId != null ? activePercentCostParameters.find((row) => row.id === manualParameterId) ?? null : null;
+    const autoParameter = findMatchingParameter(costRow, activePercentCostParameters);
+    const costParameter = manualParameter ?? autoParameter;
+
+    if (!costParameter) {
+      unassignedRows.push({
+        ...costRow,
+        conceptKey,
+        motivo: 'Sin parametro de costo porcentual',
+      });
+      continue;
+    }
+
+    const costResult = buildCostResult(
+      costRow,
+      costParameter,
+      selectedCatalogConcepts,
+      comparisonGranularity,
+      wbsLevel,
+      catalogWbsIndex,
+      decimalPlaces,
+      manualWbsConceptSelectionByParameterId.get(costParameter?.id ?? -1) ?? null,
+    );
+    percentCostCounts[costResult.bucket] += 1;
+    percentCostRows.push(costResult.row);
+  }
+
   return {
     quantitySummary: buildSummaryBlock(quantityCounts),
     costSummary: buildSummaryBlock(costCounts),
+    percentCostSummary: buildSummaryBlock(percentCostCounts),
     quantityRows,
     costRows,
+    percentCostRows,
     unassignedRows,
   };
 }
@@ -946,7 +991,7 @@ function buildCostResult(
   }
 
   if (matchedParameter.tipo_parametro === 'costo_porcentaje') {
-    const conceptPercentage = resolveConceptPercentage(matchedConcept, selectedCatalogConcepts);
+    const conceptPercentage = resolveConceptPercentage(matchedConcept);
     if (conceptPercentage == null) {
       return {
         bucket: 'without-parameter',
@@ -1035,51 +1080,8 @@ function buildCostResult(
     };
   }
 
-  if (boqRow.cantidad == null) {
-    return {
-      bucket: 'without-parameter',
-      row: buildCostRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        matchedParameter.unidad ?? '-',
-        '-',
-        rangeText,
-        '-',
-        'Sin cantidad',
-        'warning',
-        '-',
-        'without-parameter',
-      ),
-    };
-  }
-
-  const conceptQuantity = convertQuantityToUnit(boqRow.cantidad, boqRow.unidad, matchedConcept.unidad ?? '');
-  if (conceptQuantity == null) {
-    return {
-      bucket: 'without-parameter',
-      row: buildCostRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        matchedParameter.unidad ?? '-',
-        '-',
-        rangeText,
-        '-',
-        'Unidad no compatible',
-        'warning',
-        '-',
-        'without-parameter',
-      ),
-    };
-  }
-
-  const unitCost = resolveConceptUnitCost(matchedConcept);
-  if (unitCost == null) {
+  const conceptCost = resolveConceptUnitCost(matchedConcept);
+  if (conceptCost == null) {
     return {
       bucket: 'without-parameter',
       row: buildCostRow(
@@ -1100,11 +1102,9 @@ function buildCostResult(
     };
   }
 
-  const totalCost = conceptQuantity * unitCost;
-  const delta = computeRangeDelta(totalCost, rangeMin, rangeMax);
+  const delta = computeRangeDelta(conceptCost, rangeMin, rangeMax);
   const unitLabel = matchedParameter.unidad?.trim() || 'u';
-  const conceptUnitLabel = matchedConcept.unidad?.trim() || boqRow.unidad?.trim() || 'u';
-  const evaluatedText = `${formatValue(conceptQuantity, decimalPlaces)} ${conceptUnitLabel} x ${formatValue(unitCost, decimalPlaces)} = ${formatValue(totalCost, decimalPlaces)} ${unitLabel}`;
+  const evaluatedText = `${formatValue(conceptCost, decimalPlaces)} ${unitLabel}`;
   const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, decimalPlaces)} ${unitLabel}`;
 
   if (delta < 0) {
@@ -1116,13 +1116,13 @@ function buildCostResult(
         matchedParameter.id,
         matchedConcept.id,
         matchedConcept.clave ?? '-',
-        conceptUnitLabel,
+        unitLabel,
         evaluatedText,
         rangeText,
         deltaText,
         'Por debajo del limite',
         'warning',
-        formatValue(unitCost, decimalPlaces),
+        formatValue(conceptCost, decimalPlaces),
         'under-limit',
       ),
     };
@@ -1137,13 +1137,13 @@ function buildCostResult(
         matchedParameter.id,
         matchedConcept.id,
         matchedConcept.clave ?? '-',
-        conceptUnitLabel,
+        unitLabel,
         evaluatedText,
         rangeText,
         deltaText,
         'Por encima del limite',
         'error',
-        formatValue(unitCost, decimalPlaces),
+        formatValue(conceptCost, decimalPlaces),
         'above-limit',
       ),
     };
@@ -1151,23 +1151,23 @@ function buildCostResult(
 
   return {
     bucket: 'in-range',
-    row: buildCostRow(
-      boqRow,
-      matchedParameter,
-      matchedParameter.id,
-      matchedConcept.id,
-      matchedConcept.clave ?? '-',
-      conceptUnitLabel,
-      evaluatedText,
-      rangeText,
-      `+${formatValue(0, decimalPlaces)}`,
-      'En rango',
-      'ok',
-      formatValue(unitCost, decimalPlaces),
-      'in-range',
-    ),
-  };
-}
+      row: buildCostRow(
+        boqRow,
+        matchedParameter,
+        matchedParameter.id,
+        matchedConcept.id,
+        matchedConcept.clave ?? '-',
+        unitLabel,
+        evaluatedText,
+        rangeText,
+        `+${formatValue(0, decimalPlaces)}`,
+        'En rango',
+        'ok',
+        formatValue(conceptCost, decimalPlaces),
+        'in-range',
+      ),
+    };
+  }
 
 function buildQuantityRow(
   boqRow: BoqExtractedRow,
@@ -1523,29 +1523,11 @@ function getConceptWbsKey(concept: ConceptoB5DOrm): string {
 }
 
 function resolveConceptUnitCost(concept: ConceptoB5DOrm): number | null {
-  if (concept.es_agrupador) {
-    return parseNumericLikeValue(concept.importe ?? null);
-  }
-  return parseNumericLikeValue(concept.precio_unitario);
+  return parseNumericLikeValue(concept.importe ?? null);
 }
 
-function resolveConceptPercentage(concept: ConceptoB5DOrm, concepts: ConceptoB5DOrm[]): number | null {
-  const directPercentage = parseNumericLikeValue(concept.porcentaje_padre ?? null);
-  if (directPercentage != null) {
-    return directPercentage;
-  }
-
-  const parentId = concept.agrupador_padre_id;
-  if (parentId == null) return null;
-
-  const parentConcept = concepts.find((conceptRow) => conceptRow.id === parentId) ?? null;
-  if (!parentConcept) return null;
-
-  const conceptImporte = parseNumericLikeValue(concept.importe ?? null);
-  const parentImporte = parseNumericLikeValue(parentConcept.importe ?? null);
-  if (conceptImporte == null || parentImporte == null || parentImporte === 0) return null;
-
-  return Number(((conceptImporte / parentImporte) * 100).toFixed(6));
+function resolveConceptPercentage(concept: ConceptoB5DOrm): number | null {
+  return parseNumericLikeValue(concept.porcentaje_padre ?? null);
 }
 
 function extractBoqRowFromCells(
@@ -1679,15 +1661,22 @@ function normalizeUnit(unit: string): string {
 
 function normalizeText(value: string): string {
   return value
+    .replace(/_x000d_/gi, ' ')
+    .replace(/\r\n?|\n/g, ' ')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 function stringValue(value: unknown): string {
   if (value == null) return '';
-  return String(value).trim();
+  return String(value)
+    .replace(/_x000d_/gi, ' ')
+    .replace(/\r\n?|\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function formatValue(value: number | null, decimalPlaces = 2): string {

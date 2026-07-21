@@ -78,8 +78,6 @@ type ifcObject = {
 type VinculoPanel = {
   id: string;
   originalIdentifier: number | null;
-  optimisticLockField?: number | null;
-  gcRecord?: number | null;
   conceptoId: number | null;
   conceptCode: string;
   conceptDescription: string;
@@ -589,8 +587,6 @@ export class LinkingPanel implements OnChanges {
       return {
         id: `db-${vinculo.id}`,
         originalIdentifier: vinculo.identificador_original,
-        optimisticLockField: vinculo.optimistic_lock_field ?? null,
-        gcRecord: vinculo.gc_record ?? null,
         conceptoId: vinculo.concepto_id,
         conceptCode: concepto?.clave ?? '',
         conceptDescription: concepto?.descripcion ?? '',
@@ -1002,8 +998,6 @@ export class LinkingPanel implements OnChanges {
       agrupador_padre_id: conceptItem.agrupador_padre_id ?? null,
       unidad: conceptItem.unidad ?? null,
       orden: conceptItem.orden ?? null,
-      optimistic_lock_field: conceptItem.optimistic_lock_field ?? null,
-      gc_record: conceptItem.gc_record ?? null,
     }));
 
     const linkDraftRows: VinculoConceptoBimDraftOrm[] = [
@@ -1016,9 +1010,6 @@ export class LinkingPanel implements OnChanges {
         propiedad_cantidad_bim: linkItem.propertyLabel || null,
         factor_conversion: linkItem.conversionFactor ?? 1,
         descripcion: linkItem.description || null,
-        optimistic_lock_field:
-          'optimisticLockField' in linkItem ? ((linkItem as { optimisticLockField?: number | null }).optimisticLockField ?? null) : null,
-        gc_record: 'gcRecord' in linkItem ? ((linkItem as { gcRecord?: number | null }).gcRecord ?? null) : null,
       })),
       ...copiedLinks,
     ];
@@ -1752,8 +1743,6 @@ export class LinkingPanel implements OnChanges {
     return {
       id: `local-${localIdentifier}`,
       originalIdentifier: null,
-      optimisticLockField: 1,
-      gcRecord: null,
       conceptoId: conceptId,
       conceptCode,
       conceptDescription,
@@ -1826,8 +1815,6 @@ export class LinkingPanel implements OnChanges {
           propiedad_cantidad_bim: this.getLinkPropertyLabel(sourceLink) || null,
           factor_conversion: this.getLinkFactor(sourceLink),
           descripcion: this.getLinkDescription(sourceLink) || null,
-          optimistic_lock_field: 1,
-          gc_record: null,
         });
       }
     }
@@ -1908,8 +1895,6 @@ export class LinkingPanel implements OnChanges {
       agrupador_padre_id: parentConceptId,
       unidad: isGroupingConcept ? null : this.creatingConceptDraft.unidad.trim() || null,
       orden: suggestedOrder,
-      optimistic_lock_field: 1,
-      gc_record: null,
     };
 
     this.workConcepts = [...this.workConcepts, newConcept];
@@ -2022,7 +2007,7 @@ export class LinkingPanel implements OnChanges {
     const newConceptId = this.temporalConceptId--;
     const sourceConcept = this.conceptClipboard;
     const suggestedOrder = this.obtenerOrdenSugeridoNuevoConcepto(targetParentId, this.idSelectedConcept);
-    const copyConcept: ConceptoB5DOrm = {
+      const copyConcept: ConceptoB5DOrm = {
       ...sourceConcept,
       id: newConceptId,
       identificador_original: null,
@@ -2031,8 +2016,6 @@ export class LinkingPanel implements OnChanges {
       catalogo_id: sourceConcept.catalogo_id ?? this.selectedCatalogId ?? null,
       orden: suggestedOrder,
       porcentaje_padre: null,
-      optimistic_lock_field: 1,
-      gc_record: null,
     };
 
     this.workConcepts = [...this.workConcepts, copyConcept];
