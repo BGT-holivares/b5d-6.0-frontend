@@ -52,6 +52,9 @@ type ReportPanelStoredState = {
   selectedQuantificationId?: number | null;
   selectedSheetIndex?: number;
   selectedCatalogId?: number | null;
+  selectedBuildingType?: string;
+  selectedWorkType?: string;
+  selectedZone?: string;
   selectedComparatorQuantificationIds?: number[];
   manualWbsConceptSelectionByParameterId?: Record<string, number>;
   manualParameterSelectionByConceptKey?: Record<string, number>;
@@ -86,9 +89,7 @@ export class ParametersReportPanel implements OnChanges {
   @Input() activeCatalogId: number | null = null;
   @Input() b5dLoading = false;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
-  @Input() conceptKeys: string[] = [];
   @Input() storageScopeKey = 'anonymous';
-  @Output() conceptSelectionRequested = new EventEmitter<string>();
 
   workQuantifications: CuantificacionB5DOrm[] = [];
   selectedReportMode: ReportMode = 'parameters';
@@ -99,6 +100,9 @@ export class ParametersReportPanel implements OnChanges {
   selectedQuantificationId: number | null = null;
   selectedSheetIndex = 0;
   selectedCatalogId: number | null = null;
+  selectedBuildingType = 'all';
+  selectedWorkType = 'all';
+  selectedZone = 'all';
   selectedComparatorQuantificationIds: number[] = [];
   manualWbsConceptSelectionByParameterId = new Map<number, number>();
   manualParameterSelectionByConceptKey = new Map<string, number>();
@@ -282,6 +286,18 @@ export class ParametersReportPanel implements OnChanges {
     return fallbackCatalogs;
   }
 
+  get buildingTypeOptions(): string[] {
+    return this.collectParameterMetadataOptions((row) => row.tipo_edificacion);
+  }
+
+  get workTypeOptions(): string[] {
+    return this.collectParameterMetadataOptions((row) => row.tipo_obra);
+  }
+
+  get zoneOptions(): string[] {
+    return this.collectParameterMetadataOptions((row) => row.zona);
+  }
+
   get selectedCatalogLabel(): string {
     const selectedCatalog = this.availableCostCatalogs.find((catalog) => catalog.id === this.selectedCatalogId);
     return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? this.t('parametersReport.catalog.costs');
@@ -342,6 +358,27 @@ export class ParametersReportPanel implements OnChanges {
   selectParameterScope(value: ReportParameterScope): void {
     if (value === this.selectedParameterScope) return;
     this.selectedParameterScope = value;
+    this.persistReportPreferences();
+    this.rebuildReportData();
+  }
+
+  selectBuildingType(value: string): void {
+    if (value === this.selectedBuildingType) return;
+    this.selectedBuildingType = value;
+    this.persistReportPreferences();
+    this.rebuildReportData();
+  }
+
+  selectWorkType(value: string): void {
+    if (value === this.selectedWorkType) return;
+    this.selectedWorkType = value;
+    this.persistReportPreferences();
+    this.rebuildReportData();
+  }
+
+  selectZone(value: string): void {
+    if (value === this.selectedZone) return;
+    this.selectedZone = value;
     this.persistReportPreferences();
     this.rebuildReportData();
   }
@@ -493,12 +530,6 @@ export class ParametersReportPanel implements OnChanges {
     void this.loadReportWorkbook();
   }
 
-  requestConceptSelection(conceptKey: string | null | undefined): void {
-    const normalizedKey = (conceptKey ?? '').trim();
-    if (!normalizedKey || !this.isKnownConceptKey(normalizedKey)) return;
-    this.conceptSelectionRequested.emit(normalizedKey);
-  }
-
   resetView(): void {
     const preferredQuantification = this.quantificationsWithWorkbook.find((row) => row.id === this.selectedQuantificationId)
       ?? this.quantificationsWithWorkbook[0]
@@ -511,6 +542,9 @@ export class ParametersReportPanel implements OnChanges {
     this.selectedQuantificationId = preferredQuantification?.id ?? null;
     this.selectedSheetIndex = 0;
     this.selectedComparatorQuantificationIds = [];
+    this.selectedBuildingType = 'all';
+    this.selectedWorkType = 'all';
+    this.selectedZone = 'all';
     this.manualWbsConceptSelectionByParameterId = new Map<number, number>();
     this.manualParameterSelectionByConceptKey = new Map<string, number>();
     this.manualParameterSearchByConceptKey = new Map<string, string>();
@@ -605,6 +639,9 @@ export class ParametersReportPanel implements OnChanges {
         decimalPlaces: this.selectedDecimalPlaces,
         manualWbsConceptSelectionByParameterId: this.manualWbsConceptSelectionByParameterId,
         manualParameterSelectionByConceptKey: this.manualParameterSelectionByConceptKey,
+        parameterBuildingType: this.selectedBuildingType === 'all' ? '' : this.selectedBuildingType,
+        parameterWorkType: this.selectedWorkType === 'all' ? '' : this.selectedWorkType,
+        parameterZone: this.selectedZone === 'all' ? '' : this.selectedZone,
       },
     );
     this.persistReportPreferences();
@@ -816,6 +853,9 @@ export class ParametersReportPanel implements OnChanges {
     this.manualParameterSelectionByConceptKey = new Map(
       Object.entries(storedState.manualParameterSelectionByConceptKey ?? {}).map(([conceptKey, parameterId]) => [conceptKey, parameterId]),
     );
+    if (storedState.selectedBuildingType) this.selectedBuildingType = storedState.selectedBuildingType;
+    if (storedState.selectedWorkType) this.selectedWorkType = storedState.selectedWorkType;
+    if (storedState.selectedZone) this.selectedZone = storedState.selectedZone;
   }
 
   private persistReportPreferences(): void {
@@ -828,6 +868,9 @@ export class ParametersReportPanel implements OnChanges {
       selectedQuantificationId: this.selectedQuantificationId,
       selectedSheetIndex: this.selectedSheetIndex,
       selectedCatalogId: this.selectedCatalogId,
+      selectedBuildingType: this.selectedBuildingType,
+      selectedWorkType: this.selectedWorkType,
+      selectedZone: this.selectedZone,
       selectedComparatorQuantificationIds: this.selectedComparatorQuantificationIds,
       manualWbsConceptSelectionByParameterId: Object.fromEntries(this.manualWbsConceptSelectionByParameterId.entries()),
       manualParameterSelectionByConceptKey: Object.fromEntries(this.manualParameterSelectionByConceptKey.entries()),
@@ -882,12 +925,6 @@ export class ParametersReportPanel implements OnChanges {
     };
   }
 
-  private isKnownConceptKey(conceptKey: string): boolean {
-    const normalizedConceptKey = conceptKey.trim().toLowerCase();
-    if (!normalizedConceptKey) return false;
-    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
-  }
-
   private countWbsSegments(clave: string): number {
     const normalizedClave = clave
       .toLowerCase()
@@ -923,6 +960,15 @@ export class ParametersReportPanel implements OnChanges {
     const suggestedOption = options[0] ?? null;
     this.selectedWbsLevel = suggestedOption?.level ?? 1;
     this.persistReportPreferences();
+  }
+
+  private collectParameterMetadataOptions(selector: (row: ParametroB5DOrm) => string | null | undefined): string[] {
+    const options = new Set<string>();
+    for (const row of this.parameters) {
+      const value = (selector(row) ?? '').trim();
+      if (value) options.add(value);
+    }
+    return [...options].sort((first, second) => first.localeCompare(second, 'es'));
   }
 
 }

@@ -40,12 +40,11 @@ import { BackendProyectosService } from '../../services/backend-proyectos.servic
 import { IfcFileCacheService } from '../../services/ifc-file-cache.service';
 import { LocalViewerSyncService, type LocalViewerSyncMessage } from '../../services/local-viewer-sync.service';
 import { CuantificadorB5D } from '../../utils/b5d-quantification';
-import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
+import { logB5dDebug } from '../../utils/debug/b5d-debug';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import { VisorIfc } from '../../utils/ifc-viewer';
 import { LoadingPanelService } from '../../services/loading-panel.service';
-import { resolveIfcSelectionFromConceptKey } from '../../utils/ifc-selection/ifc-selection';
 import { startPointerDrag } from '../../utils/panel-interactions/panel-interactions';
 import { getSafeLocalStorage, getSafeSessionStorage } from '../../utils/browser-storage';
 import { buildScopedStorageKey } from '../../utils/ui-state-storage';
@@ -207,7 +206,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly b5dCargando = signal(false);
   readonly b5dMensaje = signal('');
   readonly usuarioSesion = signal<UsuarioSesionOrm | null>(null);
-  readonly importDebugTrace = signal<string[]>([]);
   readonly catalogStructureDialogVisible = signal(false);
   readonly catalogStructureDialogMode = signal<'create' | 'info'>('create');
   readonly catalogStructureDialogCatalog = signal<CatalogoB5DOrm | null>(null);
@@ -216,7 +214,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly parameterB5dImportDialogVisible = signal(false);
   readonly parameterXdbImportDialogVisible = signal(false);
   private readonly catalogLinkCopySourceByTargetId = new Map<number, number>();
-  private backendImportTraceCount = 0;
   readonly homeToolbarState = signal<HomeToolbarState>({
     activeBottomTab: 'links',
     activePanel: 'concepts',
@@ -1326,17 +1323,11 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   }
 
   private async importarProyectoB5d(archivo: File): Promise<void> {
-    const inicioImportacion = performance.now();
     const loadingSessionId = this.loadingPanel.start(
       createB5dImportPlan(this.i18n.translateForComponent(this.globalTranslations, 'common.loading.importB5dProject')),
     );
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
-    this.clearImportDebugTrace();
-    this.debugB5d('importarProyectoB5d: request start', {
-      fileName: archivo.name,
-      fileSize: archivo.size,
-    });
     try {
       const proyecto = await firstValueFrom(
         this.backendProyectos.importarProyecto({
@@ -1346,25 +1337,13 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
         }),
       );
       this.loadingPanel.completeStep(loadingSessionId, 'uploading', 'Archivo B5D recibido.');
-      this.debugB5d('importarProyectoB5d: upload request resolved', {
-        projectId: proyecto.id,
-        elapsedMs: Math.round(performance.now() - inicioImportacion),
-      });
       const proyectoImportado = await this.esperarProyectoImportado(proyecto.id, loadingSessionId);
       this.loadingPanel.completeStep(loadingSessionId, 'processing', 'Proyecto B5D procesado.');
       this.proyectoB5dActivo.set(proyectoImportado);
       await this.cargarDatosProyectoB5d(proyectoImportado.id);
       this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
-      this.debugB5d('importarProyectoB5d: import completed', {
-        projectId: proyectoImportado.id,
-        elapsedMs: Math.round(performance.now() - inicioImportacion),
-      });
       this.b5dMensaje.set(`Proyecto importado: ${proyectoImportado.nombre} (ID ${proyectoImportado.id}).`);
     } catch (error) {
-      this.debugB5d('importarProyectoB5d: import failed', {
-        elapsedMs: Math.round(performance.now() - inicioImportacion),
-        error,
-      });
       this.loadingPanel.abort(loadingSessionId);
       this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar el archivo B5D.'));
     } finally {
@@ -1398,41 +1377,15 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     loadingSessionId?: number,
   ): Promise<ProyectoTrabajoOrm> {
     const inicioEspera = performance.now();
-    let pollCount = 0;
-    this.appendImportDebugTrace(`esperando /estado para proyecto ${proyectoId}...`);
     while (true) {
-      pollCount += 1;
       const proyecto = await firstValueFrom(this.backendProyectos.consultarEstadoProyecto(proyectoId));
       this.proyectoB5dActivo.set(proyecto);
-      const backendTrace = proyecto.debug_trace ?? [];
-      if (backendTrace.length < this.backendImportTraceCount) {
-        this.backendImportTraceCount = 0;
-      }
-      for (const line of backendTrace.slice(this.backendImportTraceCount)) {
-        this.appendImportDebugTrace(`backend: ${line}`);
-      }
-      this.backendImportTraceCount = backendTrace.length;
-      this.debugB5d('esperarProyectoEnEstado: poll', {
-        projectId: proyectoId,
-        pollCount,
-        estado: proyecto.estado,
-        registrosImportados: proyecto.registros_importados,
-        totalRegistros: proyecto.total_registros,
-        progresoPorcentaje: proyecto.progreso_porcentaje,
-        mensajeProgreso: proyecto.mensaje_progreso,
-        elapsedMs: Math.round(performance.now() - inicioEspera),
-      });
-      this.appendImportDebugTrace(
-        `poll ${pollCount}: estado=${proyecto.estado ?? '-'} progreso=${Math.max(0, Math.min(100, proyecto.progreso_porcentaje ?? 0)).toFixed(0)}% registros=${proyecto.registros_importados ?? 0}/${proyecto.total_registros ?? 0} mensaje=${(proyecto.mensaje_progreso ?? '').trim() || '-'}`,
-      );
 
       if (proyecto.estado !== estadoEnCurso) {
         const mensajeError = proyecto.mensaje_error?.trim();
         if (mensajeError) {
-          this.appendImportDebugTrace(`fin con error: ${mensajeError}`);
           throw new Error(mensajeError);
         }
-        this.appendImportDebugTrace(`fin con estado=${proyecto.estado ?? '-'}`);
         return proyecto;
       }
 
@@ -1617,7 +1570,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     );
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
-    this.clearImportDebugTrace();
     try {
       const respuesta = await firstValueFrom(
         this.backendProyectos.importarCatalogoAxa(proyecto.id, {
@@ -1667,7 +1619,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       : 0;
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
-    this.clearImportDebugTrace();
     try {
       const sourceCatalogId = draft.copiar_vinculos ? draft.copiar_vinculos_desde_catalogo_id : null;
       const shouldCopyLinks = sourceCatalogId != null;
@@ -1734,89 +1685,59 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     }
   }
 
-  // Imports or updates only the metadata of the selected catalog from an XDB file.
-  async importarMetadatosCatalogo(archivo: File): Promise<void> {
+  // Imports metadata and selected costs into the active catalog from a single XDB file.
+  async importarCatalogoDesdeXdb(draft: CatalogCostImportDraft): Promise<void> {
     const proyecto = this.proyectoB5dActivo();
     const catalogo = this.catalogStructureDialogCatalog();
     if (!proyecto || !catalogo) {
-      this.b5dMensaje.set('Selecciona un catálogo activo para importar metadatos.');
+      this.b5dMensaje.set('Selecciona un catálogo activo para importar desde XDB.');
       return;
     }
 
     if (this.catalogStructureDialogLoading()) return;
 
-    const loadingSessionId = this.loadingPanel.start(createCatalogImportPlan('Importando metadatos de catálogo'));
+    const loadingSessionId = this.loadingPanel.start(createCatalogImportPlan('Importando catálogo desde XDB'));
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
-    this.clearImportDebugTrace();
     try {
-      const respuesta = await firstValueFrom(
-        this.backendProyectos.importarMetadataCatalogoAxa(proyecto.id, catalogo.id, { archivo }),
-      );
       this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+      this.loadingPanel.setStepProgress(loadingSessionId, 'processing', 35, 'Importando metadatos del catálogo.');
+      const metadataRespuesta = await firstValueFrom(
+        this.backendProyectos.importarMetadataCatalogoAxa(proyecto.id, catalogo.id, { archivo: draft.archivo }),
+      );
       await this.cargarDatosProyectoB5d(proyecto.id);
-      const catalogoActualizado =
-        this.b5dCatalogs().find((item) => item.id === catalogo.id) ?? respuesta.catalogo ?? null;
+      const catalogoActualizado = this.b5dCatalogs().find((item) => item.id === catalogo.id) ?? metadataRespuesta.catalogo ?? null;
       if (!catalogoActualizado) {
         throw new Error('No se pudo identificar el catálogo actualizado.');
       }
       this.catalogStructureDialogCatalog.set(catalogoActualizado);
       await this.sincronizarCatalogoSeleccionado(catalogoActualizado.id);
-      this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
-      this.b5dMensaje.set(
-        `Metadatos importados correctamente para ${catalogoActualizado.nombre ?? 'el catálogo seleccionado'}.`,
-      );
-    } catch (error) {
-      this.loadingPanel.abort(loadingSessionId);
-      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar la metadata del catálogo.'));
-    } finally {
-      this.catalogStructureDialogLoading.set(false);
-      if (this.loadingPanel.state().visible) {
-        this.loadingPanel.complete(loadingSessionId, 'Metadatos importados.');
-      }
-    }
-  }
+      this.loadingPanel.setStepProgress(loadingSessionId, 'processing', 70, 'Metadatos importados.');
 
-  // Imports selected costs into the active catalog from an XDB file.
-  async importarCostosCatalogo(draft: CatalogCostImportDraft): Promise<void> {
-    const proyecto = this.proyectoB5dActivo();
-    const catalogo = this.catalogStructureDialogCatalog();
-    if (!proyecto || !catalogo) {
-      this.b5dMensaje.set('Selecciona un catálogo activo para importar costos.');
-      return;
-    }
-
-    if (this.catalogStructureDialogLoading()) return;
-
-    const loadingSessionId = this.loadingPanel.start(createCatalogImportPlan('Importando costos de catálogo'));
-    this.catalogStructureDialogLoading.set(true);
-    this.b5dMensaje.set('');
-    this.clearImportDebugTrace();
-    try {
-      const respuesta = await firstValueFrom(
-        this.backendProyectos.importarCostosCatalogoAxa(proyecto.id, catalogo.id, {
+      this.loadingPanel.setStepProgress(loadingSessionId, 'processing', 85, 'Importando costos del catálogo.');
+      const costosRespuesta = await firstValueFrom(
+        this.backendProyectos.importarCostosCatalogoAxa(proyecto.id, catalogoActualizado.id, {
           archivo: draft.archivo,
           conceptos_seleccionados: draft.conceptos_seleccionados,
         }),
       );
-      this.loadingPanel.completeStep(loadingSessionId, 'preparing', 'Archivo XDB recibido.');
+      this.loadingPanel.completeStep(loadingSessionId, 'processing', 'Costos importados.');
+
       await this.cargarDatosProyectoB5d(proyecto.id);
-      const catalogoActualizado = this.b5dCatalogs().find((item) => item.id === catalogo.id) ?? respuesta.catalogo ?? null;
-      if (!catalogoActualizado) {
-        throw new Error('No se pudo identificar el catálogo actualizado.');
-      }
-      this.catalogStructureDialogCatalog.set(catalogoActualizado);
-      await this.sincronizarCatalogoSeleccionado(catalogoActualizado.id);
+      const catalogoFinal =
+        this.b5dCatalogs().find((item) => item.id === catalogoActualizado.id) ?? costosRespuesta.catalogo ?? catalogoActualizado;
+      this.catalogStructureDialogCatalog.set(catalogoFinal);
+      await this.sincronizarCatalogoSeleccionado(catalogoFinal.id);
       this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
       this.cerrarDialogoEstructuraCatalogo();
-      this.b5dMensaje.set(`Costos importados correctamente para ${catalogoActualizado.nombre ?? 'el catálogo seleccionado'}.`);
+      this.b5dMensaje.set(`Metadatos y costos importados correctamente para ${catalogoFinal.nombre ?? 'el catálogo seleccionado'}.`);
     } catch (error) {
       this.loadingPanel.abort(loadingSessionId);
-      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar los costos del catálogo.'));
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo importar el catálogo desde XDB.'));
     } finally {
       this.catalogStructureDialogLoading.set(false);
       if (this.loadingPanel.state().visible) {
-        this.loadingPanel.complete(loadingSessionId, 'Costos importados.');
+        this.loadingPanel.complete(loadingSessionId, 'Importación terminada.');
       }
     }
   }
@@ -2163,18 +2084,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
   private debugB5d(message: string, data?: unknown): void {
     logB5dDebug(message, data);
-  }
-
-  private clearImportDebugTrace(): void {
-    if (!isB5dDebugEnabled()) return;
-    this.backendImportTraceCount = 0;
-    this.importDebugTrace.set([]);
-  }
-
-  private appendImportDebugTrace(line: string): void {
-    if (!isB5dDebugEnabled()) return;
-    const nextTrace = [...this.importDebugTrace(), line].slice(-8);
-    this.importDebugTrace.set(nextTrace);
   }
 
   private normalizarConceptosB5d(conceptos: ConceptoB5DOrm[]): ConceptoB5DOrm[] {
@@ -2717,60 +2626,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     void this.visorIfc.seleccionarElementosPorLocalIds(localIds);
   }
 
-  // Resolves a selected concept key against the loaded IFC and mirrors the selection.
-  async onConceptSelectionRequested(conceptKey: string): Promise<void> {
-    const activeProject = this.proyectoB5dActivo();
-    const resolution = resolveIfcSelectionFromConceptKey(
-      conceptKey,
-      this.b5dConcepts(),
-      this.b5dLinks(),
-      this.ifcElements(),
-      activeProject?.ifc_nombre_archivo ?? null,
-    );
-
-    const previousBroadcastSuppressed = this.suppressLocalViewerBroadcast;
-    this.suppressLocalViewerBroadcast = true;
-
-    try {
-      if (!resolution.localIds.length) {
-        this.sharedIfcSelectionLocalIds.set([]);
-        this.sharedSelectionInfo.set(null);
-        if (this.visorIfc.mundoActual) {
-          await this.visorIfc.limpiarSeleccion();
-        }
-        if (this.localViewerSyncReady) {
-          this.localViewerSync.broadcastSelection([], null);
-        }
-        if (resolution.reason) {
-          this.b5dMensaje.set(resolution.reason);
-        }
-        return;
-      }
-
-      this.sharedIfcSelectionLocalIds.set([...resolution.localIds]);
-
-      if (this.windowMode() === 'control' && !this.visorIfc.mundoActual) {
-        this.sharedSelectionInfo.set(null);
-        this.localViewerSync.broadcastSelection(resolution.localIds, null);
-        return;
-      }
-
-      if (!this.visorIfc.mundoActual) {
-        const initialized = await this.initializeViewerCanvas();
-        if (!initialized) return;
-      }
-
-      await this.visorIfc.seleccionarElementosPorLocalIds(resolution.localIds);
-      const selectedElementInfo = this.visorIfc.informacionSeleccionada();
-      this.sharedSelectionInfo.set(selectedElementInfo ? { ...selectedElementInfo } : null);
-      if (this.localViewerSyncReady) {
-        this.localViewerSync.broadcastSelection(resolution.localIds, selectedElementInfo ?? null);
-      }
-    } finally {
-      this.suppressLocalViewerBroadcast = previousBroadcastSuppressed;
-    }
-  }
-
   // Schedules draft autosave when the linking workspace mutates concepts or links.
   onLinkingDraftChanged(): void {
     this.draftChangeVersion += 1;
@@ -3091,6 +2946,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       'parameter-toggle-list',
       'parameter-toggle-matches',
       'parameter-toggle-analysis',
+      'parameter-catalog-create',
+      'parameter-catalog-edit',
+      'parameter-catalog-delete',
       'import-parameters-excel',
       'import-parameters-b5d',
       'import-parameters-xdb',
@@ -3146,6 +3004,21 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
 
     if (action === 'home-coStru-info') {
       this.abrirDialogoEstructuraCatalogo('info');
+      return;
+    }
+
+    if (action === 'parameter-catalog-create') {
+      this.parametersPanel?.openParameterCatalogEditor('create');
+      return;
+    }
+
+    if (action === 'parameter-catalog-edit') {
+      this.parametersPanel?.openParameterCatalogEditor('edit');
+      return;
+    }
+
+    if (action === 'parameter-catalog-delete') {
+      void this.parametersPanel?.deleteSelectedParameterCatalog();
       return;
     }
 

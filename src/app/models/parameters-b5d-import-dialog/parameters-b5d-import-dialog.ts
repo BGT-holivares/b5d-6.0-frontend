@@ -8,7 +8,6 @@ import { I18nService } from '../../utils/i18n/i18n.service';
 import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import type { ProyectoTrabajoOrm } from '../../types/b5d-orm';
 import { createParameterImportPlan } from '../../utils/loading-panel/loading-plans';
-import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
 import { PARAMETERS_B5D_IMPORT_DIALOG_TRANSLATIONS } from './parameters-b5d-import-dialog.translations';
 
 type B5dImportCandidate = {
@@ -49,10 +48,12 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
 
   folderName = '';
   candidates: B5dImportCandidate[] = [];
+  tipoEdificacionValue = '';
+  tipoObraValue = '';
+  zonaValue = '';
   previewRows: B5dPreviewRow[] = [];
   validationMessage = '';
   previewMessage = '';
-  previewDebugMessage = '';
   processingMessage = '';
   importMessage = '';
   previewLoading = false;
@@ -99,8 +100,8 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     return !!this.activeProject && !this.isImporting && !this.loading && this.selectedCount > 0;
   }
 
-  get isDebugEnabled(): boolean {
-    return isB5dDebugEnabled();
+  get sourceLabelValue(): string {
+    return this.folderName || this.i18n.translateForComponent(this.translations, 'parametersB5dImport.noFolder');
   }
 
   t(key: string): string {
@@ -108,13 +109,20 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
   }
 
   handleFolderChange(event: Event): void {
+    this.handleFilesSelection(event, true);
+  }
+
+  handleFilesChange(event: Event): void {
+    this.handleFilesSelection(event, false);
+  }
+
+  private handleFilesSelection(event: Event, isFolderSelection: boolean): void {
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
     input.value = '';
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = '';
-    this.previewDebugMessage = '';
 
     const b5dFiles = files
       .filter((file) => file.name.toLowerCase().endsWith('.b5d'))
@@ -126,7 +134,13 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       .sort((left, right) => left.relativePath.localeCompare(right.relativePath, 'es'));
 
     this.candidates = b5dFiles;
-    this.folderName = b5dFiles[0]?.relativePath.split('/')[0] ?? '';
+    if (isFolderSelection) {
+      this.folderName = b5dFiles[0]?.relativePath.split('/')[0] ?? '';
+    } else {
+      this.folderName = b5dFiles.length
+        ? `${b5dFiles.length} ${this.i18n.translateForComponent(this.translations, 'parametersB5dImport.filesSelected')}`
+        : '';
+    }
 
     if (!this.candidates.length) {
       this.validationMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.noFilesFound');
@@ -181,6 +195,9 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       const response = await firstValueFrom(
         this.backendProyectos.importarParametrosDesdeB5d(this.activeProject.id, {
           archivos: selectedFiles,
+          tipo_edificacion: this.tipoEdificacionValue.trim() || null,
+          tipo_obra: this.tipoObraValue.trim() || null,
+          zona: this.zonaValue.trim() || null,
         }),
       );
       this.loadingPanel.completeStep(loadingSessionId, 'importing', 'Parámetros generados.');
@@ -227,6 +244,9 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.stopImportProgress();
     this.folderName = '';
     this.candidates = [];
+    this.tipoEdificacionValue = '';
+    this.tipoObraValue = '';
+    this.zonaValue = '';
     this.previewRows = [];
     this.validationMessage = '';
     this.previewMessage = '';
@@ -236,7 +256,6 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.previewLoading = false;
     this.previewProgress = 0;
     this.isImporting = false;
-    this.previewDebugMessage = '';
     this.previewRequestId += 1;
   }
 
@@ -258,6 +277,9 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       const response = await firstValueFrom(
         this.backendProyectos.previsualizarParametrosDesdeB5d(this.activeProject.id, {
           archivos: selectedFiles,
+          tipo_edificacion: this.tipoEdificacionValue.trim() || null,
+          tipo_obra: this.tipoObraValue.trim() || null,
+          zona: this.zonaValue.trim() || null,
         }),
       );
       if (requestId !== this.previewRequestId) return;
@@ -266,30 +288,11 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       this.previewMessage = this.previewRows.length
         ? this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewReady')
         : this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewEmpty');
-      logB5dDebug('parameters-b5d-import-dialog: preview received', {
-        projectId: this.activeProject?.id,
-        summary: response.summary,
-        previewCount: this.previewRows.length,
-        sample: this.previewRows.slice(0, 3).map((row) => ({
-          firma: row.firma,
-          clave: row.clave,
-          cantidad_conceptos: row.cantidad_conceptos,
-          cantidad_origenes: row.cantidad_origenes,
-          minimo: row.minimo,
-          maximo: row.maximo,
-          promedio: row.promedio,
-        })),
-      });
-      this.previewDebugMessage = isB5dDebugEnabled() ? this.buildPreviewDebugMessage(response) : '';
     } catch (error) {
       if (requestId !== this.previewRequestId) return;
       this.previewRows = [];
       this.previewDirty = false;
       this.previewMessage = this.resolveErrorMessage(error, this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewError'));
-      this.previewDebugMessage = isB5dDebugEnabled()
-        ? this.resolveErrorMessage(error, 'Error al cargar la vista previa de parámetros B5D.')
-        : '';
-      logB5dDebug('parameters-b5d-import-dialog: preview error', error);
     } finally {
       if (requestId !== this.previewRequestId) return;
       this.previewLoading = false;
@@ -303,7 +306,6 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = true;
     this.previewRows = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewPending');
-    this.previewDebugMessage = '';
     this.previewLoading = false;
     this.previewProgress = 0;
     this.previewRequestId += 1;
@@ -314,31 +316,9 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = dirty;
     this.previewRows = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, messageKey);
-    this.previewDebugMessage = '';
     this.previewLoading = false;
     this.previewProgress = 0;
     this.previewRequestId += 1;
-  }
-
-  private buildPreviewDebugMessage(response: PrevisualizarParametrosB5dResponse): string {
-    const preview = response.preview.resultados;
-    const sample = preview.slice(0, 3).map((row, index) => {
-      const parts = [
-        `${index + 1}. firma=${row.firma || '-'}`,
-        `clave=${row.clave || '-'}`,
-        `conceptos=${row.cantidad_conceptos}`,
-        `origenes=${row.cantidad_origenes}`,
-        `min=${this.formatValue(row.minimo)}`,
-        `max=${this.formatValue(row.maximo)}`,
-        `prom=${this.formatValue(row.promedio)}`,
-      ];
-      return parts.join(' | ');
-    });
-    return [
-      `summary.count=${response.summary.count} tipo_parametro=${response.summary.tipo_parametro}`,
-      `preview.length=${preview.length} selectedFiles=${this.selectedCount} totalFiles=${this.totalCount}`,
-      ...sample,
-    ].join('\n');
   }
 
   private startPreviewProgress(): void {

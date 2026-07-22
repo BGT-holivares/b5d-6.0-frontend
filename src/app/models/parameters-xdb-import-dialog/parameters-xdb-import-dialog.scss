@@ -92,6 +92,12 @@
   align-items: center;
 }
 
+.b5d-parameters-xdb-dialog__three-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .b5d-parameters-xdb-dialog__file-button {
   position: relative;
   display: inline-flex;

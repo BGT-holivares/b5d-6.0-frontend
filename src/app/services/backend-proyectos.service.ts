@@ -58,10 +58,16 @@ export interface ImportarParametrosXdbPayload {
   archivos: File[];
   tipo_parametro?: 'costo' | 'costo_porcentaje' | 'cantidad';
   modo_agrupacion?: 'hojas' | 'agrupadores';
+  tipo_edificacion?: string | null;
+  tipo_obra?: string | null;
+  zona?: string | null;
 }
 
 export interface ImportarParametrosB5dPayload {
   archivos: File[];
+  tipo_edificacion?: string | null;
+  tipo_obra?: string | null;
+  zona?: string | null;
 }
 
 export interface CrearCatalogoPayload {
@@ -73,6 +79,11 @@ export interface CrearCatalogoPayload {
 }
 
 export interface CrearCatalogoParametroPayload {
+  nombre: string;
+  descripcion?: string;
+}
+
+export interface ActualizarCatalogoParametroPayload {
   nombre: string;
   descripcion?: string;
 }
@@ -259,6 +270,8 @@ export interface CrearParametroPayload {
   tipo_comparacion?: 'clave_exacta' | 'clave_parcial' | 'descripcion_parcial';
   tipo_parametro?: 'costo' | 'costo_porcentaje' | 'cantidad';
   tipo_edificacion?: string | null;
+  tipo_obra?: string | null;
+  zona?: string | null;
   unidad?: string | null;
   minimo?: number | null;
   maximo?: number | null;
@@ -380,6 +393,15 @@ export class BackendProyectosService {
     if (payload.modo_agrupacion) {
       formData.append('modo_agrupacion', payload.modo_agrupacion);
     }
+    if (payload.tipo_edificacion) {
+      formData.append('tipo_edificacion', payload.tipo_edificacion);
+    }
+    if (payload.tipo_obra) {
+      formData.append('tipo_obra', payload.tipo_obra);
+    }
+    if (payload.zona) {
+      formData.append('zona', payload.zona);
+    }
     return this.http.post<ImportarParametrosXdbResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/importar-xdb/`),
       formData,
@@ -401,6 +423,15 @@ export class BackendProyectosService {
     if (payload.modo_agrupacion) {
       formData.append('modo_agrupacion', payload.modo_agrupacion);
     }
+    if (payload.tipo_edificacion) {
+      formData.append('tipo_edificacion', payload.tipo_edificacion);
+    }
+    if (payload.tipo_obra) {
+      formData.append('tipo_obra', payload.tipo_obra);
+    }
+    if (payload.zona) {
+      formData.append('zona', payload.zona);
+    }
     return this.http.post<PrevisualizarParametrosXdbResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/previsualizar-xdb/`),
       formData,
@@ -416,6 +447,15 @@ export class BackendProyectosService {
     for (const archivo of payload.archivos) {
       formData.append('archivos', archivo);
     }
+    if (payload.tipo_edificacion) {
+      formData.append('tipo_edificacion', payload.tipo_edificacion);
+    }
+    if (payload.tipo_obra) {
+      formData.append('tipo_obra', payload.tipo_obra);
+    }
+    if (payload.zona) {
+      formData.append('zona', payload.zona);
+    }
     return this.http.post<ImportarParametrosB5dResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/importar-b5d/`),
       formData,
@@ -430,6 +470,15 @@ export class BackendProyectosService {
     const formData = new FormData();
     for (const archivo of payload.archivos) {
       formData.append('archivos', archivo);
+    }
+    if (payload.tipo_edificacion) {
+      formData.append('tipo_edificacion', payload.tipo_edificacion);
+    }
+    if (payload.tipo_obra) {
+      formData.append('tipo_obra', payload.tipo_obra);
+    }
+    if (payload.zona) {
+      formData.append('zona', payload.zona);
     }
     return this.http.post<PrevisualizarParametrosB5dResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/previsualizar-b5d/`),
@@ -464,6 +513,22 @@ export class BackendProyectosService {
     );
   }
 
+  actualizarCatalogoParametro(
+    proyectoId: number,
+    catalogoParametroId: number,
+    payload: ActualizarCatalogoParametroPayload,
+  ): Observable<AdministrarCatalogosParametroResponse> {
+    return this.http.patch<AdministrarCatalogosParametroResponse>(
+      this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
+      {
+        catalogo_parametro_id: catalogoParametroId,
+        nombre: payload.nombre,
+        descripcion: payload.descripcion,
+      },
+      this.requestOptions,
+    );
+  }
+
   seleccionarCatalogoParametro(
     proyectoId: number,
     catalogoParametroId: number,
@@ -472,6 +537,20 @@ export class BackendProyectosService {
       this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
       { catalogo_parametro_id: catalogoParametroId },
       this.requestOptions,
+    );
+  }
+
+  eliminarCatalogoParametro(
+    proyectoId: number,
+    catalogoParametroId: number,
+  ): Observable<AdministrarCatalogosParametroResponse> {
+    return this.http.request<AdministrarCatalogosParametroResponse>(
+      'DELETE',
+      this.url(`/api/proyectos/${proyectoId}/parametros/catalogos/`),
+      {
+        ...this.requestOptions,
+        body: { catalogo_parametro_id: catalogoParametroId },
+      },
     );
   }
 

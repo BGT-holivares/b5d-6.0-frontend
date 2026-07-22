@@ -33,6 +33,26 @@
         }
       </select>
     </label>
+
+    <label>
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.workType') }}</span>
+      <select [(ngModel)]="selectedWorkType" (ngModelChange)="onFilterChange()">
+        <option value="all">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.all') }}</option>
+        @for (workType of workTypeOptions; track workType) {
+          <option [value]="workType">{{ workType }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.zone') }}</span>
+      <select [(ngModel)]="selectedZone" (ngModelChange)="onFilterChange()">
+        <option value="all">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.all') }}</option>
+        @for (zone of zoneOptions; track zone) {
+          <option [value]="zone">{{ zone }}</option>
+        }
+      </select>
+    </label>
   </div>
 
   <div class="b5d-parameters-panel__catalog-bar">
@@ -51,40 +71,70 @@
         }
       </select>
     </label>
-
-    <button
-      type="button"
-      class="b5d-parameters-panel__tool-button"
-      [disabled]="parameterCatalogActionInProgress || !activeProject"
-      (click)="toggleParameterCatalogCreate()"
-    >
-      {{
-        creatingParameterCatalogVisible
-          ? i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.cancelCreate')
-          : i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createBlank')
-      }}
-    </button>
   </div>
 
-  @if (creatingParameterCatalogVisible) {
-    <div class="b5d-parameters-panel__catalog-create">
-      <label>
-        <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.name') }}</span>
-        <input type="text" [(ngModel)]="creatingParameterCatalogName" [disabled]="parameterCatalogActionInProgress" />
-      </label>
-      <label>
-        <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.description') }}</span>
-        <textarea rows="2" [(ngModel)]="creatingParameterCatalogDescription" [disabled]="parameterCatalogActionInProgress"></textarea>
-      </label>
-      <div class="b5d-parameters-panel__catalog-create-actions">
-        <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="cancelParameterCatalogCreate()">
-          {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.cancelCreate') }}
-        </button>
-        <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="saveParameterCatalogCreate()">
-          {{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createBlank') }}
-        </button>
+  @if (parameterCatalogEditorVisible) {
+    <section class="b5d-floating-helper-panel" [style.right.px]="16" [style.top.px]="16">
+      <header class="b5d-floating-helper-panel__header">
+        <span class="b5d-floating-helper-panel__title">
+          {{
+            parameterCatalogEditorMode === 'edit'
+              ? i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.editTitle')
+              : i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createTitle')
+          }}
+        </span>
+        <span class="b5d-floating-helper-panel__actions">
+          <button
+            type="button"
+            class="b5d-floating-helper-panel__action"
+            [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+            [disabled]="parameterCatalogActionInProgress"
+            (click)="cancelParameterCatalogEditor()"
+          >
+            x
+          </button>
+        </span>
+      </header>
+
+      <div class="b5d-floating-helper-panel__body">
+        <div class="b5d-floating-helper-panel__row">
+          <div class="b5d-floating-helper-panel__row-main">
+            <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-name">
+              <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.name') }}</span>
+            </label>
+            <input
+              id="parameter-catalog-editor-name"
+              class="b5d-width-100"
+              type="text"
+              [(ngModel)]="parameterCatalogEditorName"
+              [disabled]="parameterCatalogActionInProgress"
+            />
+          </div>
+        </div>
+        <div class="b5d-floating-helper-panel__row">
+          <div class="b5d-floating-helper-panel__row-main">
+            <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-description">
+              <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.description') }}</span>
+            </label>
+            <textarea
+              id="parameter-catalog-editor-description"
+              class="b5d-width-100"
+              rows="2"
+              [(ngModel)]="parameterCatalogEditorDescription"
+              [disabled]="parameterCatalogActionInProgress"
+            ></textarea>
+          </div>
+        </div>
+        <div class="b5d-floating-helper-panel__row-actions">
+          <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="saveParameterCatalogEditor()">
+            {{ parameterCatalogActionInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
+          </button>
+          <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="cancelParameterCatalogEditor()">
+            {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
   }
 
   @if (actionError) {
@@ -117,8 +167,10 @@
               </span>
             </div>
             <div
+              #parameterListViewport
               class="b5d-parameters-panel__pane-content b5d-parameters-panel__pane-content--scroll"
               [style.zoom]="getPaneZoomFactor('parameter-list')"
+              (scroll)="onParameterListScroll($event)"
               (wheel)="onPaneZoomWheel($event, 'parameter-list')"
               (click)="closeParameterTableContextMenu()"
             >
@@ -226,118 +278,22 @@
                     }
                   </thead>
                   <tbody>
-                    @for (row of visibleRows; track row.id) {
+                    @if (parameterListVirtualizationEnabled) {
+                      <tr class="b5d-parameters-panel__virtual-spacer" aria-hidden="true">
+                        <td [attr.colspan]="visibleParameterColumns.length" [style.height.px]="parameterListVirtualTopSpacerHeight"></td>
+                      </tr>
+                    }
+                    @for (row of renderedVisibleRows; track row.id) {
                       <tr
-                        class="b5d-parameters-panel__selectable"
+                        b5dParameterRow
+                        [row]="row"
+                        [columns]="visibleParameterColumns"
+                        [editing]="editingParameterId === row.id"
+                        [saving]="isSavingParameterActive(row.id)"
                         [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
                         (click)="onRowClick(row.id, $event)"
-                      >
-                        @for (column of visibleParameterColumns; track column.key) {
-                          <td>
-                            @switch (column.key) {
-                              @case ('activo') {
-                                <input
-                                  type="checkbox"
-                                  [checked]="row.activo"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (change)="onParameterActiveToggle(row, $any($event.target).checked)"
-                                />
-                              }
-                              @case ('clave') {
-                                <input
-                                  type="text"
-                                  [(ngModel)]="row.clave"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                              @case ('descripcion') {
-                                <textarea
-                                  rows="2"
-                                  [(ngModel)]="row.descripcion"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                ></textarea>
-                              }
-                              @case ('tipo_comparacion') {
-                                <select
-                                  [(ngModel)]="row.tipo_comparacion"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (change)="saveParameterRow(row)"
-                                >
-                                  <option value="clave_exacta">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.exactCode') }}</option>
-                                  <option value="clave_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialCode') }}</option>
-                                  <option value="descripcion_parcial">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.comparison.partialDescription') }}</option>
-                                </select>
-                              }
-                              @case ('tipo_parametro') {
-                                <select
-                                  [(ngModel)]="row.tipo_parametro"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (change)="saveParameterRow(row)"
-                                >
-                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
-                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
-                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
-                                </select>
-                              }
-                              @case ('tipo_edificacion') {
-                                <input
-                                  type="text"
-                                  [(ngModel)]="row.tipo_edificacion"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                              @case ('unidad') {
-                                <input
-                                  type="text"
-                                  [(ngModel)]="row.unidad"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                              @case ('minimo') {
-                                <input
-                                  type="text"
-                                  [ngModel]="row.minimo"
-                                  (ngModelChange)="row.minimo = parseOptionalNumber($event)"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                              @case ('maximo') {
-                                <input
-                                  type="text"
-                                  [ngModel]="row.maximo"
-                                  (ngModelChange)="row.maximo = parseOptionalNumber($event)"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                              @case ('promedio') {
-                                <input
-                                  type="text"
-                                  [ngModel]="row.promedio"
-                                  (ngModelChange)="row.promedio = parseOptionalNumber($event)"
-                                  [disabled]="isSavingParameterActive(row.id)"
-                                  (click)="$event.stopPropagation()"
-                                  (blur)="saveParameterRow(row)"
-                                />
-                              }
-                            }
-                          </td>
-                        }
-                      </tr>
+                        (focusout)="saveParameterRow(row)"
+                      ></tr>
 
                       @if (isInlineEditorAnchoredAfter(row.id)) {
                         <tr class="b5d-parameters-panel__editor-row">
@@ -361,12 +317,12 @@
                                   </select>
                                 }
                                 @case ('tipo_parametro') {
-                                <select [(ngModel)]="creatingDraft.tipo_parametro">
-                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
-                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
-                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
-                                </select>
-                              }
+                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                    <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+                                    <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+                                    <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
+                                  </select>
+                                }
                                 @case ('tipo_edificacion') {
                                   <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
                                 }
@@ -422,12 +378,12 @@
                                   </select>
                                 }
                                 @case ('tipo_parametro') {
-                                <select [(ngModel)]="creatingDraft.tipo_parametro">
-                                  <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
-                                  <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
-                                  <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
-                                </select>
-                              }
+                                  <select [(ngModel)]="creatingDraft.tipo_parametro">
+                                    <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
+                                    <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
+                                    <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
+                                  </select>
+                                }
                                 @case ('tipo_edificacion') {
                                   <input type="text" [(ngModel)]="creatingDraft.tipo_edificacion" />
                                 }
@@ -466,6 +422,11 @@
                           </td>
                         </tr>
                       }
+                    }
+                    @if (parameterListVirtualizationEnabled) {
+                      <tr class="b5d-parameters-panel__virtual-spacer" aria-hidden="true">
+                        <td [attr.colspan]="visibleParameterColumns.length" [style.height.px]="parameterListVirtualBottomSpacerHeight"></td>
+                      </tr>
                     }
                   </tbody>
                 </table>

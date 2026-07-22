@@ -17,7 +17,7 @@
               <input
                 type="text"
                 class="b5d-parameters-xdb-dialog__input b5d-parameters-xdb-dialog__input--file"
-                [value]="folderName || i18n.translateForComponent(translations, 'parametersXdbImport.noFolder')"
+                [value]="sourceLabelValue"
                 readonly
               />
               <label class="b5d-parameters-xdb-dialog__file-button" [class.b5d-parameters-xdb-dialog__file-button--disabled]="isImporting || loading">
@@ -29,6 +29,16 @@
                   accept=".xdb"
                   [disabled]="isImporting || loading"
                   (change)="handleFolderChange($event)"
+                />
+              </label>
+              <label class="b5d-parameters-xdb-dialog__file-button" [class.b5d-parameters-xdb-dialog__file-button--disabled]="isImporting || loading">
+                {{ i18n.translateForComponent(translations, 'parametersXdbImport.chooseFiles') }}
+                <input
+                  type="file"
+                  multiple
+                  accept=".xdb"
+                  [disabled]="isImporting || loading"
+                  (change)="handleFilesChange($event)"
                 />
               </label>
             </div>
@@ -46,6 +56,24 @@
             <span class="b5d-parameters-xdb-dialog__counter">
               {{ selectedCount }} / {{ totalCount }} {{ i18n.translateForComponent(translations, 'parametersXdbImport.filesSelected') }}
             </span>
+          </div>
+        </div>
+
+        <div class="b5d-parameters-xdb-dialog__section">
+          <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersXdbImport.metadataTitle') }}</div>
+          <div class="b5d-parameters-xdb-dialog__three-columns">
+            <label class="b5d-parameters-xdb-dialog__field">
+              <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.buildingTypeLabel') }}</span>
+              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="tipoEdificacionValue" />
+            </label>
+            <label class="b5d-parameters-xdb-dialog__field">
+              <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.workTypeLabel') }}</span>
+              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="tipoObraValue" />
+            </label>
+            <label class="b5d-parameters-xdb-dialog__field">
+              <span>{{ i18n.translateForComponent(translations, 'parametersXdbImport.zoneLabel') }}</span>
+              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="zonaValue" />
+            </label>
           </div>
         </div>
 
@@ -139,11 +167,6 @@
           } @else if (hasPreview) {
             @if (previewMessage) {
               <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ previewMessage }}</div>
-            }
-            @if (isDebugEnabled && previewDebugMessage) {
-              <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info" style="white-space: pre-wrap;">
-                {{ previewDebugMessage }}
-              </div>
             }
             <div class="b5d-parameters-xdb-dialog__table-wrapper b5d-parameters-xdb-dialog__table-wrapper--wide">
               <table class="b5d-parameters-xdb-dialog__table">

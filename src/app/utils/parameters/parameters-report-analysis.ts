@@ -10,6 +10,9 @@ interface ReportComparisonOptions {
   decimalPlaces?: number;
   manualWbsConceptSelectionByParameterId?: Map<number, number>;
   manualParameterSelectionByConceptKey?: Map<string, number>;
+  parameterBuildingType?: string;
+  parameterWorkType?: string;
+  parameterZone?: string;
 }
 
 interface CatalogWbsIndex {
@@ -214,12 +217,21 @@ export function buildParametersReportData(
   const decimalPlaces = normalizeDecimalPlaces(options.decimalPlaces);
   const manualWbsConceptSelectionByParameterId = options.manualWbsConceptSelectionByParameterId ?? new Map<number, number>();
   const manualParameterSelectionByConceptKey = options.manualParameterSelectionByConceptKey ?? new Map<string, number>();
+  const parameterBuildingType = normalizeFilterValue(options.parameterBuildingType);
+  const parameterWorkType = normalizeFilterValue(options.parameterWorkType);
+  const parameterZone = normalizeFilterValue(options.parameterZone);
+  const filteredParameters = parameters.filter((row) => {
+    if (!matchesFilterValue(row.tipo_edificacion, parameterBuildingType)) return false;
+    if (!matchesFilterValue(row.tipo_obra, parameterWorkType)) return false;
+    if (!matchesFilterValue(row.zona, parameterZone)) return false;
+    return true;
+  });
   const includeQuantity = parameterScope === 'all' || parameterScope === 'quantity';
   const includeCost = parameterScope === 'all' || parameterScope === 'cost';
   const includePercentCost = parameterScope === 'all' || parameterScope === 'cost-percent';
-  const activeQuantityParameters = includeQuantity ? parameters.filter((row) => row.activo && row.tipo_parametro === 'cantidad') : [];
-  const activeCostParameters = includeCost ? parameters.filter((row) => row.activo && row.tipo_parametro === 'costo') : [];
-  const activePercentCostParameters = includePercentCost ? parameters.filter((row) => row.activo && row.tipo_parametro === 'costo_porcentaje') : [];
+  const activeQuantityParameters = includeQuantity ? filteredParameters.filter((row) => row.activo && row.tipo_parametro === 'cantidad') : [];
+  const activeCostParameters = includeCost ? filteredParameters.filter((row) => row.activo && row.tipo_parametro === 'costo') : [];
+  const activePercentCostParameters = includePercentCost ? filteredParameters.filter((row) => row.activo && row.tipo_parametro === 'costo_porcentaje') : [];
   const selectedCatalogConcepts = selectedCatalogId == null ? concepts : concepts.filter((row) => row.catalogo_id === selectedCatalogId);
   const catalogWbsIndex = comparisonGranularity === 'wbs' ? buildCatalogWbsIndex(selectedCatalogConcepts) : null;
   const quantityRowsSource = includeQuantity ? prepareBoqRowsForComparison(boqRows, comparisonGranularity, wbsLevel) : [];
@@ -329,6 +341,15 @@ export function buildParametersReportData(
     percentCostRows,
     unassignedRows,
   };
+}
+
+function normalizeFilterValue(value: string | null | undefined): string {
+  return normalizeText(value ?? '');
+}
+
+function matchesFilterValue(value: string | null | undefined, filterValue: string): boolean {
+  if (!filterValue) return true;
+  return normalizeText(value ?? '') === filterValue;
 }
 
 function isValidConceptRow(row: BoqExtractedRow): boolean {

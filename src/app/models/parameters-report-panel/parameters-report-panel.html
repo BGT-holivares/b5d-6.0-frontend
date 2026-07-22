@@ -118,6 +118,36 @@
 
   @if (selectedReportMode === 'parameters') {
   <div class="b5d-parameters-report__controls">
+    <label class="b5d-report-field">
+      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.buildingType') }}</span>
+      <select [ngModel]="selectedBuildingType" (ngModelChange)="selectBuildingType($event)">
+        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
+        @for (buildingType of buildingTypeOptions; track buildingType) {
+          <option [value]="buildingType">{{ buildingType }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="b5d-report-field">
+      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.workType') }}</span>
+      <select [ngModel]="selectedWorkType" (ngModelChange)="selectWorkType($event)">
+        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
+        @for (workType of workTypeOptions; track workType) {
+          <option [value]="workType">{{ workType }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="b5d-report-field">
+      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.zone') }}</span>
+      <select [ngModel]="selectedZone" (ngModelChange)="selectZone($event)">
+        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
+        @for (zone of zoneOptions; track zone) {
+          <option [value]="zone">{{ zone }}</option>
+        }
+      </select>
+    </label>
+
     <div class="b5d-report-field">
       <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScope') }}</span>
       <div class="b5d-report-choice-group">
@@ -357,7 +387,7 @@
             </thead>
             <tbody>
               @for (row of reportData.quantityRows; track trackByRow($index, row)) {
-                <tr (click)="requestConceptSelection(row.clave)">
+                <tr>
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>
@@ -414,7 +444,7 @@
             </thead>
             <tbody>
               @for (row of reportData.costRows; track trackByRow($index, row)) {
-                <tr (click)="requestConceptSelection(row.clave)">
+                <tr>
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>
@@ -472,7 +502,7 @@
             </thead>
             <tbody>
               @for (row of reportData.percentCostRows; track trackByRow($index, row)) {
-                <tr (click)="requestConceptSelection(row.clave)">
+                <tr>
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>
@@ -525,7 +555,7 @@
           </thead>
           <tbody>
             @for (row of reportData.unassignedRows; track trackByRow($index, row)) {
-                <tr (click)="requestConceptSelection(row.clave)">
+                <tr>
                   <td>{{ row.row }}</td>
                   <td>{{ row.clave || '-' }}</td>
                   <td>{{ row.descripcion || '-' }}</td>

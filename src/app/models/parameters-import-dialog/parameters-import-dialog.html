@@ -96,15 +96,35 @@
               {{ mappingSummary }}. {{ t('parametersImport.headerHint') }}
             </div>
 
-            <label class="b5d-parameters-import-dialog__field">
-              <span>{{ t('parametersImport.field.buildingType') }}</span>
-              <input
-                class="b5d-parameters-import-dialog__input"
-                type="text"
-                [(ngModel)]="buildingTypeValue"
-                [placeholder]="buildingTypePlaceholder"
-              />
-            </label>
+            <div class="b5d-parameters-import-dialog__three-columns">
+              <label class="b5d-parameters-import-dialog__field">
+                <span>{{ t('parametersImport.field.buildingType') }}</span>
+                <input
+                  class="b5d-parameters-import-dialog__input"
+                  type="text"
+                  [(ngModel)]="buildingTypeValue"
+                  [placeholder]="buildingTypePlaceholder"
+                />
+              </label>
+              <label class="b5d-parameters-import-dialog__field">
+                <span>{{ t('parametersImport.field.workType') }}</span>
+                <input
+                  class="b5d-parameters-import-dialog__input"
+                  type="text"
+                  [(ngModel)]="workTypeValue"
+                  [placeholder]="workTypePlaceholder"
+                />
+              </label>
+              <label class="b5d-parameters-import-dialog__field">
+                <span>{{ t('parametersImport.field.zone') }}</span>
+                <input
+                  class="b5d-parameters-import-dialog__input"
+                  type="text"
+                  [(ngModel)]="zoneValue"
+                  [placeholder]="zonePlaceholder"
+                />
+              </label>
+            </div>
             <div class="b5d-parameters-import-dialog__hint">
               {{ t('parametersImport.buildingTypeHint') }}
             </div>

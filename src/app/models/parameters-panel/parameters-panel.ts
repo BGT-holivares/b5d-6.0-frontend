@@ -1,4 +1,17 @@
-import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnChanges,
+  OnDestroy,
+  Output,
+  SimpleChanges,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ResizableTableDirective } from '../../directives/resizable-table/resizable-table.directive';
@@ -42,6 +55,7 @@ import { isCostParameterType } from '../../utils/parameters/parameter-types';
 import type { InformacionElementoSeleccionado } from '../../types/ifc';
 import type { HomeToolbarState } from '../../types/home-toolbar';
 import type { ToolbarActionId } from '../toolbar/toolbar';
+import { ParameterTableRowComponent } from './parameter-table-row.component';
 
 type ParameterDraftRow = {
   clave: string;
@@ -124,11 +138,11 @@ type ParameterPaneId = 'parameter-list' | 'description-matches' | 'analysis';
 
 @Component({
   selector: 'app-parameters-panel',
-  imports: [FormsModule, ResizableTableDirective],
+  imports: [FormsModule, ResizableTableDirective, ParameterTableRowComponent],
   templateUrl: './parameters-panel.html',
   styleUrl: './parameters-panel.scss',
 })
-export class ParametersPanel implements OnChanges {
+export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   readonly parametersPanelTranslations = PARAMETERS_PANEL_TRANSLATIONS;
   readonly globalTranslations = GLOBAL_TRANSLATIONS;
   readonly i18n = inject(I18nService);
@@ -148,11 +162,9 @@ export class ParametersPanel implements OnChanges {
   @Input() tableFiltersVisible = false;
   @Input() informacionSeleccionada: InformacionElementoSeleccionado | null = null;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
-  @Input() conceptKeys: string[] = [];
   @Input() storageScopeKey = 'anonymous';
   @Output() rowsChange = new EventEmitter<ParametroB5DOrm[]>();
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
-  @Output() conceptSelectionRequested = new EventEmitter<string>();
   @Output() parameterCatalogChanged = new EventEmitter<void>();
 
   readonly parameterTableColumns: TableColumnDefinition<ParametroB5DOrm>[] = [
@@ -253,12 +265,16 @@ export class ParametersPanel implements OnChanges {
 
   selectedParameterType: TipoParametroOrm = 'cantidad';
   selectedBuildingType = 'all';
+  selectedWorkType = 'all';
+  selectedZone = 'all';
   selectedParameterIds = new Set<number>();
   workParameters: ParametroB5DOrm[] = [];
   selectedParameterCatalogId: number | null = null;
-  creatingParameterCatalogVisible = false;
-  creatingParameterCatalogName = '';
-  creatingParameterCatalogDescription = '';
+  parameterCatalogEditorVisible = false;
+  parameterCatalogEditorMode: 'create' | 'edit' = 'create';
+  parameterCatalogEditorId: number | null = null;
+  parameterCatalogEditorName = '';
+  parameterCatalogEditorDescription = '';
   parameterCatalogActionInProgress = false;
   creatingParameterInline = false;
   creatingAnchorParameterId: number | null = null;
@@ -292,17 +308,44 @@ export class ParametersPanel implements OnChanges {
   parameterTableContextMenuY = 0;
   parameterTableRefreshToken = 0;
   draggedPaneId: ParameterPaneId | null = null;
+  private visibleRowsCache: ParametroB5DOrm[] = [];
+  private visibleRowsCount = 0;
+  renderedVisibleRowsCache: ParametroB5DOrm[] = [];
+  parameterListVirtualTopSpacerHeight = 0;
+  parameterListVirtualBottomSpacerHeight = 0;
+  editingParameterId: number | null = null;
   private lastAppliedStorageScopeKey = '';
   private parameterColumnChooserPositionReady = false;
   parameterColumnDragKey: string | null = null;
   private readonly parameterColumnChooserWidth = 360;
+  private readonly parameterListVirtualizationThreshold = 30;
+  private readonly parameterListVirtualRowHeight = 34;
+  private readonly parameterListVirtualOverscan = 8;
+  private readonly parameterListViewportResizeHandler = (): void => {
+    this.syncParameterListVirtualWindow();
+  };
+  @ViewChild('parameterListViewport') private parameterListViewport?: ElementRef<HTMLElement>;
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly workbookPreviewCache = inject(WorkbookPreviewCacheService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
+  ngAfterViewInit(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.parameterListViewportResizeHandler);
+    }
+    queueMicrotask(() => this.syncParameterListVirtualWindow());
+  }
+
+  ngOnDestroy(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.parameterListViewportResizeHandler);
+    }
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['storageScopeKey'] || !this.lastAppliedStorageScopeKey) {
       this.restoreParameterTablePreferences();
+      this.rebuildVisibleRows();
     }
 
     if (changes['parameters']) {
@@ -310,9 +353,13 @@ export class ParametersPanel implements OnChanges {
       this.selectedParameterIds = new Set(
         [...this.selectedParameterIds].filter((parameterId) => this.workParameters.some((row) => row.id === parameterId)),
       );
+      if (this.editingParameterId != null && !this.workParameters.some((row) => row.id === this.editingParameterId)) {
+        this.editingParameterId = null;
+      }
       this.synchronizeDescriptionSelections();
       this.synchronizeCostSelections();
       this.syncParameterTablePreferences();
+      this.rebuildVisibleRows();
       this.emitToolbarState();
     }
 
@@ -330,10 +377,12 @@ export class ParametersPanel implements OnChanges {
 
     if (changes['activeParameterCatalogId']) {
       this.selectedParameterCatalogId = this.activeParameterCatalogId;
+      this.emitToolbarState();
     }
 
     if (changes['parameterCatalogs']) {
       this.syncParameterCatalogSelection();
+      this.emitToolbarState();
     }
 
     if (changes['quantifications']) {
@@ -396,21 +445,23 @@ export class ParametersPanel implements OnChanges {
   }
 
   get buildingTypeOptions(): string[] {
-    const options = new Set<string>();
-    for (const row of this.workParameters) {
-      const buildingType = (row.tipo_edificacion ?? '').trim();
-      if (buildingType) options.add(buildingType);
-    }
-    return [...options].sort((first, second) => first.localeCompare(second, 'es'));
+    return this.collectParameterMetadataOptions((row) => row.tipo_edificacion);
   }
 
-  get visibleRows(): ParametroB5DOrm[] {
-    const filteredByToolbar = this.workParameters.filter((row) => {
-      if (row.tipo_parametro !== this.selectedParameterType) return false;
-      if (this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) return false;
-      return true;
-    });
-    return applyTableFilters(filteredByToolbar, this.parameterTableColumns, this.parameterTablePreferences);
+  get workTypeOptions(): string[] {
+    return this.collectParameterMetadataOptions((row) => row.tipo_obra);
+  }
+
+  get zoneOptions(): string[] {
+    return this.collectParameterMetadataOptions((row) => row.zona);
+  }
+
+  get parameterListVirtualizationEnabled(): boolean {
+    return !this.creatingParameterInline && this.visibleRowsCount > this.parameterListVirtualizationThreshold;
+  }
+
+  get renderedVisibleRows(): ParametroB5DOrm[] {
+    return this.renderedVisibleRowsCache;
   }
 
   get visibleParameterColumns(): TableColumnDefinition<ParametroB5DOrm>[] {
@@ -418,7 +469,7 @@ export class ParametersPanel implements OnChanges {
   }
 
   get activeParametersForAnalysis(): ParametroB5DOrm[] {
-    return this.visibleRows.filter((row) => row.activo);
+    return this.visibleRowsCache.filter((row) => row.activo);
   }
 
   get activeConceptsForAnalysis(): ConceptoB5DOrm[] {
@@ -692,6 +743,8 @@ export class ParametersPanel implements OnChanges {
   resetTableViews(): void {
     this.selectedParameterType = 'cantidad';
     this.selectedBuildingType = 'all';
+    this.selectedWorkType = 'all';
+    this.selectedZone = 'all';
     this.resetParameterTableViews();
     this.parameterListVisible = true;
     this.descriptionMatchesVisible = true;
@@ -700,6 +753,7 @@ export class ParametersPanel implements OnChanges {
     this.topLeftPaneWidth = 540;
     this.bottomLeftPaneWidth = 420;
     this.topWorkspaceHeight = 390;
+    this.syncParameterListVirtualWindow();
     this.emitToolbarState();
   }
 
@@ -756,6 +810,7 @@ export class ParametersPanel implements OnChanges {
   toggleParameterTableColumnVisibility(columnKey: string): void {
     toggleTableColumnVisibility(this.parameterTablePreferences, columnKey);
     this.persistParameterTablePreferences();
+    this.rebuildVisibleRows();
     this.parameterTableRefreshToken += 1;
   }
 
@@ -828,16 +883,21 @@ export class ParametersPanel implements OnChanges {
   setParameterFilterMode(columnKey: string, mode: string): void {
     setTableFilterMode(this.parameterTablePreferences, columnKey, mode as never);
     this.persistParameterTablePreferences();
+    this.rebuildVisibleRows();
+    this.emitToolbarState();
   }
 
   setParameterFilterValue(columnKey: string, value: string): void {
     setTableFilterValue(this.parameterTablePreferences, columnKey, value);
     this.persistParameterTablePreferences();
+    this.rebuildVisibleRows();
+    this.emitToolbarState();
   }
 
   resetParameterTablePreferences(): void {
     resetTableViewPreferences(this.parameterTablePreferences, this.parameterTableDefaults);
     this.persistParameterTablePreferences();
+    this.rebuildVisibleRows();
     this.parameterTableRefreshToken += 1;
   }
 
@@ -858,6 +918,7 @@ export class ParametersPanel implements OnChanges {
     this.parameterListZoomPercent = 100;
     this.descriptionMatchesZoomPercent = 100;
     this.analysisZoomPercent = 100;
+    this.syncParameterListVirtualWindow();
   }
 
   private syncCostCatalogSelection(): void {
@@ -916,6 +977,7 @@ export class ParametersPanel implements OnChanges {
         this.topWorkspaceHeight = this.clamp(initialHeight + heightDelta, 260, 900);
       }
       this.changeDetectorRef.detectChanges();
+      this.syncParameterListVirtualWindow();
     };
 
     const stopResizing = (): void => {
@@ -939,12 +1001,7 @@ export class ParametersPanel implements OnChanges {
       this.selectedParameterIds = new Set(this.selectedParameterIds);
     }
 
-    const selectedParameter = this.workParameters.find((row) => row.id === parameterId);
-    const conceptKey = selectedParameter?.clave?.trim() ?? '';
-    if (conceptKey && this.isKnownConceptKey(conceptKey)) {
-      this.conceptSelectionRequested.emit(conceptKey);
-    }
-
+    this.editingParameterId = this.selectedParameterIds.has(parameterId) ? parameterId : null;
     this.emitToolbarState();
   }
 
@@ -953,31 +1010,47 @@ export class ParametersPanel implements OnChanges {
   }
 
   onFilterChange(): void {
+    this.rebuildVisibleRows();
     this.emitToolbarState();
   }
 
-  toggleParameterCatalogCreate(): void {
+  openParameterCatalogEditor(mode: 'create' | 'edit'): void {
     if (this.parameterCatalogActionInProgress) return;
-    if (this.creatingParameterCatalogVisible) {
-      this.cancelParameterCatalogCreate();
+    this.actionError = '';
+    this.parameterCatalogEditorMode = mode;
+    if (mode === 'create') {
+      this.parameterCatalogEditorId = null;
+      this.parameterCatalogEditorName = '';
+      this.parameterCatalogEditorDescription = '';
+      this.parameterCatalogEditorVisible = true;
       return;
     }
-    this.creatingParameterCatalogVisible = !this.creatingParameterCatalogVisible;
-    this.creatingParameterCatalogName = '';
-    this.creatingParameterCatalogDescription = '';
+
+    const selectedCatalogId = this.selectedParameterCatalogId ?? this.activeParameterCatalogId;
+    const selectedCatalog = selectedCatalogId == null ? null : this.availableParameterCatalogs.find((catalog) => catalog.id === selectedCatalogId) ?? null;
+    if (!selectedCatalog) {
+      this.actionError = this.t('parameters.catalog.errorNoSelection');
+      return;
+    }
+
+    this.parameterCatalogEditorId = selectedCatalog.id;
+    this.parameterCatalogEditorName = selectedCatalog.nombre ?? '';
+    this.parameterCatalogEditorDescription = selectedCatalog.descripcion ?? '';
+    this.parameterCatalogEditorVisible = true;
+  }
+
+  cancelParameterCatalogEditor(): void {
+    this.parameterCatalogEditorVisible = false;
+    this.parameterCatalogEditorMode = 'create';
+    this.parameterCatalogEditorId = null;
+    this.parameterCatalogEditorName = '';
+    this.parameterCatalogEditorDescription = '';
     this.actionError = '';
   }
 
-  cancelParameterCatalogCreate(): void {
-    this.creatingParameterCatalogVisible = false;
-    this.creatingParameterCatalogName = '';
-    this.creatingParameterCatalogDescription = '';
-    this.actionError = '';
-  }
-
-  async saveParameterCatalogCreate(): Promise<void> {
+  async saveParameterCatalogEditor(): Promise<void> {
     if (!this.activeProject || this.parameterCatalogActionInProgress) return;
-    const nombre = this.creatingParameterCatalogName.trim();
+    const nombre = this.parameterCatalogEditorName.trim();
     if (!nombre) {
       this.actionError = this.t('parameters.catalog.errorName');
       return;
@@ -986,19 +1059,61 @@ export class ParametersPanel implements OnChanges {
     this.parameterCatalogActionInProgress = true;
     this.actionError = '';
     try {
-      const response = await firstValueFrom(
-        this.backendProyectos.crearCatalogoParametro(this.activeProject.id, {
-          nombre,
-          descripcion: this.creatingParameterCatalogDescription.trim() || undefined,
-        }),
+      const response =
+        this.parameterCatalogEditorMode === 'edit' && this.parameterCatalogEditorId != null
+          ? await firstValueFrom(
+              this.backendProyectos.actualizarCatalogoParametro(this.activeProject.id, this.parameterCatalogEditorId, {
+                nombre,
+                descripcion: this.parameterCatalogEditorDescription.trim() || undefined,
+              }),
+            )
+          : await firstValueFrom(
+              this.backendProyectos.crearCatalogoParametro(this.activeProject.id, {
+                nombre,
+                descripcion: this.parameterCatalogEditorDescription.trim() || undefined,
+              }),
       );
       this.selectedParameterCatalogId = response.catalogo_parametro_activo_id ?? response.catalogo?.id ?? null;
-      this.creatingParameterCatalogVisible = false;
-      this.creatingParameterCatalogName = '';
-      this.creatingParameterCatalogDescription = '';
+      this.cancelParameterCatalogEditor();
+      this.emitToolbarState();
       this.parameterCatalogChanged.emit();
     } catch (error) {
-      this.actionError = this.resolveErrorMessage(error, this.t('parameters.catalog.errorCreate'));
+      this.actionError = this.resolveErrorMessage(
+        error,
+        this.parameterCatalogEditorMode === 'edit'
+          ? this.t('parameters.catalog.errorUpdate')
+          : this.t('parameters.catalog.errorCreate'),
+      );
+    } finally {
+      this.parameterCatalogActionInProgress = false;
+    }
+  }
+
+  async deleteSelectedParameterCatalog(): Promise<void> {
+    if (!this.activeProject || this.parameterCatalogActionInProgress) return;
+    const catalogId = this.selectedParameterCatalogId ?? this.activeParameterCatalogId;
+    if (catalogId == null) {
+      this.actionError = this.t('parameters.catalog.errorNoSelection');
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(this.t('parameters.catalog.confirmDelete'));
+      if (!confirmed) return;
+    }
+
+    this.parameterCatalogActionInProgress = true;
+    this.actionError = '';
+    try {
+      const response = await firstValueFrom(this.backendProyectos.eliminarCatalogoParametro(this.activeProject.id, catalogId));
+      this.selectedParameterCatalogId = response.catalogo_parametro_activo_id ?? response.catalogo?.id ?? null;
+      if (this.parameterCatalogEditorId === catalogId) {
+        this.cancelParameterCatalogEditor();
+      }
+      this.emitToolbarState();
+      this.parameterCatalogChanged.emit();
+    } catch (error) {
+      this.actionError = this.resolveErrorMessage(error, this.t('parameters.catalog.errorDelete'));
     } finally {
       this.parameterCatalogActionInProgress = false;
     }
@@ -1016,9 +1131,11 @@ export class ParametersPanel implements OnChanges {
         this.backendProyectos.seleccionarCatalogoParametro(this.activeProject.id, catalogId),
       );
       this.selectedParameterCatalogId = response.catalogo_parametro_activo_id ?? catalogId;
+      this.emitToolbarState();
       this.parameterCatalogChanged.emit();
     } catch (error) {
       this.selectedParameterCatalogId = this.activeParameterCatalogId;
+      this.emitToolbarState();
       this.actionError = this.resolveErrorMessage(error, this.t('parameters.catalog.errorSelect'));
     } finally {
       this.parameterCatalogActionInProgress = false;
@@ -1029,35 +1146,6 @@ export class ParametersPanel implements OnChanges {
     this.selectedCostCatalogId = catalogId;
     this.synchronizeCostSelections();
     this.emitToolbarState();
-  }
-
-  async onParameterActiveToggle(parameterRow: ParametroB5DOrm, nextValue: boolean): Promise<void> {
-    if (!this.activeProject) return;
-    if (this.savingParameterActiveById.has(parameterRow.id)) return;
-    this.actionError = '';
-    this.savingParameterActiveById.add(parameterRow.id);
-
-    const previousValue = parameterRow.activo;
-    parameterRow.activo = nextValue;
-    this.synchronizeDescriptionSelections();
-    this.emitToolbarState();
-
-    try {
-      const updated = await firstValueFrom(
-        this.backendProyectos.actualizarParametro(this.activeProject.id, parameterRow.id, { activo: nextValue }),
-      );
-      this.workParameters = this.workParameters.map((row) => (row.id === updated.id ? { ...updated } : row));
-      this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
-      this.synchronizeDescriptionSelections();
-      this.emitToolbarState();
-    } catch (error) {
-      parameterRow.activo = previousValue;
-      this.synchronizeDescriptionSelections();
-      this.emitToolbarState();
-      this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.updateState'));
-    } finally {
-      this.savingParameterActiveById.delete(parameterRow.id);
-    }
   }
 
   isSavingParameterActive(parameterId: number): boolean {
@@ -1086,6 +1174,7 @@ export class ParametersPanel implements OnChanges {
         }),
       );
       this.workParameters = this.workParameters.map((row) => (row.id === updated.id ? { ...updated } : row));
+      this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.synchronizeDescriptionSelections();
       this.emitToolbarState();
@@ -1094,14 +1183,6 @@ export class ParametersPanel implements OnChanges {
     } finally {
       this.savingParameterActiveById.delete(parameterRow.id);
     }
-  }
-
-  parseOptionalNumber(value: unknown): number | null {
-    if (value == null) return null;
-    const normalized = String(value).trim();
-    if (!normalized) return null;
-    const numericValue = Number(normalized.replace(',', '.'));
-    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   isDescriptionCandidateSelected(parameterId: number, boqRow: BoqExtractedRow): boolean {
@@ -1136,6 +1217,7 @@ export class ParametersPanel implements OnChanges {
     this.creatingAnchorParameterId = primarySelectedId;
     this.creatingDraft = this.getPrefilledDraft(primarySelectedId);
     this.creatingParameterInline = true;
+    this.syncParameterListVirtualWindow();
     this.emitToolbarState();
   }
 
@@ -1147,6 +1229,7 @@ export class ParametersPanel implements OnChanges {
     this.creatingParameterInline = false;
     this.creatingAnchorParameterId = null;
     this.creatingDraft = this.getEmptyDraft();
+    this.syncParameterListVirtualWindow();
     this.emitToolbarState();
   }
 
@@ -1176,9 +1259,11 @@ export class ParametersPanel implements OnChanges {
       nextRows.splice(insertIndex, 0, created);
       this.workParameters = nextRows;
       this.selectedParameterIds = new Set([created.id]);
+      this.editingParameterId = created.id;
       this.creatingParameterInline = false;
       this.creatingAnchorParameterId = null;
       this.creatingDraft = this.getEmptyDraft();
+      this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.emitToolbarState();
     } catch (error) {
@@ -1200,6 +1285,8 @@ export class ParametersPanel implements OnChanges {
       );
       this.workParameters = this.workParameters.filter((row) => !this.selectedParameterIds.has(row.id));
       this.selectedParameterIds.clear();
+      this.editingParameterId = null;
+      this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.emitToolbarState();
     } catch (error) {
@@ -1210,7 +1297,8 @@ export class ParametersPanel implements OnChanges {
   }
 
   selectAllVisibleRows(): void {
-    this.selectedParameterIds = new Set(this.visibleRows.map((row) => row.id));
+    this.selectedParameterIds = new Set(this.visibleRowsCache.map((row) => row.id));
+    this.editingParameterId = null;
     this.emitToolbarState();
   }
 
@@ -1237,9 +1325,6 @@ export class ParametersPanel implements OnChanges {
     computedTextAlign: string;
     computedFontWeight: string;
   }): void {
-    const conceptKey = String(event.value ?? '').trim();
-    if (!conceptKey || !this.isKnownConceptKey(conceptKey)) return;
-    this.conceptSelectionRequested.emit(conceptKey);
   }
 
   // Returns the zoom factor used by any pane in the parameters workspace.
@@ -1281,6 +1366,7 @@ export class ParametersPanel implements OnChanges {
     const nextZoomPercent = this.clamp(zoomPercent, 20, 300);
     if (paneId === 'parameter-list') {
       this.parameterListZoomPercent = nextZoomPercent;
+      this.syncParameterListVirtualWindow();
       return;
     }
     if (paneId === 'description-matches') {
@@ -1290,16 +1376,49 @@ export class ParametersPanel implements OnChanges {
     this.analysisZoomPercent = nextZoomPercent;
   }
 
+  onParameterListScroll(event: Event): void {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    this.syncParameterListVirtualWindow(target.scrollTop, target.clientHeight);
+  }
+
+  private syncParameterListVirtualWindow(scrollTop?: number, viewportHeight?: number): void {
+    if (!this.parameterListVirtualizationEnabled) {
+      this.renderedVisibleRowsCache = this.visibleRowsCache;
+      this.parameterListVirtualTopSpacerHeight = 0;
+      this.parameterListVirtualBottomSpacerHeight = 0;
+      return;
+    }
+
+    const viewport = this.parameterListViewport?.nativeElement ?? null;
+    const nextScrollTop = scrollTop ?? viewport?.scrollTop ?? 0;
+    const nextViewportHeight = viewportHeight ?? viewport?.clientHeight ?? 0;
+    const zoomFactor = this.getPaneZoomFactor('parameter-list');
+    const estimatedRowHeight = Math.max(24, Math.round(this.parameterListVirtualRowHeight * zoomFactor));
+
+    if (nextViewportHeight <= 0) {
+      const initialCount = Math.min(this.visibleRowsCache.length, this.parameterListVirtualOverscan * 2 + 20);
+      this.renderedVisibleRowsCache = this.visibleRowsCache.slice(0, initialCount);
+      this.parameterListVirtualTopSpacerHeight = 0;
+      this.parameterListVirtualBottomSpacerHeight = Math.max(0, (this.visibleRowsCache.length - initialCount) * estimatedRowHeight);
+      return;
+    }
+
+    const startIndex = Math.max(0, Math.floor(nextScrollTop / estimatedRowHeight) - this.parameterListVirtualOverscan);
+    const endIndex = Math.min(
+      this.visibleRowsCache.length,
+      Math.ceil((nextScrollTop + nextViewportHeight) / estimatedRowHeight) + this.parameterListVirtualOverscan,
+    );
+
+    this.renderedVisibleRowsCache = this.visibleRowsCache.slice(startIndex, endIndex);
+    this.parameterListVirtualTopSpacerHeight = startIndex * estimatedRowHeight;
+    this.parameterListVirtualBottomSpacerHeight = Math.max(0, (this.visibleRowsCache.length - endIndex) * estimatedRowHeight);
+  }
+
   resolveAverage(row: ParametroB5DOrm): number | null {
     if (row.promedio != null) return row.promedio;
     if (row.minimo == null || row.maximo == null) return null;
     return (row.minimo + row.maximo) / 2;
-  }
-
-  resolveComparisonLabel(value: ParametroB5DOrm['tipo_comparacion']): string {
-    if (value === 'clave_exacta') return this.t('parameters.comparison.exactCode');
-    if (value === 'clave_parcial') return this.t('parameters.comparison.partialCode');
-    return this.t('parameters.comparison.partialDescription');
   }
 
   formatValue(value: number | null): string {
@@ -1329,7 +1448,8 @@ export class ParametersPanel implements OnChanges {
       selectedLinkIds: [],
       canPasteConcept: false,
       selectedCatalogId: this.activeCatalogId,
-      parametersTotal: this.visibleRows.length,
+      selectedParameterCatalogId: this.selectedParameterCatalogId,
+      parametersTotal: this.visibleRowsCount,
       selectedParameterIds: [...this.selectedParameterIds],
       parameterListVisible: this.parameterListVisible,
       parameterDescriptionMatchesVisible: this.descriptionMatchesVisible,
@@ -1341,6 +1461,31 @@ export class ParametersPanel implements OnChanges {
   private syncParameterTablePreferences(): void {
     ensureTablePreferencesColumns(this.parameterTablePreferences, this.parameterTableColumns);
     this.persistParameterTablePreferences();
+  }
+
+  private rebuildVisibleRows(): void {
+    const filteredByToolbar = this.workParameters.filter((row) => {
+      if (row.tipo_parametro !== this.selectedParameterType) return false;
+      if (this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) return false;
+      if (this.selectedWorkType !== 'all' && (row.tipo_obra ?? '') !== this.selectedWorkType) return false;
+      if (this.selectedZone !== 'all' && (row.zona ?? '') !== this.selectedZone) return false;
+      return true;
+    });
+    this.visibleRowsCache = applyTableFilters(filteredByToolbar, this.parameterTableColumns, this.parameterTablePreferences);
+    this.visibleRowsCount = this.visibleRowsCache.length;
+    if (this.editingParameterId != null && !this.visibleRowsCache.some((row) => row.id === this.editingParameterId)) {
+      this.editingParameterId = null;
+    }
+    this.syncParameterListVirtualWindow();
+  }
+
+  private collectParameterMetadataOptions(selector: (row: ParametroB5DOrm) => string | null | undefined): string[] {
+    const options = new Set<string>();
+    for (const row of this.workParameters) {
+      const value = (selector(row) ?? '').trim();
+      if (value) options.add(value);
+    }
+    return [...options].sort((first, second) => first.localeCompare(second, 'es'));
   }
 
   private restoreParameterTablePreferences(): void {
@@ -1383,12 +1528,6 @@ export class ParametersPanel implements OnChanges {
     };
   }
 
-  private isKnownConceptKey(conceptKey: string): boolean {
-    const normalizedConceptKey = conceptKey.trim().toLowerCase();
-    if (!normalizedConceptKey) return false;
-    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
-  }
-
   private getPrefilledDraft(selectedParameterId: number | null): ParameterDraftRow {
     const selected = selectedParameterId == null ? null : this.workParameters.find((row) => row.id === selectedParameterId);
     if (!selected) return this.getEmptyDraft();
@@ -1407,7 +1546,7 @@ export class ParametersPanel implements OnChanges {
   }
 
   private getPrimarySelectedRowId(): number | null {
-    const rows = this.visibleRows;
+    const rows = this.visibleRowsCache;
     for (const row of rows) {
       if (this.selectedParameterIds.has(row.id)) return row.id;
     }

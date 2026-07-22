@@ -35,13 +35,6 @@
   @if (b5dMensaje()) {
     <div class="b5d-viewer-screen__b5d-status">
       {{ b5dMensaje() }}
-      @if (importDebugTrace().length) {
-        <div class="b5d-viewer-screen__b5d-status-debug">
-          @for (line of importDebugTrace(); track line) {
-            <div class="b5d-viewer-screen__b5d-status-debug-line">{{ line }}</div>
-          }
-        </div>
-      }
     </div>
   }
 
@@ -454,10 +447,8 @@
               [cuantificacionesB5d]="cuantificacionesB5d()"
               [b5dLoading]="b5dCargando()"
               [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-              [conceptKeys]="b5dConceptKeys()"
               [storageScopeKey]="uiStorageScopeKey"
               (toolbarStateChange)="onBoqToolbarStateChange($event)"
-              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
             />
           }
           @case ('parameters') {
@@ -467,19 +458,17 @@
             [concepts]="b5dConcepts()"
             [catalogs]="b5dCatalogs()"
             [parameterCatalogs]="b5dParameterCatalogs()"
-            [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
-            [activeParameterCatalogId]="proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null"
-            [b5dLoading]="b5dCargando()"
-            [quantifications]="cuantificacionesB5d()"
-            [conceptKeys]="b5dConceptKeys()"
-            [informacionSeleccionada]="sharedSelectionInfo()"
-            [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-            [storageScopeKey]="uiStorageScopeKey"
-            (toolbarStateChange)="onParametersToolbarStateChange($event)"
-            (rowsChange)="onParametersRowsChange($event)"
-            (conceptSelectionRequested)="onConceptSelectionRequested($event)"
-            (parameterCatalogChanged)="onParametersCatalogChanged()"
-          />
+              [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
+              [activeParameterCatalogId]="proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null"
+              [b5dLoading]="b5dCargando()"
+              [quantifications]="cuantificacionesB5d()"
+              [informacionSeleccionada]="sharedSelectionInfo()"
+              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+              [storageScopeKey]="uiStorageScopeKey"
+              (toolbarStateChange)="onParametersToolbarStateChange($event)"
+              (rowsChange)="onParametersRowsChange($event)"
+              (parameterCatalogChanged)="onParametersCatalogChanged()"
+            />
           }
           @case ('report') {
             <app-parameters-report-panel
@@ -490,9 +479,7 @@
               [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
               [b5dLoading]="b5dCargando()"
               [quantifications]="cuantificacionesB5d()"
-              [conceptKeys]="b5dConceptKeys()"
               [storageScopeKey]="uiStorageScopeKey"
-              (conceptSelectionRequested)="onConceptSelectionRequested($event)"
             />
           }
         }
@@ -506,8 +493,7 @@
         [projectId]="proyectoB5dActivo()?.id ?? null"
         [loading]="catalogStructureDialogLoading()"
         (saveRequested)="guardarEstructuraCatalogoV2($event)"
-        (metadataImportRequested)="importarMetadatosCatalogo($event)"
-        (costImportRequested)="importarCostosCatalogo($event)"
+        (importRequested)="importarCatalogoDesdeXdb($event)"
         (closeRequested)="cerrarDialogoEstructuraCatalogo()"
       />
       <app-parameters-import-dialog

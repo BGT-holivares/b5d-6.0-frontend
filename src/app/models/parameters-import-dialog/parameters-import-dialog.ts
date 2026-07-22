@@ -17,6 +17,8 @@ type ParameterImportField =
   | 'tipo_comparacion'
   | 'tipo_parametro'
   | 'tipo_edificacion'
+  | 'tipo_obra'
+  | 'zona'
   | 'unidad'
   | 'minimo'
   | 'maximo'
@@ -84,6 +86,8 @@ const PARAMETER_IMPORT_FIELDS: ParameterImportFieldDefinition[] = [
   { key: 'tipo_comparacion', labelKey: 'parametersImport.field.comparisonType', required: false, defaultValue: 'clave_exacta' },
   { key: 'tipo_parametro', labelKey: 'parametersImport.field.parameterType', required: false, defaultValue: 'cantidad' },
   { key: 'tipo_edificacion', labelKey: 'parametersImport.field.buildingType', required: false, defaultValue: '' },
+  { key: 'tipo_obra', labelKey: 'parametersImport.field.workType', required: false, defaultValue: '' },
+  { key: 'zona', labelKey: 'parametersImport.field.zone', required: false, defaultValue: '' },
   { key: 'unidad', labelKey: 'parametersImport.field.unit', required: false, defaultValue: '' },
   { key: 'minimo', labelKey: 'parametersImport.field.minimum', required: false, defaultValue: '' },
   { key: 'maximo', labelKey: 'parametersImport.field.maximum', required: false, defaultValue: '' },
@@ -97,6 +101,8 @@ const FIELD_HEADER_ALIASES: Record<ParameterImportField, string[]> = {
   tipo_comparacion: ['tipo comparacion', 'tipo de comparacion', 'comparison', 'comparison type', 'comparacion'],
   tipo_parametro: ['tipo parametro', 'tipo de parametro', 'parameter type', 'type', 'parameter'],
   tipo_edificacion: ['tipo edificacion', 'tipo de edificacion', 'building type', 'edificacion'],
+  tipo_obra: ['tipo obra', 'tipo de obra', 'work type', 'obra'],
+  zona: ['zona', 'zone'],
   unidad: ['unidad', 'unit'],
   minimo: ['minimo', 'mínimo', 'minimum', 'min'],
   maximo: ['maximo', 'máximo', 'maximum', 'max'],
@@ -129,6 +135,8 @@ export class ParametersImportDialog implements OnChanges {
   importMessage = '';
   processingMessage = '';
   buildingTypeValue = '';
+  workTypeValue = '';
+  zoneValue = '';
   isWorkbookProcessing = false;
   importInProgress = false;
   selectedSheetIndex = 0;
@@ -225,6 +233,14 @@ export class ParametersImportDialog implements OnChanges {
     return this.t('parametersImport.buildingTypePlaceholder');
   }
 
+  get workTypePlaceholder(): string {
+    return this.t('parametersImport.workTypePlaceholder');
+  }
+
+  get zonePlaceholder(): string {
+    return this.t('parametersImport.zonePlaceholder');
+  }
+
   handleFileChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
@@ -234,6 +250,8 @@ export class ParametersImportDialog implements OnChanges {
     this.importMessage = '';
     this.processingMessage = '';
     this.buildingTypeValue = '';
+    this.workTypeValue = '';
+    this.zoneValue = '';
 
     if (!file) {
       this.resetWorkbookState();
@@ -550,6 +568,8 @@ export class ParametersImportDialog implements OnChanges {
     const tipoComparacionValue = this.getMappedCellValue(row, 'tipo_comparacion');
     const tipoParametroValue = this.getMappedCellValue(row, 'tipo_parametro');
     const tipoEdificacion = this.getFieldValueFromRow(row, 'tipo_edificacion');
+    const tipoObra = this.getFieldValueFromRow(row, 'tipo_obra');
+    const zona = this.getFieldValueFromRow(row, 'zona');
     const unidad = this.getMappedCellValue(row, 'unidad');
 
     return {
@@ -558,6 +578,8 @@ export class ParametersImportDialog implements OnChanges {
       tipo_comparacion: this.parseComparisonType(tipoComparacionValue) ?? 'clave_exacta',
       tipo_parametro: this.parseTipoParametro(tipoParametroValue) ?? 'cantidad',
       tipo_edificacion: tipoEdificacion || null,
+      tipo_obra: tipoObra || null,
+      zona: zona || null,
       unidad: unidad || null,
       minimo: this.parseNumberLike(this.getMappedCellValue(row, 'minimo')),
       maximo: this.parseNumberLike(this.getMappedCellValue(row, 'maximo')),
@@ -571,12 +593,22 @@ export class ParametersImportDialog implements OnChanges {
     if (!clave) return null;
     const tipoParametro = payload.tipo_parametro ?? 'cantidad';
     const tipoEdificacion = this.normalizeText(payload.tipo_edificacion ?? '');
+    const tipoObra = this.normalizeText(payload.tipo_obra ?? '');
+    const zona = this.normalizeText(payload.zona ?? '');
 
     const exactMatch = this.existingParameters.find((parameter) => {
       const parameterClave = this.normalizeText(parameter.clave ?? '');
       const parameterTipo = parameter.tipo_parametro ?? 'cantidad';
       const parameterEdificacion = this.normalizeText(parameter.tipo_edificacion ?? '');
-      return parameterClave === clave && parameterTipo === tipoParametro && parameterEdificacion === tipoEdificacion;
+      const parameterTipoObra = this.normalizeText(parameter.tipo_obra ?? '');
+      const parameterZona = this.normalizeText(parameter.zona ?? '');
+      return (
+        parameterClave === clave &&
+        parameterTipo === tipoParametro &&
+        parameterEdificacion === tipoEdificacion &&
+        parameterTipoObra === tipoObra &&
+        parameterZona === zona
+      );
     });
     if (exactMatch) return exactMatch;
 
@@ -597,6 +629,8 @@ export class ParametersImportDialog implements OnChanges {
       (existing.tipo_comparacion ?? 'clave_exacta') === (payload.tipo_comparacion ?? 'clave_exacta') &&
       (existing.tipo_parametro ?? 'cantidad') === (payload.tipo_parametro ?? 'cantidad') &&
       this.normalizeText(existing.tipo_edificacion ?? '') === this.normalizeText(payload.tipo_edificacion ?? '') &&
+      this.normalizeText(existing.tipo_obra ?? '') === this.normalizeText(payload.tipo_obra ?? '') &&
+      this.normalizeText(existing.zona ?? '') === this.normalizeText(payload.zona ?? '') &&
       this.normalizeText(existing.unidad ?? '') === this.normalizeText(payload.unidad ?? '') &&
       this.parseNumberLike(existing.minimo) === (payload.minimo ?? null) &&
       this.parseNumberLike(existing.maximo) === (payload.maximo ?? null) &&
@@ -699,10 +733,7 @@ export class ParametersImportDialog implements OnChanges {
   }
 
   private getFieldValueFromRow(row: WorkbookRow, field: ParameterImportField): string {
-    if (field === 'tipo_edificacion') {
-      return this.getMappedCellValue(row, field) || this.buildingTypeValue.trim() || '';
-    }
-    return this.getMappedCellValue(row, field) || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
+    return this.getMappedCellValue(row, field) || this.getDefaultFieldValue(field);
   }
 
   // Returns the preview value and marks whether it comes from a default.
@@ -715,10 +746,7 @@ export class ParametersImportDialog implements OnChanges {
       };
     }
 
-    const defaultValue =
-      field === 'tipo_edificacion'
-        ? this.buildingTypeValue.trim() || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || ''
-        : this.fieldDefinitions.find((item) => item.key === field)?.defaultValue ?? '';
+    const defaultValue = this.getDefaultFieldValue(field);
     return {
       value: defaultValue || '-',
       usesDefaultValue: !!defaultValue,
@@ -847,6 +875,8 @@ export class ParametersImportDialog implements OnChanges {
       tipo_comparacion: null,
       tipo_parametro: null,
       tipo_edificacion: null,
+      tipo_obra: null,
+      zona: null,
       unidad: null,
       minimo: null,
       maximo: null,
@@ -865,6 +895,8 @@ export class ParametersImportDialog implements OnChanges {
     this.selectedHeaderCandidateRowNumber = null;
     this.fieldMappings = this.createEmptyFieldMappings();
     this.buildingTypeValue = '';
+    this.workTypeValue = '';
+    this.zoneValue = '';
   }
 
   private resetState(): void {
@@ -880,5 +912,18 @@ export class ParametersImportDialog implements OnChanges {
       if (typeof message === 'string' && message.trim()) return message;
     }
     return fallback;
+  }
+
+  private getDefaultFieldValue(field: ParameterImportField): string {
+    if (field === 'tipo_edificacion') {
+      return this.buildingTypeValue.trim() || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
+    }
+    if (field === 'tipo_obra') {
+      return this.workTypeValue.trim() || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
+    }
+    if (field === 'zona') {
+      return this.zoneValue.trim() || this.fieldDefinitions.find((item) => item.key === field)?.defaultValue || '';
+    }
+    return this.fieldDefinitions.find((item) => item.key === field)?.defaultValue ?? '';
   }
 }

@@ -67,10 +67,8 @@ export class BoqPanel implements OnChanges, OnDestroy {
   @Input() cuantificacionesB5d: CuantificacionB5DOrm[] = [];
   @Input() b5dLoading = false;
   @Input() tableFiltersVisible = false;
-  @Input() conceptKeys: string[] = [];
   @Input() storageScopeKey = 'anonymous';
   @Output() toolbarStateChange = new EventEmitter<HomeToolbarState>();
-  @Output() conceptSelectionRequested = new EventEmitter<string>();
 
   readonly quantificationTableColumns: TableColumnDefinition<CuantificacionB5DOrm>[] = [
     {
@@ -292,11 +290,6 @@ export class BoqPanel implements OnChanges, OnDestroy {
     this.selectedWorkbookCellFormula = event.formula;
     this.selectedWorkbookRowNumber = event.row;
     this.selectedWorkbookColumnNumber = event.col;
-
-    const conceptKey = String(event.value ?? '').trim();
-    if (conceptKey && this.isKnownConceptKey(conceptKey)) {
-      this.conceptSelectionRequested.emit(conceptKey);
-    }
   }
 
   onWorkbookZoomRequested(direction: 'in' | 'out'): void {
@@ -931,12 +924,6 @@ export class BoqPanel implements OnChanges, OnDestroy {
         this.changeDetectorRef.detectChanges();
       }
     }
-  }
-
-  private isKnownConceptKey(conceptKey: string): boolean {
-    const normalizedConceptKey = conceptKey.trim().toLowerCase();
-    if (!normalizedConceptKey) return false;
-    return this.conceptKeys.some((candidateKey) => candidateKey.trim().toLowerCase() === normalizedConceptKey);
   }
 
   private clamp(value: number, minValue: number, maxValue: number): number {

@@ -138,6 +138,8 @@ export interface ParametroB5DOrm {
   tipo_comparacion: TipoComparacionParametroOrm;
   tipo_parametro: TipoParametroOrm;
   tipo_edificacion: string | null;
+  tipo_obra: string | null;
+  zona: string | null;
   unidad: string | null;
   minimo: number | null;
   maximo: number | null;

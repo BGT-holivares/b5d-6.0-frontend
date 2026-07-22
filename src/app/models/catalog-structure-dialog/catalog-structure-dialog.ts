@@ -1,11 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { CatalogMetadataOrm, CatalogoB5DOrm } from '../../types/b5d-orm';
 import { BackendProyectosService, type PrevisualizarCostosCatalogoAxaResponse } from '../../services/backend-proyectos.service';
 import { I18nService } from '../../utils/i18n/i18n.service';
-import { isB5dDebugEnabled, logB5dDebug } from '../../utils/debug/b5d-debug';
+import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import { CATALOG_STRUCTURE_DIALOG_TRANSLATIONS } from './catalog-structure-dialog.translations';
 
 type CatalogStructureMode = 'create' | 'info';
@@ -33,7 +33,7 @@ type CatalogCostPreviewRow = PrevisualizarCostosCatalogoAxaResponse['preview']['
   templateUrl: './catalog-structure-dialog.html',
   styleUrl: './catalog-structure-dialog.scss',
 })
-export class CatalogStructureDialog implements OnChanges {
+export class CatalogStructureDialog implements OnChanges, OnDestroy {
   @Input() visible = false;
   @Input() mode: CatalogStructureMode = 'create';
   @Input() catalog: CatalogoB5DOrm | null = null;
@@ -41,24 +41,24 @@ export class CatalogStructureDialog implements OnChanges {
   @Input() projectId: number | null = null;
   @Input() loading = false;
   @Output() saveRequested = new EventEmitter<CatalogStructureDraft>();
-  @Output() metadataImportRequested = new EventEmitter<File>();
-  @Output() costImportRequested = new EventEmitter<CatalogCostImportDraft>();
+  @Output() importRequested = new EventEmitter<CatalogCostImportDraft>();
   @Output() closeRequested = new EventEmitter<void>();
 
   readonly i18n = inject(I18nService);
+  readonly globalTranslations = GLOBAL_TRANSLATIONS;
   readonly translations = CATALOG_STRUCTURE_DIALOG_TRANSLATIONS;
   private readonly backendProyectos = inject(BackendProyectosService);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   formDraft: CatalogStructureDraft = this.createEmptyDraft();
-  metadataArchivo: File | null = null;
-  costArchivo: File | null = null;
   costPreviewRows: CatalogCostPreviewRow[] = [];
   costPreviewMessage = '';
-  costPreviewDebugMessage = '';
   costValidationMessage = '';
   costPreviewLoading = false;
+  costPreviewProgress = 0;
   validationMessage = '';
   private costPreviewRequestId = 0;
+  private costPreviewProgressTimer: ReturnType<typeof setInterval> | null = null;
   private selectedCostConceptIds: number[] = [];
   private lastCatalogId: number | null = null;
 
@@ -82,7 +82,10 @@ export class CatalogStructureDialog implements OnChanges {
   }
 
   get selectedFileName(): string {
-    return this.formDraft.archivo?.name || this.catalog?.catalogo_externo || '';
+    if (this.mode === 'create') {
+      return this.formDraft.archivo?.name || this.catalog?.catalogo_externo || '';
+    }
+    return this.formDraft.archivo?.name || '';
   }
 
   get copySourceCatalogs(): CatalogoB5DOrm[] {
@@ -93,20 +96,8 @@ export class CatalogStructureDialog implements OnChanges {
     return this.catalog?.catalog_metadata ?? null;
   }
 
-  get selectedMetadataFileName(): string {
-    return this.metadataArchivo?.name || '';
-  }
-
-  get selectedCostFileName(): string {
-    return this.costArchivo?.name || '';
-  }
-
   get canCopyLinks(): boolean {
     return this.copySourceCatalogs.length > 0;
-  }
-
-  get isDebugEnabled(): boolean {
-    return isB5dDebugEnabled();
   }
 
   get selectedCostCount(): number {
@@ -125,8 +116,8 @@ export class CatalogStructureDialog implements OnChanges {
     return this.costPreviewRows.length > 0;
   }
 
-  get canImportCosts(): boolean {
-    return !!this.projectId && !!this.catalog && !!this.costArchivo && !this.costPreviewLoading && this.hasCostPreview;
+  get canImport(): boolean {
+    return !!this.projectId && !!this.catalog && !!this.formDraft.archivo && !this.costPreviewLoading && this.hasCostPreview && this.selectedCostCount > 0;
   }
 
   private toNumericValue(value: unknown): number | null {
@@ -143,37 +134,24 @@ export class CatalogStructureDialog implements OnChanges {
     return conceptoId != null && this.selectedCostConceptIds.includes(conceptoId);
   }
 
-  // Stores the selected PlanAXA file and clears the validation message.
+  // Stores the selected XDB file and clears the validation message.
   handleFileChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.formDraft.archivo = input.files?.[0] ?? null;
     this.validationMessage = '';
-    input.value = '';
-  }
-
-  // Stores the selected XDB file for metadata-only imports.
-  handleMetadataFileChange(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.metadataArchivo = input.files?.[0] ?? null;
-    this.validationMessage = '';
-    input.value = '';
-  }
-
-  // Stores the selected XDB file for cost imports and refreshes the preview.
-  handleCostFileChange(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.costArchivo = input.files?.[0] ?? null;
-    this.costPreviewRequestId += 1;
-    this.costPreviewRows = [];
-    this.costPreviewMessage = '';
-    this.costPreviewDebugMessage = '';
     this.costValidationMessage = '';
-    this.selectedCostConceptIds = [];
-    input.value = '';
-
-    if (this.costArchivo) {
-      void this.refreshCostPreview();
+    if (this.mode === 'info') {
+      this.costPreviewRequestId += 1;
+      this.stopCostPreviewProgress();
+      this.costPreviewRows = [];
+      this.costPreviewMessage = '';
+      this.selectedCostConceptIds = [];
+      this.costPreviewProgress = 0;
+      if (this.formDraft.archivo) {
+        void this.refreshCostPreview();
+      }
     }
+    input.value = '';
   }
 
   // Enables or disables the link-copy option and keeps the source selection valid.
@@ -223,30 +201,15 @@ export class CatalogStructureDialog implements OnChanges {
     });
   }
 
-  // Emits a metadata import request when the user selected a source XDB.
-  submitMetadataImport(): void {
-    if (!this.metadataArchivo) {
-      this.validationMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.requiredMetadataFile');
-      return;
-    }
-
-    this.metadataImportRequested.emit(this.metadataArchivo);
-  }
-
-  // Emits the cost import request with the rows the user approved in the preview.
-  submitCostImport(): void {
-    if (!this.costArchivo) {
-      this.costValidationMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.requiredCostFile');
-      return;
-    }
-
-    if (!this.selectedCostConceptIds.length) {
+  // Emits the combined metadata and cost import request when the data is ready.
+  submitImport(): void {
+    if (!this.formDraft.archivo || !this.selectedCostConceptIds.length) {
       this.costValidationMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.requiredCostSelection');
       return;
     }
 
-    this.costImportRequested.emit({
-      archivo: this.costArchivo,
+    this.importRequested.emit({
+      archivo: this.formDraft.archivo,
       conceptos_seleccionados: [...this.selectedCostConceptIds],
     });
   }
@@ -287,6 +250,7 @@ export class CatalogStructureDialog implements OnChanges {
 
   // Resets the dialog form to the selected catalog or to an empty draft.
   private resetDraft(): void {
+    this.stopCostPreviewProgress();
     if (this.mode === 'info' && this.catalog) {
       this.lastCatalogId = this.catalog.id;
       this.formDraft = {
@@ -298,25 +262,21 @@ export class CatalogStructureDialog implements OnChanges {
         copiar_vinculos: false,
         copiar_vinculos_desde_catalogo_id: null,
       };
-      this.metadataArchivo = null;
-      this.costArchivo = null;
       this.costPreviewRows = [];
       this.costPreviewMessage = '';
-      this.costPreviewDebugMessage = '';
       this.costValidationMessage = '';
       this.costPreviewLoading = false;
+      this.costPreviewProgress = 0;
       this.selectedCostConceptIds = [];
       this.costPreviewRequestId += 1;
     } else if (this.mode === 'create') {
       this.lastCatalogId = null;
       this.formDraft = this.createEmptyDraft();
-      this.metadataArchivo = null;
-      this.costArchivo = null;
       this.costPreviewRows = [];
       this.costPreviewMessage = '';
-      this.costPreviewDebugMessage = '';
       this.costValidationMessage = '';
       this.costPreviewLoading = false;
+      this.costPreviewProgress = 0;
       this.selectedCostConceptIds = [];
       this.costPreviewRequestId += 1;
     }
@@ -325,9 +285,10 @@ export class CatalogStructureDialog implements OnChanges {
 
   // Loads the preview rows for the currently selected cost XDB.
   private async refreshCostPreview(): Promise<void> {
-    if (this.mode !== 'info' || !this.visible || !this.projectId || !this.catalog || !this.costArchivo) return;
+    if (this.mode !== 'info' || !this.visible || !this.projectId || !this.catalog || !this.formDraft.archivo) return;
 
     const requestId = ++this.costPreviewRequestId;
+    this.startCostPreviewProgress();
     this.costPreviewLoading = true;
     this.costPreviewMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.costPreviewLoading');
     this.costValidationMessage = '';
@@ -335,7 +296,7 @@ export class CatalogStructureDialog implements OnChanges {
     try {
       const response = await firstValueFrom(
         this.backendProyectos.previsualizarCostosCatalogoAxa(this.projectId, this.catalog.id, {
-          archivo: this.costArchivo,
+          archivo: this.formDraft.archivo,
         }),
       );
       if (requestId !== this.costPreviewRequestId) return;
@@ -347,60 +308,48 @@ export class CatalogStructureDialog implements OnChanges {
       this.costPreviewMessage = this.costPreviewRows.length
         ? this.i18n.translateForComponent(this.translations, 'catalogDialog.costPreviewReady')
         : this.i18n.translateForComponent(this.translations, 'catalogDialog.costPreviewEmpty');
-      logB5dDebug('catalog-structure-dialog: cost preview received', {
-        projectId: this.projectId,
-        catalogId: this.catalog.id,
-        summary: response.summary,
-        previewCount: this.costPreviewRows.length,
-        selectedCount: this.selectedCostConceptIds.length,
-        importableCount: this.importableCostCount,
-        sample: this.costPreviewRows.slice(0, 3).map((row) => ({
-          firma: row.firma,
-          clave: row.clave,
-          catalogo_concepto_id: row.catalogo_concepto_id,
-          puede_importarse: row.puede_importarse,
-          seleccionado: row.seleccionado,
-          motivo: row.motivo,
-        })),
-      });
-      this.costPreviewDebugMessage = isB5dDebugEnabled() ? this.buildCostPreviewDebugMessage(response) : '';
     } catch (error) {
       if (requestId !== this.costPreviewRequestId) return;
       this.costPreviewRows = [];
       this.selectedCostConceptIds = [];
       const fallbackMessage = this.i18n.translateForComponent(this.translations, 'catalogDialog.costPreviewError');
       this.costPreviewMessage = this.resolveErrorMessage(error, fallbackMessage);
-      this.costPreviewDebugMessage = isB5dDebugEnabled()
-        ? this.resolveErrorMessage(error, 'Error al cargar la vista previa de costos.')
-        : '';
       this.costValidationMessage = '';
-      logB5dDebug('catalog-structure-dialog: cost preview error', error);
     } finally {
       if (requestId !== this.costPreviewRequestId) return;
       this.costPreviewLoading = false;
+      this.costPreviewProgress = 100;
+      this.stopCostPreviewProgress();
+      this.changeDetectorRef.detectChanges();
     }
   }
 
-  private buildCostPreviewDebugMessage(response: PrevisualizarCostosCatalogoAxaResponse): string {
-    const preview = response.preview.resultados;
-    const sample = preview.slice(0, 3).map((row, index) => {
-      const parts = [
-        `${index + 1}. firma=${row.firma || '-'}`,
-        `clave=${row.clave || '-'}`,
-        `catId=${row.catalogo_concepto_id ?? '-'}`,
-        `sel=${row.seleccionado ? 'si' : 'no'}`,
-        `importable=${row.puede_importarse ? 'si' : 'no'}`,
-      ];
-      if (row.motivo) {
-        parts.push(`motivo=${row.motivo}`);
+  private startCostPreviewProgress(): void {
+    this.stopCostPreviewProgress();
+    this.costPreviewProgress = 10;
+    this.changeDetectorRef.detectChanges();
+    const startedAt = Date.now();
+    this.costPreviewProgressTimer = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      let nextProgress = 10;
+      if (elapsed < 1200) {
+        nextProgress = 10 + elapsed / 40;
+      } else if (elapsed < 4200) {
+        nextProgress = 40 + (elapsed - 1200) / 65;
+      } else {
+        const tailElapsed = elapsed - 4200;
+        nextProgress = 86 + 13 * (1 - Math.exp(-tailElapsed / 180000));
       }
-      return parts.join(' | ');
-    });
-    return [
-      `summary.count=${response.summary.count} matched=${response.summary.matched} unmatched=${response.summary.unmatched}`,
-      `preview.length=${preview.length} selected=${this.selectedCostConceptIds.length} importable=${this.importableCostCount}`,
-      ...sample,
-    ].join('\n');
+      this.costPreviewProgress = Math.min(99.5, nextProgress);
+      this.changeDetectorRef.detectChanges();
+    }, 150);
+  }
+
+  private stopCostPreviewProgress(): void {
+    if (this.costPreviewProgressTimer) {
+      clearInterval(this.costPreviewProgressTimer);
+      this.costPreviewProgressTimer = null;
+    }
   }
 
   private resolveErrorMessage(error: unknown, fallback: string): string {
@@ -423,5 +372,9 @@ export class CatalogStructureDialog implements OnChanges {
       copiar_vinculos: false,
       copiar_vinculos_desde_catalogo_id: null,
     };
+  }
+
+  ngOnDestroy(): void {
+    this.stopCostPreviewProgress();
   }
 }

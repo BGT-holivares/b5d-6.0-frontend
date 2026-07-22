@@ -57,6 +57,9 @@ export type ToolbarActionId =
   | 'parameter-toggle-list'
   | 'parameter-toggle-matches'
   | 'parameter-toggle-analysis'
+  | 'parameter-catalog-create'
+  | 'parameter-catalog-edit'
+  | 'parameter-catalog-delete'
   | 'import-parameters-excel'
   | 'import-parameters-b5d'
   | 'import-parameters-xdb'
@@ -468,6 +471,27 @@ export class Toolbar {
         visible: activeBottomTab === 'parameters',
         buttons: [
           {
+            labelKey: 'toolbar.home.createParameterCatalog',
+            iconSrc: 'assets/images/AddFile_32x32.png',
+            action: 'parameter-catalog-create',
+            disabled: this.isHomeActionDisabled('parameter-catalog-create'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.editParameterCatalog',
+            iconSrc: 'assets/images/InfoFile_32x32.png',
+            action: 'parameter-catalog-edit',
+            disabled: this.isHomeActionDisabled('parameter-catalog-edit'),
+            variant: 'large',
+          },
+          {
+            labelKey: 'toolbar.home.deleteParameterCatalog',
+            iconSrc: 'assets/images/DeleteList_32x32.png',
+            action: 'parameter-catalog-delete',
+            disabled: this.isHomeActionDisabled('parameter-catalog-delete'),
+            variant: 'large',
+          },
+          {
             labelKey: 'toolbar.home.importParameters',
             iconSrc: 'assets/images/ImportExcel_32x32.png',
             action: 'import-parameters-excel',
@@ -620,6 +644,10 @@ export class Toolbar {
       if (actionId === 'home-remove-item') return !hasParameterSelection;
       if (actionId === 'home-select-all') return (state.parametersTotal ?? 0) === 0;
       if (actionId === 'home-calc-parameter') return false;
+      if (actionId === 'parameter-catalog-create') return !this.activeProject;
+      if (actionId === 'parameter-catalog-edit' || actionId === 'parameter-catalog-delete') {
+        return !this.activeProject || state.selectedParameterCatalogId == null;
+      }
       if (actionId === 'import-parameters-excel') return !this.activeProject;
       if (actionId === 'import-parameters-b5d') return !this.activeProject;
       if (actionId === 'import-parameters-xdb') return !this.activeProject;

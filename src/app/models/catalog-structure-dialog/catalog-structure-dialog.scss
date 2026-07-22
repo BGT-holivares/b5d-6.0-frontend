@@ -284,6 +284,45 @@
   font-size: var(--font-size-xs);
 }
 
+.b5d-catalog-dialog__message--info {
+  border-color: var(--b5d-border-info-strong);
+  background: var(--bg-soft);
+  color: var(--b5d-brand-primary-strong);
+}
+
+.b5d-catalog-dialog__message--success {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.b5d-catalog-dialog__progress {
+  display: grid;
+  gap: 6px;
+}
+
+.b5d-catalog-dialog__progress-track {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-chip);
+}
+
+.b5d-catalog-dialog__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f7941d 0%, var(--primary-color) 100%);
+  transition: width 150ms linear;
+}
+
+.b5d-catalog-dialog__progress-caption {
+  color: var(--b5d-brand-primary-strong);
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  text-align: right;
+}
+
 .b5d-catalog-dialog__footer {
   display: flex;
   flex-wrap: wrap;
