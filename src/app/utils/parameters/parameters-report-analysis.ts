@@ -8,6 +8,7 @@ interface ReportComparisonOptions {
   wbsLevel?: number;
   parameterScope?: ReportParameterScope;
   decimalPlaces?: number;
+  projectSizeM2?: number | null;
   manualWbsConceptSelectionByParameterId?: Map<number, number>;
   manualParameterSelectionByConceptKey?: Map<string, number>;
   parameterBuildingType?: string;
@@ -33,7 +34,7 @@ export type BoqExtractedRow = {
   conceptKey?: string;
 };
 
-export type ReportCategoryKey = 'in-range' | 'under-limit' | 'above-limit' | 'without-parameter';
+export type ReportCategoryKey = 'correct' | 'review' | 'critical' | 'no-data';
 
 export type ReportResultKind = 'ok' | 'warning' | 'error' | 'none';
 
@@ -95,10 +96,10 @@ export interface ReportSummarySlice {
 
 export interface ReportSummaryBlock {
   total: number;
-  inRange: number;
-  underLimit: number;
-  aboveLimit: number;
-  withoutParameter: number;
+  correct: number;
+  review: number;
+  critical: number;
+  noData: number;
   slices: ReportSummarySlice[];
   background: string;
 }
@@ -107,10 +108,18 @@ export interface QuantityReportRow extends BoqExtractedRow {
   parameterId: number | null;
   parametro: string;
   parametroUnidad: string;
+  conceptoCatalogoId: number | null;
+  conceptoCatalogo: string;
+  conceptoCatalogoCantidad: string;
+  conceptoCatalogoUnidad: string;
+  cantidadPorM2: string;
   evaluado: string;
   rango: string;
   diferencia: string;
   resultado: string;
+  estado: string;
+  observacion: string;
+  state: ReportCategoryKey;
   kind: ReportResultKind;
 }
 
@@ -120,11 +129,15 @@ export interface CostReportRow extends BoqExtractedRow {
   parametroUnidad: string;
   conceptoCostoId: number | null;
   conceptoCosto: string;
+  conceptoCostoUnidad: string;
   costoUnitario: string;
   evaluado: string;
   rango: string;
   diferencia: string;
   resultado: string;
+  estado: string;
+  observacion: string;
+  state: ReportCategoryKey;
   kind: ReportResultKind;
 }
 
@@ -144,10 +157,10 @@ export interface ParametersReportData {
 }
 
 const SUMMARY_COLORS: Record<ReportCategoryKey, string> = {
-  'in-range': '#2f855a',
-  'under-limit': '#d69e2e',
-  'above-limit': '#c53030',
-  'without-parameter': '#718096',
+  correct: '#2f855a',
+  review: '#d69e2e',
+  critical: '#c53030',
+  'no-data': '#718096',
 };
 
 export function extractBoqRows(cells: WorkbookCellOrm[]): BoqExtractedRow[] {
@@ -215,6 +228,7 @@ export function buildParametersReportData(
   const wbsLevel = normalizeWbsLevel(options.wbsLevel);
   const parameterScope = options.parameterScope ?? 'all';
   const decimalPlaces = normalizeDecimalPlaces(options.decimalPlaces);
+  const projectSizeM2 = normalizeProjectSize(options.projectSizeM2);
   const manualWbsConceptSelectionByParameterId = options.manualWbsConceptSelectionByParameterId ?? new Map<number, number>();
   const manualParameterSelectionByConceptKey = options.manualParameterSelectionByConceptKey ?? new Map<string, number>();
   const parameterBuildingType = normalizeFilterValue(options.parameterBuildingType);
@@ -235,9 +249,15 @@ export function buildParametersReportData(
   const selectedCatalogConcepts = selectedCatalogId == null ? concepts : concepts.filter((row) => row.catalogo_id === selectedCatalogId);
   const catalogWbsIndex = comparisonGranularity === 'wbs' ? buildCatalogWbsIndex(selectedCatalogConcepts) : null;
   const quantityRowsSource = includeQuantity ? prepareBoqRowsForComparison(boqRows, comparisonGranularity, wbsLevel) : [];
-  const costRowsSource = includeCost ? prepareCatalogRowsForComparison(selectedCatalogConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex) : [];
+  const selectedCostConcepts =
+    comparisonGranularity === 'wbs'
+      ? catalogWbsIndex?.conceptsByDepth.get(wbsLevel) ?? []
+      : selectedCatalogConcepts;
+  const costRowsSource = includeCost
+    ? prepareCatalogRowsForComparison(selectedCostConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex)
+    : [];
   const percentCostRowsSource = includePercentCost
-    ? prepareCatalogRowsForComparison(selectedCatalogConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex)
+    ? prepareCatalogRowsForComparison(selectedCostConcepts, comparisonGranularity, wbsLevel, catalogWbsIndex)
     : [];
 
   const quantityRows: QuantityReportRow[] = [];
@@ -246,31 +266,37 @@ export function buildParametersReportData(
   const unassignedRows: UnassignedReportRow[] = [];
 
   const quantityCounts: Record<ReportCategoryKey, number> = {
-    'in-range': 0,
-    'under-limit': 0,
-    'above-limit': 0,
-    'without-parameter': 0,
+    correct: 0,
+    review: 0,
+    critical: 0,
+    'no-data': 0,
   };
   const costCounts: Record<ReportCategoryKey, number> = {
-    'in-range': 0,
-    'under-limit': 0,
-    'above-limit': 0,
-    'without-parameter': 0,
+    correct: 0,
+    review: 0,
+    critical: 0,
+    'no-data': 0,
   };
   const percentCostCounts: Record<ReportCategoryKey, number> = {
-    'in-range': 0,
-    'under-limit': 0,
-    'above-limit': 0,
-    'without-parameter': 0,
+    correct: 0,
+    review: 0,
+    critical: 0,
+    'no-data': 0,
   };
 
   for (const quantityRow of quantityRowsSource) {
     const quantityParameter = findMatchingParameter(quantityRow, activeQuantityParameters);
-    const quantityResult = buildQuantityResult(quantityRow, quantityParameter, decimalPlaces);
+    const matchedConcept = resolveCatalogConceptForRow(
+      quantityRow,
+      selectedCatalogConcepts,
+      comparisonGranularity,
+      wbsLevel,
+      catalogWbsIndex,
+    );
+
+    const quantityResult = buildQuantityResult(quantityRow, quantityParameter, matchedConcept, decimalPlaces, projectSizeM2);
     quantityCounts[quantityResult.bucket] += 1;
-    if (quantityParameter) {
-      quantityRows.push(quantityResult.row);
-    }
+    quantityRows.push(quantityResult.row);
   }
 
   for (const costRow of costRowsSource) {
@@ -279,25 +305,15 @@ export function buildParametersReportData(
     const manualParameter = manualParameterId != null ? activeCostParameters.find((row) => row.id === manualParameterId) ?? null : null;
     const autoParameter = findMatchingParameter(costRow, activeCostParameters);
     const costParameter = manualParameter ?? autoParameter;
-
-    if (!costParameter) {
-      unassignedRows.push({
-        ...costRow,
-        conceptKey,
-        motivo: 'Sin parametro de costo',
-      });
-      continue;
-    }
-    const costResult = buildCostResult(
+    const matchedConcept = resolveCostConceptForParameter(
       costRow,
-      costParameter,
-      selectedCatalogConcepts,
+      selectedCostConcepts,
       comparisonGranularity,
       wbsLevel,
       catalogWbsIndex,
-      decimalPlaces,
-      manualWbsConceptSelectionByParameterId.get(costParameter?.id ?? -1) ?? null,
+      manualParameterId != null ? manualWbsConceptSelectionByParameterId.get(manualParameterId) ?? null : null,
     );
+    const costResult = buildCostResult(costRow, costParameter, matchedConcept, decimalPlaces);
     costCounts[costResult.bucket] += 1;
     costRows.push(costResult.row);
   }
@@ -308,26 +324,15 @@ export function buildParametersReportData(
     const manualParameter = manualParameterId != null ? activePercentCostParameters.find((row) => row.id === manualParameterId) ?? null : null;
     const autoParameter = findMatchingParameter(costRow, activePercentCostParameters);
     const costParameter = manualParameter ?? autoParameter;
-
-    if (!costParameter) {
-      unassignedRows.push({
-        ...costRow,
-        conceptKey,
-        motivo: 'Sin parametro de costo porcentual',
-      });
-      continue;
-    }
-
-    const costResult = buildCostResult(
+    const matchedConcept = resolveCostConceptForParameter(
       costRow,
-      costParameter,
-      selectedCatalogConcepts,
+      selectedCostConcepts,
       comparisonGranularity,
       wbsLevel,
       catalogWbsIndex,
-      decimalPlaces,
-      manualWbsConceptSelectionByParameterId.get(costParameter?.id ?? -1) ?? null,
+      manualParameterId != null ? manualWbsConceptSelectionByParameterId.get(manualParameterId) ?? null : null,
     );
+    const costResult = buildCostResult(costRow, costParameter, matchedConcept, decimalPlaces);
     percentCostCounts[costResult.bucket] += 1;
     percentCostRows.push(costResult.row);
   }
@@ -399,7 +404,7 @@ function aggregateBoqRows(
     if (!isComparable) continue;
     if (comparisonGranularity === 'individual' && row.cantidad == null) continue;
 
-    const key = buildComparisonKey(row.clave, row.unidad, comparisonGranularity, wbsLevel);
+    const key = buildComparisonKey(row.clave, row.descripcion, row.unidad, comparisonGranularity, wbsLevel);
     if (!key) continue;
 
     const aggregate = aggregates.get(key);
@@ -558,13 +563,19 @@ function buildBoqComparisonRow(
 
 function buildComparisonKey(
   clave: string,
+  descripcion: string,
   unidad: string,
   comparisonGranularity: ReportComparisonGranularity = 'individual',
   wbsLevel = 1,
 ): string {
   const normalizedClave = comparisonGranularity === 'wbs' ? buildWbsComparisonClave(clave, wbsLevel) : normalizeText(clave);
   if (!normalizedClave) return '';
-  if (comparisonGranularity === 'wbs') return normalizedClave;
+  if (comparisonGranularity === 'wbs') {
+    const normalizedDescripcion = normalizeText(descripcion);
+    const normalizedUnidad = normalizeUnit(unidad);
+    if (!normalizedDescripcion || !normalizedUnidad) return '';
+    return `${normalizedClave}::${normalizedDescripcion}::${normalizedUnidad}`;
+  }
 
   const normalizedUnidad = normalizeUnit(unidad);
   if (!normalizedUnidad) return '';
@@ -621,7 +632,7 @@ function prepareBoqRowsForComparison(
 
   const aggregates = new Map<string, BoqExtractedRow & { rowNumbers: number[] }>();
   for (const row of validRows) {
-    const key = buildComparisonKey(row.clave, row.unidad, comparisonGranularity, wbsLevel);
+    const key = buildComparisonKey(row.clave, row.descripcion, row.unidad, comparisonGranularity, wbsLevel);
     if (!key) continue;
 
     const aggregate = aggregates.get(key);
@@ -678,7 +689,7 @@ function prepareCatalogRowsForComparison(
   const aggregates = new Map<string, BoqExtractedRow & { rowNumbers: number[] }>();
   for (const concept of validConcepts) {
     const row = buildCatalogComparisonRow(concept, comparisonGranularity, wbsLevel, catalogWbsIndex);
-    const key = buildCatalogComparisonKey(row.clave, row.unidad, comparisonGranularity);
+    const key = buildCatalogComparisonKey(row.clave, row.descripcion, row.unidad, comparisonGranularity, concept.es_agrupador);
     if (!key) continue;
 
     const aggregate = aggregates.get(key);
@@ -688,7 +699,7 @@ function prepareCatalogRowsForComparison(
         conceptId: comparisonGranularity === 'wbs' ? null : row.conceptId ?? null,
         conceptKey:
           comparisonGranularity === 'wbs'
-            ? getReportConceptKey({ ...row, conceptId: null })
+            ? `${getReportConceptKey({ ...row, conceptId: null })}${concept.es_agrupador ? '::grouping' : ''}`
             : row.conceptKey ?? getReportConceptKey(row),
         rowNumbers: [row.row],
       });
@@ -754,12 +765,19 @@ export function getReportConceptKey(row: BoqExtractedRow): string {
 
 function buildCatalogComparisonKey(
   clave: string,
+  descripcion: string,
   unidad: string,
   comparisonGranularity: ReportComparisonGranularity,
+  isGroupingConcept: boolean | undefined = undefined,
 ): string {
   const normalizedClave = normalizeText(clave);
   if (!normalizedClave) return '';
-  if (comparisonGranularity === 'wbs') return normalizedClave;
+  if (comparisonGranularity === 'wbs') {
+    const normalizedDescripcion = normalizeText(descripcion);
+    const normalizedUnidad = normalizeUnit(unidad);
+    if (!normalizedDescripcion || !normalizedUnidad) return '';
+    return `${normalizedClave}::${normalizedDescripcion}::${normalizedUnidad}${isGroupingConcept ? '::grouping' : ''}`;
+  }
 
   const normalizedUnidad = normalizeUnit(unidad);
   if (!normalizedUnidad) return '';
@@ -819,126 +837,195 @@ function hasRealConceptText(description: string): boolean {
   return filteredWords.length > 0;
 }
 
+function getReportStateLabel(state: ReportCategoryKey): string {
+  switch (state) {
+    case 'correct':
+      return 'Correcto';
+    case 'review':
+      return 'Revisar';
+    case 'critical':
+      return 'Crítico';
+    case 'no-data':
+      return 'Sin datos';
+  }
+}
+
+function getReportStateKind(state: ReportCategoryKey): ReportResultKind {
+  switch (state) {
+    case 'correct':
+      return 'ok';
+    case 'review':
+      return 'warning';
+    case 'critical':
+      return 'error';
+    case 'no-data':
+      return 'none';
+  }
+}
+
+function isValueWithinRange(value: number, minimum: number | null, maximum: number | null): boolean {
+  if (minimum == null && maximum == null) return true;
+  if (minimum != null && value < minimum) return false;
+  if (maximum != null && value > maximum) return false;
+  return true;
+}
+
+function getRangeDistance(value: number, minimum: number | null, maximum: number | null): number {
+  if (minimum == null && maximum == null) return 0;
+  if (minimum != null && value < minimum) return minimum - value;
+  if (maximum != null && value > maximum) return value - maximum;
+  return 0;
+}
+
+function getRangeSpan(minimum: number | null, maximum: number | null): number {
+  if (minimum == null || maximum == null) return 0;
+  return Math.max(Math.abs(maximum - minimum), 0);
+}
+
+function normalizeProjectSize(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
 function buildQuantityResult(
   boqRow: BoqExtractedRow,
   matchedParameter: ParametroB5DOrm | null,
+  matchedConcept: ConceptoB5DOrm | null,
   decimalPlaces: number,
+  projectSizeM2: number | null,
 ): { bucket: ReportCategoryKey; row: QuantityReportRow } {
-  const fallbackRow = buildQuantityRow(
-    boqRow,
-    matchedParameter,
-    matchedParameter?.id ?? null,
-    '-',
-    '-',
-    '-',
-    '-',
-    'Sin parametro',
-    'none',
-    'without-parameter',
-  );
-
-  if (!matchedParameter) {
+  if (!matchedParameter || !matchedConcept) {
     return {
-      bucket: 'without-parameter',
-      row: fallbackRow,
+      bucket: 'no-data',
+      row: buildQuantityRow(
+        boqRow,
+        matchedParameter,
+        matchedConcept,
+        matchedParameter?.id ?? null,
+        '-',
+        '-',
+        matchedParameter?.unidad?.trim() ?? '-',
+        '-',
+        matchedConcept?.unidad?.trim() ?? '-',
+        '-',
+        '-',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        matchedParameter ? 'Falta un concepto en el catálogo seleccionado' : 'Falta un parámetro',
+        'no-data',
+        getReportStateKind('no-data'),
+      ),
     };
   }
 
+  const projectSize = normalizeProjectSize(projectSizeM2);
   const rangeMin = matchedParameter.minimo;
   const rangeMax = matchedParameter.maximo;
   const rangeText = `${formatValue(rangeMin, decimalPlaces)} - ${formatValue(rangeMax, decimalPlaces)}`;
-
-  if (boqRow.cantidad == null) {
+  const boqUnit = boqRow.unidad?.trim() || '-';
+  const catalogQuantity = matchedConcept?.cantidad ?? null;
+  const catalogUnit = matchedConcept?.unidad?.trim() || '-';
+  const parameterUnit = matchedParameter.unidad?.trim() || '-';
+  const unitsMatch = haveSameNormalizedUnit(boqRow.unidad, catalogUnit, parameterUnit);
+  if (projectSize == null) {
     return {
-      bucket: 'without-parameter',
+      bucket: 'no-data',
       row: buildQuantityRow(
         boqRow,
         matchedParameter,
+        matchedConcept,
         matchedParameter.id,
         '-',
-        matchedParameter.unidad ?? '-',
+        '-',
+        parameterUnit,
+        formatValue(catalogQuantity, decimalPlaces),
+        catalogUnit,
         rangeText,
         '-',
-        'Sin cantidad',
-        'warning',
-        'without-parameter',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        'Agrega el tamaño del proyecto para calcular la cantidad/m2',
+        'no-data',
+        getReportStateKind('no-data'),
       ),
     };
   }
 
-  const convertedValue = convertQuantityToUnit(boqRow.cantidad, boqRow.unidad, matchedParameter.unidad ?? '');
-  if (convertedValue == null) {
+  if (boqRow.cantidad == null || catalogQuantity == null) {
     return {
-      bucket: 'without-parameter',
+      bucket: 'no-data',
       row: buildQuantityRow(
         boqRow,
         matchedParameter,
+        matchedConcept,
         matchedParameter.id,
         '-',
-        matchedParameter.unidad ?? '-',
+        '-',
+        parameterUnit,
+        formatValue(catalogQuantity, decimalPlaces),
+        catalogUnit,
         rangeText,
         '-',
-        'Unidad no compatible',
-        'warning',
-        'without-parameter',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        catalogQuantity == null ? 'Falta la cantidad en el catálogo seleccionado' : 'Falta la cantidad del BoQ',
+        'no-data',
+        getReportStateKind('no-data'),
       ),
     };
   }
 
-  const delta = computeRangeDelta(convertedValue, rangeMin, rangeMax);
-  const unitLabel = matchedParameter.unidad?.trim() || boqRow.unidad?.trim() || 'u';
-  const evaluatedText = `${formatValue(convertedValue, decimalPlaces)} ${unitLabel}`;
-  const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, decimalPlaces)} ${unitLabel}`;
+  const quantityMatchesCatalog = Math.abs(boqRow.cantidad - catalogQuantity) < 0.0005;
+  const quantityPerM2Value = boqRow.cantidad / projectSize;
+  const quantityPerM2Text = `${formatValue(quantityPerM2Value, decimalPlaces)} ${boqUnit !== '-' ? `${boqUnit}/m²` : '/m²'}`;
+  const quantityWithinRange = isValueWithinRange(quantityPerM2Value, rangeMin, rangeMax);
+  const quantityDelta = boqRow.cantidad - catalogQuantity;
+  const quantityDeltaText = `${quantityDelta >= 0 ? '+' : ''}${formatValue(quantityDelta, decimalPlaces)} ${boqUnit || catalogUnit || 'u'}`;
+  const failReasons: string[] = [];
 
-  if (delta < 0) {
-    return {
-      bucket: 'under-limit',
-      row: buildQuantityRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        evaluatedText,
-        unitLabel,
-        rangeText,
-        deltaText,
-        'Por debajo del limite',
-        'warning',
-        'under-limit',
-      ),
-    };
+  if (!quantityWithinRange) {
+    failReasons.push('La cantidad/m2 queda fuera del rango');
+  }
+  if (!quantityMatchesCatalog) {
+    failReasons.push('La cantidad no coincide con el catálogo');
+  }
+  if (!unitsMatch) {
+    failReasons.push('Las unidades no coinciden');
   }
 
-  if (delta > 0) {
-    return {
-      bucket: 'above-limit',
-      row: buildQuantityRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        evaluatedText,
-        unitLabel,
-        rangeText,
-        deltaText,
-        'Por encima del limite',
-        'error',
-        'above-limit',
-      ),
-    };
-  }
+  const quantityDeviationRatio = Math.abs(quantityDelta) / Math.max(Math.abs(catalogQuantity), 1);
+  const rangeDistance = getRangeDistance(quantityPerM2Value, rangeMin, rangeMax);
+  const rangeSpan = getRangeSpan(rangeMin, rangeMax);
+  const wayOff = (!quantityMatchesCatalog && quantityDeviationRatio > 0.25) || (!quantityWithinRange && rangeDistance > Math.max(rangeSpan, 1) * 0.75);
+  const state: ReportCategoryKey = failReasons.length === 0 ? 'correct' : failReasons.length === 1 && !wayOff ? 'review' : 'critical';
+  const unitLabel = parameterUnit || catalogUnit || boqUnit || 'u';
+  const evaluatedText = `${formatValue(boqRow.cantidad, decimalPlaces)} ${unitLabel}`;
+  const observation =
+    state === 'correct'
+      ? 'Cantidad/m2, cantidad del catálogo y unidades coinciden.'
+      : state === 'review'
+        ? failReasons[0]
+        : `${failReasons.join('. ')}${wayOff ? '. Desviación alta.' : '.'}`;
 
   return {
-    bucket: 'in-range',
+    bucket: state,
     row: buildQuantityRow(
       boqRow,
       matchedParameter,
+      matchedConcept,
       matchedParameter.id,
+      quantityPerM2Text,
       evaluatedText,
       unitLabel,
+      formatValue(catalogQuantity, decimalPlaces),
+      catalogUnit,
       rangeText,
-      `+${formatValue(0, decimalPlaces)}`,
-      'En rango',
-      'ok',
-      'in-range',
+      quantityDeltaText,
+      getReportStateLabel(state),
+      getReportStateLabel(state),
+      observation,
+      state,
+      getReportStateKind(state),
     ),
   };
 }
@@ -946,271 +1033,215 @@ function buildQuantityResult(
 function buildCostResult(
   boqRow: BoqExtractedRow,
   matchedParameter: ParametroB5DOrm | null,
-  selectedCatalogConcepts: ConceptoB5DOrm[],
-  comparisonGranularity: ReportComparisonGranularity,
-  wbsLevel: number,
-  catalogWbsIndex: CatalogWbsIndex | null,
+  matchedConcept: ConceptoB5DOrm | null,
   decimalPlaces: number,
-  manualConceptId: number | null,
 ): { bucket: ReportCategoryKey; row: CostReportRow } {
-  const fallbackRow = buildCostRow(
-    boqRow,
-    matchedParameter,
-    matchedParameter?.id ?? null,
-    null,
-    '-',
-    null,
-    '-',
-    '-',
-    '-',
-    '-',
-    'Sin parametro',
-    'none',
-    '-',
-    'without-parameter',
-  );
-
-  if (!matchedParameter) {
+  if (!matchedParameter || !matchedConcept) {
     return {
-      bucket: 'without-parameter',
-      row: fallbackRow,
-    };
-  }
-
-  const matchedConcept = resolveCostConceptForParameter(
-    matchedParameter,
-    boqRow,
-    selectedCatalogConcepts,
-    comparisonGranularity,
-    wbsLevel,
-    catalogWbsIndex,
-    manualConceptId,
-  );
-  const rangeMin = matchedParameter.minimo;
-  const rangeMax = matchedParameter.maximo;
-  const rangeText = `${formatValue(rangeMin, decimalPlaces)} - ${formatValue(rangeMax, decimalPlaces)}`;
-
-  if (!matchedConcept) {
-    return {
-      bucket: 'without-parameter',
+      bucket: 'no-data',
       row: buildCostRow(
         boqRow,
         matchedParameter,
-        matchedParameter.id,
-        null,
+        matchedConcept,
+        matchedParameter?.id ?? null,
+        matchedConcept?.id ?? null,
+        matchedConcept?.clave ?? '-',
+        matchedParameter?.unidad?.trim() ?? '-',
+        matchedConcept?.unidad?.trim() ?? '-',
         '-',
-        matchedParameter.unidad ?? '-',
         '-',
-        rangeText,
         '-',
-        'Sin costo en el catalogo seleccionado',
-        'warning',
         '-',
-        'without-parameter',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        matchedParameter ? 'Falta un concepto en el catálogo seleccionado' : 'Falta un parámetro',
+        'no-data',
+        getReportStateKind('no-data'),
       ),
     };
   }
+
+  const rangeMin = matchedParameter.minimo;
+  const rangeMax = matchedParameter.maximo;
+  const rangeText = `${formatValue(rangeMin, decimalPlaces)} - ${formatValue(rangeMax, decimalPlaces)}`;
+  const conceptUnit = matchedConcept.unidad?.trim() || '-';
+  const parameterUnit = matchedParameter.unidad?.trim() || '-';
+  const failReasons: string[] = [];
 
   if (matchedParameter.tipo_parametro === 'costo_porcentaje') {
     const conceptPercentage = resolveConceptPercentage(matchedConcept);
     if (conceptPercentage == null) {
       return {
-        bucket: 'without-parameter',
-        row: buildCostRow(
-          boqRow,
-          matchedParameter,
-          matchedParameter.id,
-          matchedConcept.id,
-          matchedConcept.clave ?? '-',
-          matchedParameter.unidad ?? '%',
-          '-',
-          rangeText,
-          '-',
-          'Sin porcentaje en el catalogo seleccionado',
-          'warning',
-          '-',
-          'without-parameter',
+        bucket: 'no-data',
+      row: buildCostRow(
+        boqRow,
+        matchedParameter,
+        matchedConcept,
+        matchedParameter.id,
+        matchedConcept.id,
+        matchedConcept.clave ?? '-',
+        parameterUnit || '%',
+        conceptUnit,
+        '-',
+        '-',
+        rangeText,
+        '-',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        'Falta el porcentaje en el catálogo seleccionado',
+        'no-data',
+        getReportStateKind('no-data'),
         ),
       };
     }
 
-    const delta = computeRangeDelta(conceptPercentage, rangeMin, rangeMax);
-    const unitLabel = matchedParameter.unidad?.trim() || '%';
+    const unitLabel = parameterUnit || '%';
     const evaluatedText = `${formatValue(conceptPercentage, decimalPlaces)} ${unitLabel}`;
+    const rangePass = isValueWithinRange(conceptPercentage, rangeMin, rangeMax);
+    const delta = computeRangeDelta(conceptPercentage, rangeMin, rangeMax);
     const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, decimalPlaces)} ${unitLabel}`;
-
-    if (delta < 0) {
-      return {
-        bucket: 'under-limit',
-        row: buildCostRow(
-          boqRow,
-          matchedParameter,
-          matchedParameter.id,
-          matchedConcept.id,
-          matchedConcept.clave ?? '-',
-          unitLabel,
-          evaluatedText,
-          rangeText,
-          deltaText,
-          'Por debajo del limite',
-          'warning',
-          `${formatValue(conceptPercentage, decimalPlaces)} ${unitLabel}`,
-          'under-limit',
-        ),
-      };
+    if (!rangePass) {
+      failReasons.push('El valor queda fuera del rango');
     }
-
-    if (delta > 0) {
-      return {
-        bucket: 'above-limit',
-        row: buildCostRow(
-          boqRow,
-          matchedParameter,
-          matchedParameter.id,
-          matchedConcept.id,
-          matchedConcept.clave ?? '-',
-          unitLabel,
-          evaluatedText,
-          rangeText,
-          deltaText,
-          'Por encima del limite',
-          'error',
-          `${formatValue(conceptPercentage, decimalPlaces)} ${unitLabel}`,
-          'above-limit',
-        ),
-      };
-    }
+    const rangeDistance = getRangeDistance(conceptPercentage, rangeMin, rangeMax);
+    const rangeSpan = getRangeSpan(rangeMin, rangeMax);
+    const wayOff = !rangePass && rangeDistance > Math.max(rangeSpan, 1) * 0.75;
+    const state: ReportCategoryKey = failReasons.length === 0 ? 'correct' : failReasons.length === 1 && !wayOff ? 'review' : 'critical';
+    const observation =
+      state === 'correct'
+        ? 'El valor evaluado coincide con el rango.'
+        : state === 'review'
+          ? failReasons[0]
+          : `${failReasons.join('. ')}${wayOff ? '. Desviación alta.' : '.'}`;
 
     return {
-      bucket: 'in-range',
+      bucket: state,
       row: buildCostRow(
         boqRow,
         matchedParameter,
+        matchedConcept,
         matchedParameter.id,
         matchedConcept.id,
         matchedConcept.clave ?? '-',
-        unitLabel,
+        parameterUnit || unitLabel,
+        conceptUnit,
+        formatValue(conceptPercentage, decimalPlaces),
         evaluatedText,
         rangeText,
-        `+${formatValue(0, decimalPlaces)}`,
-        'En rango',
-        'ok',
-        `${formatValue(conceptPercentage, decimalPlaces)} ${unitLabel}`,
-        'in-range',
+        deltaText,
+        getReportStateLabel(state),
+        getReportStateLabel(state),
+        observation,
+        state,
+        getReportStateKind(state),
       ),
     };
   }
 
-  const conceptCost = resolveConceptUnitCost(matchedConcept);
-  if (conceptCost == null) {
+  const conceptPrice = resolveConceptUnitPrice(matchedConcept);
+  if (conceptPrice == null) {
     return {
-      bucket: 'without-parameter',
+      bucket: 'no-data',
       row: buildCostRow(
         boqRow,
         matchedParameter,
+        matchedConcept,
         matchedParameter.id,
         matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        matchedParameter.unidad ?? '-',
+        '-',
+        parameterUnit,
+        conceptUnit,
+        '-',
         '-',
         rangeText,
         '-',
-        'Sin costo en el catalogo seleccionado',
-        'warning',
-        '-',
-        'without-parameter',
+        getReportStateLabel('no-data'),
+        getReportStateLabel('no-data'),
+        'Falta el precio unitario en el catálogo seleccionado',
+        'no-data',
+        getReportStateKind('no-data'),
       ),
     };
   }
 
-  const delta = computeRangeDelta(conceptCost, rangeMin, rangeMax);
-  const unitLabel = matchedParameter.unidad?.trim() || 'u';
-  const evaluatedText = `${formatValue(conceptCost, decimalPlaces)} ${unitLabel}`;
+  const unitLabel = parameterUnit || conceptUnit || 'u';
+  const evaluatedText = `${formatValue(conceptPrice, decimalPlaces)} ${unitLabel}`;
+  const rangePass = isValueWithinRange(conceptPrice, rangeMin, rangeMax);
+  const delta = computeRangeDelta(conceptPrice, rangeMin, rangeMax);
   const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, decimalPlaces)} ${unitLabel}`;
-
-  if (delta < 0) {
-    return {
-      bucket: 'under-limit',
-      row: buildCostRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        unitLabel,
-        evaluatedText,
-        rangeText,
-        deltaText,
-        'Por debajo del limite',
-        'warning',
-        formatValue(conceptCost, decimalPlaces),
-        'under-limit',
-      ),
-    };
+  if (!rangePass) {
+    failReasons.push('El valor queda fuera del rango');
   }
-
-  if (delta > 0) {
-    return {
-      bucket: 'above-limit',
-      row: buildCostRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        unitLabel,
-        evaluatedText,
-        rangeText,
-        deltaText,
-        'Por encima del limite',
-        'error',
-        formatValue(conceptCost, decimalPlaces),
-        'above-limit',
-      ),
-    };
-  }
+  const rangeDistance = getRangeDistance(conceptPrice, rangeMin, rangeMax);
+  const rangeSpan = getRangeSpan(rangeMin, rangeMax);
+  const wayOff = !rangePass && rangeDistance > Math.max(rangeSpan, 1) * 0.75;
+  const state: ReportCategoryKey = failReasons.length === 0 ? 'correct' : failReasons.length === 1 && !wayOff ? 'review' : 'critical';
+  const observation =
+    state === 'correct'
+      ? 'El valor evaluado coincide con el rango.'
+      : state === 'review'
+        ? failReasons[0]
+        : `${failReasons.join('. ')}${wayOff ? '. Desviación alta.' : '.'}`;
 
   return {
-    bucket: 'in-range',
-      row: buildCostRow(
-        boqRow,
-        matchedParameter,
-        matchedParameter.id,
-        matchedConcept.id,
-        matchedConcept.clave ?? '-',
-        unitLabel,
-        evaluatedText,
-        rangeText,
-        `+${formatValue(0, decimalPlaces)}`,
-        'En rango',
-        'ok',
-        formatValue(conceptCost, decimalPlaces),
-        'in-range',
-      ),
-    };
-  }
+    bucket: state,
+    row: buildCostRow(
+      boqRow,
+      matchedParameter,
+      matchedConcept,
+      matchedParameter.id,
+      matchedConcept.id,
+      matchedConcept.clave ?? '-',
+      parameterUnit || unitLabel,
+      conceptUnit,
+      formatValue(conceptPrice, decimalPlaces),
+      evaluatedText,
+      rangeText,
+      deltaText,
+      getReportStateLabel(state),
+      getReportStateLabel(state),
+      observation,
+      state,
+      getReportStateKind(state),
+    ),
+  };
+}
 
 function buildQuantityRow(
   boqRow: BoqExtractedRow,
   matchedParameter: ParametroB5DOrm | null,
+  matchedConcept: ConceptoB5DOrm | null,
   parameterId: number | null,
+  cantidadPorM2: string,
   evaluatedText: string,
   parametroUnidad: string,
+  conceptoCatalogoCantidad: string,
+  conceptoCatalogoUnidad: string,
   rangeText: string,
   diferencia: string,
   resultado: string,
+  estado: string,
+  observacion: string,
+  state: ReportCategoryKey,
   kind: ReportResultKind,
-  bucket: ReportCategoryKey,
 ): QuantityReportRow {
   return {
     ...boqRow,
     parameterId,
     parametro: matchedParameter?.clave ?? '-',
     parametroUnidad,
+    conceptoCatalogoId: matchedConcept?.id ?? null,
+    conceptoCatalogo: matchedConcept?.clave ?? '-',
+    conceptoCatalogoCantidad,
+    conceptoCatalogoUnidad,
+    cantidadPorM2,
     evaluado: evaluatedText,
     rango: rangeText,
     diferencia,
     resultado,
+    estado,
+    observacion,
+    state,
     kind,
   };
 }
@@ -1218,26 +1249,22 @@ function buildQuantityRow(
 function buildCostRow(
   boqRow: BoqExtractedRow,
   matchedParameter: ParametroB5DOrm | null,
-  ...args: Array<string | number | null>
+  matchedConcept: ConceptoB5DOrm | null,
+  parameterId: number | null,
+  conceptoCostoId: number | null,
+  conceptoCosto: string,
+  parametroUnidad: string,
+  conceptoCostoUnidad: string,
+  costoUnitario: string,
+  evaluado: string,
+  rango: string,
+  diferencia: string,
+  resultado: string,
+  estado: string,
+  observacion: string,
+  state: ReportCategoryKey,
+  kind: ReportResultKind,
 ): CostReportRow {
-  let parameterId = matchedParameter?.id ?? null;
-  let conceptoCostoId: number | null = null;
-  let values = args;
-
-  if (values.length > 0 && (typeof values[0] === 'number' || values[0] === null)) {
-    parameterId = values[0] as number | null;
-    if (values.length > 1 && (typeof values[1] === 'number' || values[1] === null)) {
-      conceptoCostoId = values[1] as number | null;
-      values = values.slice(2);
-    } else {
-      values = values.slice(1);
-    }
-  }
-
-  const [conceptoCosto = '-', parametroUnidad = '-', evaluado = '-', rango = '-', diferencia = '-', resultado = '-', resultadoKind = 'none', costoUnitario = '-'] =
-    values as [string?, string?, string?, string?, string?, string?, ReportResultKind?, string?];
-  const kind = (resultadoKind ?? 'none') as ReportResultKind;
-
   return {
     ...boqRow,
     parameterId,
@@ -1245,11 +1272,15 @@ function buildCostRow(
     parametroUnidad,
     conceptoCostoId,
     conceptoCosto,
+    conceptoCostoUnidad,
     costoUnitario,
     evaluado,
     rango,
     diferencia,
     resultado,
+    estado,
+    observacion,
+    state,
     kind,
   };
 }
@@ -1258,41 +1289,41 @@ function buildSummaryBlock(counts: Record<ReportCategoryKey, number>): ReportSum
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const slices: ReportSummarySlice[] = [
     {
-      key: 'in-range',
-      label: 'En rango',
-      count: counts['in-range'],
-      percent: getPercent(counts['in-range'], total),
-      color: SUMMARY_COLORS['in-range'],
+      key: 'correct',
+      label: 'Correcto',
+      count: counts.correct,
+      percent: getPercent(counts.correct, total),
+      color: SUMMARY_COLORS.correct,
     },
     {
-      key: 'under-limit',
-      label: 'Bajo el limite',
-      count: counts['under-limit'],
-      percent: getPercent(counts['under-limit'], total),
-      color: SUMMARY_COLORS['under-limit'],
+      key: 'review',
+      label: 'Revisar',
+      count: counts.review,
+      percent: getPercent(counts.review, total),
+      color: SUMMARY_COLORS.review,
     },
     {
-      key: 'above-limit',
-      label: 'Sobre el limite',
-      count: counts['above-limit'],
-      percent: getPercent(counts['above-limit'], total),
-      color: SUMMARY_COLORS['above-limit'],
+      key: 'critical',
+      label: 'Crítico',
+      count: counts.critical,
+      percent: getPercent(counts.critical, total),
+      color: SUMMARY_COLORS.critical,
     },
     {
-      key: 'without-parameter',
-      label: 'Sin parametro',
-      count: counts['without-parameter'],
-      percent: getPercent(counts['without-parameter'], total),
-      color: SUMMARY_COLORS['without-parameter'],
+      key: 'no-data',
+      label: 'Sin datos',
+      count: counts['no-data'],
+      percent: getPercent(counts['no-data'], total),
+      color: SUMMARY_COLORS['no-data'],
     },
   ];
 
   return {
     total,
-    inRange: counts['in-range'],
-    underLimit: counts['under-limit'],
-    aboveLimit: counts['above-limit'],
-    withoutParameter: counts['without-parameter'],
+    correct: counts.correct,
+    review: counts.review,
+    critical: counts.critical,
+    noData: counts['no-data'],
     slices,
     background: buildConicGradient(slices),
   };
@@ -1346,7 +1377,6 @@ function findMatchingParameter(boqRow: BoqExtractedRow, parameters: ParametroB5D
 }
 
 function resolveCostConceptForParameter(
-  matchedParameter: ParametroB5DOrm,
   boqRow: BoqExtractedRow,
   concepts: ConceptoB5DOrm[],
   comparisonGranularity: ReportComparisonGranularity,
@@ -1359,14 +1389,46 @@ function resolveCostConceptForParameter(
     if (manualConcept) return manualConcept;
   }
 
-  const matchedConcept = findMatchingConcept(boqRow, concepts);
+  if (boqRow.conceptId != null) {
+    const conceptById = catalogWbsIndex?.conceptById.get(boqRow.conceptId) ?? concepts.find((conceptRow) => conceptRow.id === boqRow.conceptId) ?? null;
+    if (conceptById) return conceptById;
+  }
+
+  const matchedConcept = resolveExactCostConceptForRow(boqRow, concepts, comparisonGranularity, wbsLevel, catalogWbsIndex);
   if (matchedConcept) return matchedConcept;
 
-  const candidates = getCostCandidateConcepts(matchedParameter, concepts);
-  const conceptWithCost = candidates.find((conceptRow) => resolveConceptUnitCost(conceptRow) != null);
-  if (conceptWithCost) return conceptWithCost;
+  return null;
+}
 
-  return candidates[0] ?? null;
+function resolveExactCostConceptForRow(
+  boqRow: BoqExtractedRow,
+  concepts: ConceptoB5DOrm[],
+  comparisonGranularity: ReportComparisonGranularity,
+  wbsLevel: number,
+  catalogWbsIndex: CatalogWbsIndex | null,
+): ConceptoB5DOrm | null {
+  const normalizedBoqKey = normalizeText(boqRow.clave);
+  if (!normalizedBoqKey) return null;
+
+  const candidates = catalogWbsIndex ? [...catalogWbsIndex.conceptById.values()] : concepts;
+  for (const conceptRow of candidates) {
+    if (comparisonGranularity === 'wbs') {
+      const pathSegments = catalogWbsIndex?.pathSegmentsById.get(conceptRow.id) ?? [];
+      const catalogClave = buildCatalogWbsDisplayClave(pathSegments, wbsLevel, conceptRow);
+      if (normalizedBoqKey === normalizeText(catalogClave)) {
+        return conceptRow;
+      }
+      continue;
+    }
+
+    const code = normalizeText(conceptRow.clave ?? '');
+    const secondaryCode = normalizeText(conceptRow.clave_secundaria ?? '');
+    if (normalizedBoqKey === code || normalizedBoqKey === secondaryCode) {
+      return conceptRow;
+    }
+  }
+
+  return null;
 }
 
 function findMatchingConceptByWbs(
@@ -1490,6 +1552,30 @@ function findMatchingConcept(boqRow: BoqExtractedRow, concepts: ConceptoB5DOrm[]
   return null;
 }
 
+function resolveCatalogConceptForRow(
+  boqRow: BoqExtractedRow,
+  concepts: ConceptoB5DOrm[],
+  comparisonGranularity: ReportComparisonGranularity,
+  wbsLevel: number,
+  catalogWbsIndex: CatalogWbsIndex | null,
+): ConceptoB5DOrm | null {
+  if (comparisonGranularity === 'wbs') {
+    return findMatchingConceptByWbs(boqRow, concepts, wbsLevel, catalogWbsIndex);
+  }
+
+  const normalizedClave = normalizeText(boqRow.clave);
+  if (normalizedClave) {
+    const exactMatches = concepts.filter((conceptRow) => {
+      const code = normalizeText(conceptRow.clave ?? '');
+      const secondaryCode = normalizeText(conceptRow.clave_secundaria ?? '');
+      return normalizedClave === code || normalizedClave === secondaryCode;
+    });
+    if (exactMatches.length) return exactMatches[0];
+  }
+
+  return findMatchingConcept(boqRow, concepts);
+}
+
 export function buildCatalogWbsIndex(concepts: ConceptoB5DOrm[]): CatalogWbsIndex {
   const conceptById = new Map<number, ConceptoB5DOrm>();
   for (const concept of concepts) {
@@ -1543,8 +1629,8 @@ function getConceptWbsKey(concept: ConceptoB5DOrm): string {
   return (concept.clave ?? concept.clave_secundaria ?? '').trim();
 }
 
-function resolveConceptUnitCost(concept: ConceptoB5DOrm): number | null {
-  return parseNumericLikeValue(concept.importe ?? null);
+function resolveConceptUnitPrice(concept: ConceptoB5DOrm): number | null {
+  return parseNumericLikeValue(concept.precio_unitario ?? null);
 }
 
 function resolveConceptPercentage(concept: ConceptoB5DOrm): number | null {
@@ -1678,6 +1764,12 @@ function convertQuantityToUnit(value: number, fromUnit: string, toUnit: string):
 
 function normalizeUnit(unit: string): string {
   return unit.trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function haveSameNormalizedUnit(...units: Array<string | null | undefined>): boolean {
+  const normalizedUnits = units.map((unit) => normalizeUnit(unit ?? '')).filter((unit) => !!unit);
+  if (!normalizedUnits.length) return false;
+  return normalizedUnits.every((unit) => unit === normalizedUnits[0]);
 }
 
 function normalizeText(value: string): string {

@@ -1,0 +1,29 @@
+@if (visible) {
+  <div class="b5d-confirm-dialog__backdrop" (click)="cancelled.emit()">
+    <section class="b5d-confirm-dialog" (click)="$event.stopPropagation()">
+      @if (title) {
+        <header class="b5d-confirm-dialog__header">
+          <strong>{{ title }}</strong>
+        </header>
+      }
+
+      <div class="b5d-confirm-dialog__body">
+        {{ message }}
+      </div>
+
+      <footer class="b5d-confirm-dialog__footer">
+        <button type="button" class="b5d-confirm-dialog__button b5d-confirm-dialog__button--danger" (click)="cancelled.emit()">
+          {{ cancelLabel }}
+        </button>
+        <button
+          type="button"
+          class="b5d-confirm-dialog__button b5d-confirm-dialog__button--primary"
+          [disabled]="confirmDisabled"
+          (click)="confirmed.emit()"
+        >
+          {{ confirmLabel }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}

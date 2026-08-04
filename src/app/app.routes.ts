@@ -1,6 +1,4 @@
 import { Routes } from '@angular/router';
-import { ViewerScreen } from './screens/viewer-screen/viewer-screen';
-import { LoginScreen } from './screens/login-screen/login-screen';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
 
@@ -12,12 +10,12 @@ export const routes: Routes = [
   },
   {
     path: 'login',
-    component: LoginScreen,
+    loadComponent: () => import('./screens/login-screen/login-screen').then((m) => m.LoginScreen),
     canActivate: [guestGuard],
   },
   {
     path: 'viewer',
-    component: ViewerScreen,
+    loadComponent: () => import('./screens/viewer-screen/viewer-screen').then((m) => m.ViewerScreen),
     canActivate: [authGuard],
   },
   {

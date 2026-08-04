@@ -7,6 +7,7 @@ import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
 import { buildScopedStorageKey, readStoredJson, writeStoredJson } from '../../utils/ui-state-storage';
 import type {
   CatalogoB5DOrm,
+  CatalogoParametroB5DOrm,
   ConceptoB5DOrm,
   CuantificacionB5DOrm,
   ParametroB5DOrm,
@@ -19,17 +20,22 @@ import {
   buildParametersReportData,
   extractBoqRows,
   getReportConceptKey,
+  type CostReportRow,
   type ReportComparisonGranularity,
   type ReportParameterScope,
+  type ReportCategoryKey,
   type BoqExtractedRow,
   type BoqComparisonReportData,
   type BoqComparisonRow,
   type ParametersReportData,
+  type QuantityReportRow,
+  type ReportSummaryBlock,
 } from '../../utils/parameters/parameters-report-analysis';
 import { isCostParameterType } from '../../utils/parameters/parameter-types';
 import { PARAMETERS_REPORT_PANEL_TRANSLATIONS } from './parameters-report-panel.translations';
 
 type ReportMode = 'parameters' | 'boq-comparison';
+type ReportViewMode = 'quantity' | 'cost';
 
 type WbsReferenceOption = {
   label: string;
@@ -45,6 +51,7 @@ type WbsManualConceptOption = {
 
 type ReportPanelStoredState = {
   selectedReportMode?: ReportMode;
+  selectedReportView?: ReportViewMode;
   selectedComparisonGranularity?: ReportComparisonGranularity;
   selectedParameterScope?: ReportParameterScope;
   selectedDecimalPlaces?: number;
@@ -52,9 +59,11 @@ type ReportPanelStoredState = {
   selectedQuantificationId?: number | null;
   selectedSheetIndex?: number;
   selectedCatalogId?: number | null;
+  selectedParameterCatalogId?: number | null;
   selectedBuildingType?: string;
   selectedWorkType?: string;
   selectedZone?: string;
+  selectedProjectSizeM2?: number | null;
   selectedComparatorQuantificationIds?: number[];
   manualWbsConceptSelectionByParameterId?: Record<string, number>;
   manualParameterSelectionByConceptKey?: Record<string, number>;
@@ -86,13 +95,17 @@ export class ParametersReportPanel implements OnChanges {
   @Input() parameters: ParametroB5DOrm[] = [];
   @Input() concepts: ConceptoB5DOrm[] = [];
   @Input() catalogs: CatalogoB5DOrm[] = [];
+  @Input() parameterCatalogs: CatalogoParametroB5DOrm[] = [];
   @Input() activeCatalogId: number | null = null;
+  @Input() activeParameterCatalogId: number | null = null;
   @Input() b5dLoading = false;
   @Input() quantifications: CuantificacionB5DOrm[] = [];
   @Input() storageScopeKey = 'anonymous';
+  @Output() parameterCatalogChanged = new EventEmitter<void>();
 
   workQuantifications: CuantificacionB5DOrm[] = [];
   selectedReportMode: ReportMode = 'parameters';
+  selectedReportView: ReportViewMode = 'quantity';
   selectedComparisonGranularity: ReportComparisonGranularity = 'individual';
   selectedParameterScope: ReportParameterScope = 'all';
   selectedDecimalPlaces = 2;
@@ -100,9 +113,11 @@ export class ParametersReportPanel implements OnChanges {
   selectedQuantificationId: number | null = null;
   selectedSheetIndex = 0;
   selectedCatalogId: number | null = null;
+  selectedParameterCatalogId: number | null = null;
   selectedBuildingType = 'all';
   selectedWorkType = 'all';
   selectedZone = 'all';
+  selectedProjectSizeM2: number | null = null;
   selectedComparatorQuantificationIds: number[] = [];
   manualWbsConceptSelectionByParameterId = new Map<number, number>();
   manualParameterSelectionByConceptKey = new Map<string, number>();
@@ -143,11 +158,20 @@ export class ParametersReportPanel implements OnChanges {
       void this.loadReportWorkbook();
     }
 
-    const dataInputsChanged = !!(changes['parameters'] || changes['concepts'] || changes['catalogs'] || changes['activeCatalogId']);
+    const dataInputsChanged = !!(
+      changes['parameters'] ||
+      changes['concepts'] ||
+      changes['catalogs'] ||
+      changes['parameterCatalogs'] ||
+      changes['activeCatalogId'] ||
+      changes['activeParameterCatalogId']
+    );
     const reportDataReady = !this.b5dLoading && (dataInputsChanged || !!changes['b5dLoading']);
     if (reportDataReady && (changes['b5dLoading'] || dataInputsChanged)) {
+      this.syncSelectedParameterCatalog();
       this.syncSelectedCatalog();
       this.syncSelectedWbsLevel();
+      this.syncReportMetadataSelections();
       this.syncManualWbsSelections();
       this.syncManualParameterSelections();
       this.rebuildReportData();
@@ -286,21 +310,163 @@ export class ParametersReportPanel implements OnChanges {
     return fallbackCatalogs;
   }
 
+  get availableParameterCatalogs(): CatalogoParametroB5DOrm[] {
+    return this.parameterCatalogs;
+  }
+
+  get selectedParameterCatalogLabel(): string {
+    const selectedCatalog = this.availableParameterCatalogs.find((catalog) => catalog.id === this.selectedParameterCatalogId);
+    return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? this.t('parametersReport.panel.noParameterCatalogs');
+  }
+
   get buildingTypeOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.tipo_edificacion);
+    return this.collectParameterMetadataOptions(
+      (row) => row.tipo_edificacion,
+      this.getParameterMetadataFilterRows('tipo_edificacion'),
+    );
   }
 
   get workTypeOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.tipo_obra);
+    return this.collectParameterMetadataOptions(
+      (row) => row.tipo_obra,
+      this.getParameterMetadataFilterRows('tipo_obra'),
+    );
   }
 
   get zoneOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.zona);
+    return this.collectParameterMetadataOptions((row) => row.zona, this.getParameterMetadataFilterRows('zona'));
+  }
+
+  get buildingTypeFilterVisible(): boolean {
+    return this.buildingTypeOptions.length > 1;
+  }
+
+  get workTypeFilterVisible(): boolean {
+    return this.workTypeOptions.length > 1;
+  }
+
+  get zoneFilterVisible(): boolean {
+    return this.zoneOptions.length > 1;
+  }
+
+  get buildingTypeDisplayValue(): string {
+    if (this.buildingTypeOptions.length === 1) return this.buildingTypeOptions[0];
+    return this.selectedBuildingType === 'all' ? this.t('parametersReport.panel.allValues') : this.selectedBuildingType;
+  }
+
+  get workTypeDisplayValue(): string {
+    if (this.workTypeOptions.length === 1) return this.workTypeOptions[0];
+    return this.selectedWorkType === 'all' ? this.t('parametersReport.panel.allValues') : this.selectedWorkType;
+  }
+
+  get zoneDisplayValue(): string {
+    if (this.zoneOptions.length === 1) return this.zoneOptions[0];
+    return this.selectedZone === 'all' ? this.t('parametersReport.panel.allValues') : this.selectedZone;
   }
 
   get selectedCatalogLabel(): string {
     const selectedCatalog = this.availableCostCatalogs.find((catalog) => catalog.id === this.selectedCatalogId);
     return selectedCatalog?.nombre ?? selectedCatalog?.descripcion ?? this.t('parametersReport.catalog.costs');
+  }
+
+  get isQuantityView(): boolean {
+    return this.selectedReportView === 'quantity';
+  }
+
+  get isCostView(): boolean {
+    return this.selectedReportView === 'cost';
+  }
+
+  get activeSummaryBlock(): ReportSummaryBlock {
+    if (this.isCostView) {
+      return this.mergeSummaryBlocks([this.reportData.costSummary, this.reportData.percentCostSummary]);
+    }
+
+    return this.reportData.quantitySummary;
+  }
+
+  get activeSummarySlices(): ReportSummaryBlock['slices'] {
+    return this.activeSummaryBlock.slices;
+  }
+
+  get activeSummaryTotal(): number {
+    return this.activeSummaryBlock.total;
+  }
+
+  get projectSizeDisplayValue(): string {
+    return this.selectedProjectSizeM2 == null ? '-' : this.formatReportNumber(this.selectedProjectSizeM2);
+  }
+
+  getReportViewLabel(view: ReportViewMode): string {
+    return view === 'quantity'
+      ? this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.panel.viewQuantity')
+      : this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.panel.viewCost');
+  }
+
+  getReportStateLabel(state: ReportCategoryKey): string {
+    switch (state) {
+      case 'correct':
+        return this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.state.correct');
+      case 'review':
+        return this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.state.review');
+      case 'critical':
+        return this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.state.critical');
+      case 'no-data':
+        return this.i18n.translateForComponent(this.parametersReportPanelTranslations, 'parametersReport.state.noData');
+    }
+  }
+
+  getReportStateClass(state: ReportCategoryKey): string {
+    return `b5d-report-state--${state}`;
+  }
+
+  private mergeSummaryBlocks(blocks: ReportSummaryBlock[]): ReportSummaryBlock {
+    const combined = {
+      correct: 0,
+      review: 0,
+      critical: 0,
+      noData: 0,
+    };
+    const colors = new Map<ReportCategoryKey, string>();
+
+    for (const block of blocks) {
+      combined.correct += block.correct ?? 0;
+      combined.review += block.review ?? 0;
+      combined.critical += block.critical ?? 0;
+      combined.noData += block.noData ?? 0;
+      for (const slice of block.slices) {
+        colors.set(slice.key, slice.color);
+      }
+    }
+
+    const total = combined.correct + combined.review + combined.critical + combined.noData;
+    const slices: ReportSummaryBlock['slices'] = (['correct', 'review', 'critical', 'no-data'] as ReportCategoryKey[]).map((key) => {
+      const count =
+        key === 'correct'
+          ? combined.correct
+          : key === 'review'
+            ? combined.review
+            : key === 'critical'
+              ? combined.critical
+              : combined.noData;
+      return {
+        key,
+        label: this.getReportStateLabel(key),
+        count,
+        percent: total > 0 ? (count / total) * 100 : 0,
+        color: colors.get(key) ?? '#718096',
+      };
+    });
+
+    return {
+      total,
+      correct: combined.correct,
+      review: combined.review,
+      critical: combined.critical,
+      noData: combined.noData,
+      slices,
+      background: blocks[0]?.background ?? 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
+    };
   }
 
   get showQuantitySection(): boolean {
@@ -323,12 +489,11 @@ export class ParametersReportPanel implements OnChanges {
     if (this.selectedReportMode === 'boq-comparison') {
       return !!this.boqComparisonData.groups.length;
     }
-    return (
-      (this.showQuantitySection && (this.reportData.quantityRows.length > 0 || this.reportData.quantitySummary.total > 0)) ||
-      (this.showCostSection && (this.reportData.costRows.length > 0 || this.reportData.costSummary.total > 0)) ||
-      (this.showCostPercentSection && (this.reportData.percentCostRows.length > 0 || this.reportData.percentCostSummary.total > 0)) ||
-      (this.showUnassignedSection && this.reportData.unassignedRows.length > 0)
-    );
+    if (this.isCostView) {
+      return this.reportData.costRows.length > 0 || this.reportData.percentCostRows.length > 0 || this.activeSummaryTotal > 0;
+    }
+
+    return this.reportData.quantityRows.length > 0 || this.activeSummaryTotal > 0;
   }
 
   selectQuantification(value: number | null): void {
@@ -355,9 +520,31 @@ export class ParametersReportPanel implements OnChanges {
     this.rebuildReportData();
   }
 
+  selectParameterCatalog(value: number | null): void {
+    if (value === this.selectedParameterCatalogId) return;
+    this.selectedParameterCatalogId = value;
+    this.persistReportPreferences();
+    this.parameterCatalogChanged.emit();
+  }
+
+  selectReportView(value: ReportViewMode): void {
+    if (value === this.selectedReportView) return;
+    this.selectedReportView = value;
+    this.persistReportPreferences();
+    this.rebuildReportData();
+  }
+
   selectParameterScope(value: ReportParameterScope): void {
     if (value === this.selectedParameterScope) return;
     this.selectedParameterScope = value;
+    this.persistReportPreferences();
+    this.rebuildReportData();
+  }
+
+  selectProjectSize(value: number | null): void {
+    const normalizedValue = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+    if (normalizedValue === this.selectedProjectSizeM2) return;
+    this.selectedProjectSizeM2 = normalizedValue;
     this.persistReportPreferences();
     this.rebuildReportData();
   }
@@ -535,6 +722,7 @@ export class ParametersReportPanel implements OnChanges {
       ?? this.quantificationsWithWorkbook[0]
       ?? null;
     this.selectedReportMode = 'parameters';
+    this.selectedReportView = 'quantity';
     this.selectedComparisonGranularity = 'individual';
     this.selectedParameterScope = 'all';
     this.selectedDecimalPlaces = 2;
@@ -542,12 +730,15 @@ export class ParametersReportPanel implements OnChanges {
     this.selectedQuantificationId = preferredQuantification?.id ?? null;
     this.selectedSheetIndex = 0;
     this.selectedComparatorQuantificationIds = [];
+    this.selectedParameterCatalogId = null;
     this.selectedBuildingType = 'all';
     this.selectedWorkType = 'all';
     this.selectedZone = 'all';
+    this.selectedProjectSizeM2 = null;
     this.manualWbsConceptSelectionByParameterId = new Map<number, number>();
     this.manualParameterSelectionByConceptKey = new Map<string, number>();
     this.manualParameterSearchByConceptKey = new Map<string, string>();
+    this.syncSelectedParameterCatalog();
     this.syncSelectedCatalog();
     this.syncSelectedWbsLevel();
     this.persistReportPreferences();
@@ -566,7 +757,7 @@ export class ParametersReportPanel implements OnChanges {
   }
 
   trackByRow(_index: number, row: BoqExtractedRow): string {
-    return `${row.row}-${row.clave}-${row.descripcion}`;
+    return row.conceptKey ?? `${row.row}-${row.clave}-${row.descripcion}`;
   }
 
   trackByComparisonRow(_index: number, row: BoqComparisonRow): string {
@@ -634,9 +825,10 @@ export class ParametersReportPanel implements OnChanges {
       this.selectedCatalogId,
       {
         comparisonGranularity: this.selectedComparisonGranularity,
-        wbsLevel: this.selectedWbsLevel,
-        parameterScope: this.selectedParameterScope,
+        wbsLevel: this.selectedReportView === 'cost' ? this.selectedWbsLevel : 1,
+        parameterScope: 'all',
         decimalPlaces: this.selectedDecimalPlaces,
+        projectSizeM2: this.selectedProjectSizeM2,
         manualWbsConceptSelectionByParameterId: this.manualWbsConceptSelectionByParameterId,
         manualParameterSelectionByConceptKey: this.manualParameterSelectionByConceptKey,
         parameterBuildingType: this.selectedBuildingType === 'all' ? '' : this.selectedBuildingType,
@@ -763,6 +955,60 @@ export class ParametersReportPanel implements OnChanges {
     this.persistReportPreferences();
   }
 
+  private syncSelectedParameterCatalog(): void {
+    const catalogIds = new Set(this.availableParameterCatalogs.map((row) => row.id));
+    if (this.activeParameterCatalogId != null && catalogIds.has(this.activeParameterCatalogId)) {
+      if (this.selectedParameterCatalogId !== this.activeParameterCatalogId) {
+        this.selectedParameterCatalogId = this.activeParameterCatalogId;
+        this.persistReportPreferences();
+      }
+      return;
+    }
+
+    if (this.selectedParameterCatalogId != null && catalogIds.has(this.selectedParameterCatalogId)) {
+      return;
+    }
+
+    const nextCatalogId = this.availableParameterCatalogs[0]?.id ?? null;
+    if (this.selectedParameterCatalogId !== nextCatalogId) {
+      this.selectedParameterCatalogId = nextCatalogId;
+      this.persistReportPreferences();
+    }
+  }
+
+  private getParameterMetadataFilterRows(excludedKey: 'tipo_edificacion' | 'tipo_obra' | 'zona'): ParametroB5DOrm[] {
+    return this.parameters.filter((row) => {
+      if (row.activo === false) return false;
+      if (excludedKey !== 'tipo_edificacion' && this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) {
+        return false;
+      }
+      if (excludedKey !== 'tipo_obra' && this.selectedWorkType !== 'all' && (row.tipo_obra ?? '') !== this.selectedWorkType) {
+        return false;
+      }
+      if (excludedKey !== 'zona' && this.selectedZone !== 'all' && (row.zona ?? '') !== this.selectedZone) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private syncReportMetadataSelections(): void {
+    const availableBuildingTypes = this.buildingTypeOptions;
+    if (this.selectedBuildingType !== 'all' && !availableBuildingTypes.includes(this.selectedBuildingType)) {
+      this.selectedBuildingType = 'all';
+    }
+
+    const availableWorkTypes = this.workTypeOptions;
+    if (this.selectedWorkType !== 'all' && !availableWorkTypes.includes(this.selectedWorkType)) {
+      this.selectedWorkType = 'all';
+    }
+
+    const availableZones = this.zoneOptions;
+    if (this.selectedZone !== 'all' && !availableZones.includes(this.selectedZone)) {
+      this.selectedZone = 'all';
+    }
+  }
+
   private syncManualWbsSelections(): void {
     const validParameterIds = new Set(
       this.parameters.filter((row) => row.activo && isCostParameterType(row.tipo_parametro)).map((row) => row.id),
@@ -821,6 +1067,7 @@ export class ParametersReportPanel implements OnChanges {
     this.lastAppliedStorageScopeKey = this.reportStorageKey;
 
     this.selectedReportMode = 'parameters';
+    this.selectedReportView = 'quantity';
     this.selectedComparisonGranularity = 'individual';
     this.selectedParameterScope = 'all';
     this.selectedDecimalPlaces = 2;
@@ -828,15 +1075,18 @@ export class ParametersReportPanel implements OnChanges {
     this.selectedQuantificationId = null;
     this.selectedSheetIndex = 0;
     this.selectedCatalogId = null;
+    this.selectedParameterCatalogId = null;
     this.selectedComparatorQuantificationIds = [];
     this.manualWbsConceptSelectionByParameterId = new Map<number, number>();
     this.manualParameterSelectionByConceptKey = new Map<string, number>();
     this.manualParameterSearchByConceptKey = new Map<string, string>();
+    this.selectedProjectSizeM2 = null;
     this.selectedQuantificationId = this.quantificationsWithWorkbook[0]?.id ?? null;
 
     if (!storedState) return;
 
     if (storedState.selectedReportMode) this.selectedReportMode = storedState.selectedReportMode;
+    if (storedState.selectedReportView) this.selectedReportView = storedState.selectedReportView;
     if (storedState.selectedComparisonGranularity) this.selectedComparisonGranularity = storedState.selectedComparisonGranularity;
     if (storedState.selectedParameterScope) this.selectedParameterScope = storedState.selectedParameterScope;
     if (storedState.selectedDecimalPlaces != null) this.selectedDecimalPlaces = Math.max(0, Math.min(6, Math.floor(storedState.selectedDecimalPlaces)));
@@ -844,6 +1094,7 @@ export class ParametersReportPanel implements OnChanges {
     if (storedState.selectedQuantificationId !== undefined) this.selectedQuantificationId = storedState.selectedQuantificationId;
     if (storedState.selectedSheetIndex != null) this.selectedSheetIndex = Math.max(0, Math.floor(storedState.selectedSheetIndex));
     if (storedState.selectedCatalogId !== undefined) this.selectedCatalogId = storedState.selectedCatalogId;
+    if (storedState.selectedParameterCatalogId !== undefined) this.selectedParameterCatalogId = storedState.selectedParameterCatalogId;
     if (storedState.selectedComparatorQuantificationIds) {
       this.selectedComparatorQuantificationIds = [...new Set(storedState.selectedComparatorQuantificationIds.filter((value) => Number.isFinite(value)))];
     }
@@ -856,11 +1107,15 @@ export class ParametersReportPanel implements OnChanges {
     if (storedState.selectedBuildingType) this.selectedBuildingType = storedState.selectedBuildingType;
     if (storedState.selectedWorkType) this.selectedWorkType = storedState.selectedWorkType;
     if (storedState.selectedZone) this.selectedZone = storedState.selectedZone;
+    if (storedState.selectedProjectSizeM2 != null && Number.isFinite(storedState.selectedProjectSizeM2) && storedState.selectedProjectSizeM2 > 0) {
+      this.selectedProjectSizeM2 = storedState.selectedProjectSizeM2;
+    }
   }
 
   private persistReportPreferences(): void {
     const storedState: ReportPanelStoredState = {
       selectedReportMode: this.selectedReportMode,
+      selectedReportView: this.selectedReportView,
       selectedComparisonGranularity: this.selectedComparisonGranularity,
       selectedParameterScope: this.selectedParameterScope,
       selectedDecimalPlaces: this.selectedDecimalPlaces,
@@ -868,9 +1123,11 @@ export class ParametersReportPanel implements OnChanges {
       selectedQuantificationId: this.selectedQuantificationId,
       selectedSheetIndex: this.selectedSheetIndex,
       selectedCatalogId: this.selectedCatalogId,
+      selectedParameterCatalogId: this.selectedParameterCatalogId,
       selectedBuildingType: this.selectedBuildingType,
       selectedWorkType: this.selectedWorkType,
       selectedZone: this.selectedZone,
+      selectedProjectSizeM2: this.selectedProjectSizeM2,
       selectedComparatorQuantificationIds: this.selectedComparatorQuantificationIds,
       manualWbsConceptSelectionByParameterId: Object.fromEntries(this.manualWbsConceptSelectionByParameterId.entries()),
       manualParameterSelectionByConceptKey: Object.fromEntries(this.manualParameterSelectionByConceptKey.entries()),
@@ -884,28 +1141,28 @@ export class ParametersReportPanel implements OnChanges {
     return {
       quantitySummary: {
         total: 0,
-        inRange: 0,
-        underLimit: 0,
-        aboveLimit: 0,
-        withoutParameter: 0,
+        correct: 0,
+        review: 0,
+        critical: 0,
+        noData: 0,
         slices: [],
         background: 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
       },
       costSummary: {
         total: 0,
-        inRange: 0,
-        underLimit: 0,
-        aboveLimit: 0,
-        withoutParameter: 0,
+        correct: 0,
+        review: 0,
+        critical: 0,
+        noData: 0,
         slices: [],
         background: 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
       },
       percentCostSummary: {
         total: 0,
-        inRange: 0,
-        underLimit: 0,
-        aboveLimit: 0,
-        withoutParameter: 0,
+        correct: 0,
+        review: 0,
+        critical: 0,
+        noData: 0,
         slices: [],
         background: 'radial-gradient(circle at center, #fff 0 58%, transparent 58% 100%)',
       },
@@ -962,9 +1219,12 @@ export class ParametersReportPanel implements OnChanges {
     this.persistReportPreferences();
   }
 
-  private collectParameterMetadataOptions(selector: (row: ParametroB5DOrm) => string | null | undefined): string[] {
+  private collectParameterMetadataOptions(
+    selector: (row: ParametroB5DOrm) => string | null | undefined,
+    rows: ParametroB5DOrm[] = this.parameters,
+  ): string[] {
     const options = new Set<string>();
-    for (const row of this.parameters) {
+    for (const row of rows) {
       const value = (selector(row) ?? '').trim();
       if (value) options.add(value);
     }

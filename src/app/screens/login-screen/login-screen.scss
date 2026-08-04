@@ -2,7 +2,7 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: linear-gradient(140deg, var(--bg-soft) 0%, var(--bg-subtle) 65%, var(--bg-chip) 100%);
+  background: var(--bg-subtle);
 }
 
 .b5d-login-card {
@@ -38,9 +38,9 @@
 
 .b5d-login-card button {
   height: 38px;
-  border: 1px solid var(--b5d-brand-primary-strong);
+  border: 1px solid var(--b5d-brand-secondary-strong);
   border-radius: 6px;
-  background: var(--primary-color);
+  background: var(--b5d-brand-secondary-strong);
   color: var(--white-color);
   font-weight: 700;
   cursor: pointer;

@@ -48,9 +48,47 @@
       />
       <small>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.decimalPlacesHint') }}</small>
     </label>
+
+    @if (selectedReportMode === 'parameters') {
+      <div class="b5d-report-field">
+        <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.view') }}</span>
+        <div class="b5d-report-choice-group b5d-report-choice-group--tight">
+          <button
+            type="button"
+            class="b5d-report-choice"
+            [class.b5d-report-choice--selected]="selectedReportView === 'quantity'"
+            (click)="selectReportView('quantity')"
+          >
+            {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.viewQuantity') }}
+          </button>
+          <button
+            type="button"
+            class="b5d-report-choice"
+            [class.b5d-report-choice--selected]="selectedReportView === 'cost'"
+            (click)="selectReportView('cost')"
+          >
+            {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.viewCost') }}
+          </button>
+        </div>
+      </div>
+
+      <label class="b5d-report-field">
+        <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.projectSize') }}</span>
+        <input
+          class="b5d-report-input"
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="selectedProjectSizeM2"
+          (ngModelChange)="selectProjectSize($event)"
+          placeholder="m2"
+        />
+        <small>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.projectSizeHint') }}</small>
+      </label>
+    }
   </div>
 
-  @if (selectedComparisonGranularity === 'wbs') {
+  @if (selectedReportMode === 'parameters' && selectedReportView === 'cost' && selectedComparisonGranularity === 'wbs') {
     <div class="b5d-parameters-report__controls">
       <label class="b5d-report-field b5d-report-field--wide">
         <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.wbsReference') }}</span>
@@ -66,7 +104,7 @@
     </div>
   }
 
-  @if (selectedReportMode === 'parameters' && selectedComparisonGranularity === 'wbs' && manualWbsRows.length) {
+  @if (selectedReportMode === 'parameters' && selectedReportView === 'cost' && selectedComparisonGranularity === 'wbs' && manualWbsRows.length) {
     <section class="b5d-report-table-card b5d-report-table-card--wide">
       <header class="b5d-report-table-card__header">
         <div>
@@ -85,7 +123,6 @@
         <table class="b5d-data-table">
           <thead>
             <tr>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.row') }}</th>
               <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.parameter') }}</th>
               <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
               <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.manualWbsConcept') }}</th>
@@ -94,7 +131,6 @@
           <tbody>
             @for (row of manualWbsRows; track trackByRow($index, row)) {
               <tr>
-                <td>{{ row.row }}</td>
                 <td>{{ row.parametro }}</td>
                 <td>{{ row.descripcion || '-' }}</td>
                 <td>
@@ -117,479 +153,227 @@
   }
 
   @if (selectedReportMode === 'parameters') {
-  <div class="b5d-parameters-report__controls">
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.buildingType') }}</span>
-      <select [ngModel]="selectedBuildingType" (ngModelChange)="selectBuildingType($event)">
-        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
-        @for (buildingType of buildingTypeOptions; track buildingType) {
-          <option [value]="buildingType">{{ buildingType }}</option>
-        }
-      </select>
-    </label>
-
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.workType') }}</span>
-      <select [ngModel]="selectedWorkType" (ngModelChange)="selectWorkType($event)">
-        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
-        @for (workType of workTypeOptions; track workType) {
-          <option [value]="workType">{{ workType }}</option>
-        }
-      </select>
-    </label>
-
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.zone') }}</span>
-      <select [ngModel]="selectedZone" (ngModelChange)="selectZone($event)">
-        <option value="all">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.allValues') }}</option>
-        @for (zone of zoneOptions; track zone) {
-          <option [value]="zone">{{ zone }}</option>
-        }
-      </select>
-    </label>
-
-    <div class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScope') }}</span>
-      <div class="b5d-report-choice-group">
-        <button
-          type="button"
-          class="b5d-report-choice"
-          [class.b5d-report-choice--selected]="selectedParameterScope === 'all'"
-          (click)="selectParameterScope('all')"
-        >
-          {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScopeAll') }}
-        </button>
-        <button
-          type="button"
-          class="b5d-report-choice"
-          [class.b5d-report-choice--selected]="selectedParameterScope === 'quantity'"
-          (click)="selectParameterScope('quantity')"
-        >
-          {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScopeQuantity') }}
-        </button>
-        <button
-          type="button"
-          class="b5d-report-choice"
-          [class.b5d-report-choice--selected]="selectedParameterScope === 'cost'"
-          (click)="selectParameterScope('cost')"
-        >
-          {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScopeCost') }}
-        </button>
-        <button
-          type="button"
-          class="b5d-report-choice"
-          [class.b5d-report-choice--selected]="selectedParameterScope === 'cost-percent'"
-          (click)="selectParameterScope('cost-percent')"
-        >
-          {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScopeCostPercent') }}
-        </button>
-      </div>
-      <small>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterScopeHint') }}</small>
-    </div>
-
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantification') }}</span>
-      <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectQuantification($event)">
-        @if (!quantificationsWithWorkbook.length) {
-          <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noWorkbook') }}</option>
-        }
-        @for (quantification of quantificationsWithWorkbook; track quantification.id) {
-          <option [ngValue]="quantification.id">{{ quantification.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantificationLabel') + ' ' + quantification.id) }}</option>
-        }
-      </select>
-    </label>
-
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.sheet') }}</span>
-      <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectSheet($event)" [disabled]="!boqSheets.length">
-        @if (!boqSheets.length) {
-          <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noSheets') }}</option>
-        }
-        @for (sheet of boqSheets; track sheet.index) {
-          <option [ngValue]="sheet.index">{{ sheet.name }}</option>
-        }
-      </select>
-    </label>
-
-    <label class="b5d-report-field">
-      <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.costCatalog') }}</span>
-      <select [ngModel]="selectedCatalogId" (ngModelChange)="selectCatalog($event)">
-        @if (!availableCostCatalogs.length) {
-          <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noCatalogs') }}</option>
-        }
-        @for (catalog of availableCostCatalogs; track catalog.id) {
-          <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.catalogLabel') + ' ' + catalog.id) }}</option>
-        }
-      </select>
-      <small>{{ selectedCatalogLabel }}</small>
-    </label>
-  </div>
+    @if (b5dLoading || loading) {
+      <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingSummary') }}</div>
+    } @else if (error) {
+      <div class="b5d-report-empty b5d-report-empty--error">{{ error }}</div>
+    } @else if (!activeProject) {
+      <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}</div>
+    } @else if (!selectedQuantificationId) {
+      <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationPreview') }}</div>
+    } @else if (!hasReportData) {
+      <div class="b5d-report-empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noValidConcepts') }}</div>
     } @else {
-      <label class="b5d-report-field">
-        <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.primaryBoq') }}</span>
-        <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectQuantification($event)">
-          @if (!quantificationsWithWorkbook.length) {
-            <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noWorkbook') }}</option>
-          }
-          @for (quantification of quantificationsWithWorkbook; track quantification.id) {
-            <option [ngValue]="quantification.id">{{ quantification.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantificationLabel') + ' ' + quantification.id) }}</option>
-          }
-        </select>
-      </label>
-
-      <label class="b5d-report-field">
-        <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.primarySheet') }}</span>
-        <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectSheet($event)" [disabled]="!boqSheets.length">
-          @if (!boqSheets.length) {
-            <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noSheets') }}</option>
-          }
-          @for (sheet of boqSheets; track sheet.index) {
-            <option [ngValue]="sheet.index">{{ sheet.name }}</option>
-          }
-        </select>
-      </label>
-
-      <section class="b5d-report-field b5d-report-field--wide">
-        <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.comparisonBoqs') }}</span>
-        <div class="b5d-report-compare-list">
-          @if (!comparisonQuantifications.length) {
-            <div class="b5d-report-compare-list__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noComparators') }}</div>
-          }
-          @for (quantification of comparisonQuantifications; track quantification.id) {
-            <label class="b5d-report-compare-item">
-              <input
-                type="checkbox"
-                [checked]="selectedComparatorQuantificationIds.includes(quantification.id)"
-                (change)="toggleComparatorSelection(quantification.id, $any($event.target).checked)"
-              />
-              <span>{{ quantification.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantificationLabel') + ' ' + quantification.id) }}</span>
-            </label>
+      <section class="b5d-report-summary">
+        <div class="b5d-report-summary__cards">
+          <article class="b5d-report-summary-card b5d-report-summary-card--total">
+            <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.summary.total') }}</span>
+            <strong>{{ activeSummaryTotal }}</strong>
+            <small>{{ getReportViewLabel(selectedReportView) }}</small>
+          </article>
+          @for (slice of activeSummarySlices; track slice.key) {
+            <article class="b5d-report-summary-card" [class]="getReportStateClass(slice.key)">
+              <span>{{ getReportStateLabel(slice.key) }}</span>
+              <strong>{{ slice.count }}</strong>
+              <small>{{ formatPercent(slice.percent) }}</small>
+            </article>
           }
         </div>
-        <small>{{ comparisonGranularityHint }}</small>
+
+        <div class="b5d-report-summary__chips">
+          <span class="b5d-report-chip">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantification') }}: {{ selectedQuantificationLabel }}</span>
+          <span class="b5d-report-chip">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.sheet') }}: {{ selectedSheetLabel }}</span>
+          <span class="b5d-report-chip">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.costCatalog') }}: {{ selectedCatalogLabel }}</span>
+          <span class="b5d-report-chip">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterCatalog') }}: {{ selectedParameterCatalogLabel }}</span>
+          <span class="b5d-report-chip">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.projectSize') }}: {{ projectSizeDisplayValue }}</span>
+        </div>
+      </section>
+      <section class="b5d-parameters-report__controls b5d-parameters-report__controls--filters">
+        <label class="b5d-report-field b5d-report-field--wide">
+          <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.parameterCatalog') }}</span>
+          <select [ngModel]="selectedParameterCatalogId" (ngModelChange)="selectParameterCatalog($event)">
+            @if (!availableParameterCatalogs.length) {
+              <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noParameterCatalogs') }}</option>
+            }
+            @for (catalog of availableParameterCatalogs; track catalog.id) {
+              <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.catalogLabel') + ' ' + catalog.id) }}</option>
+            }
+          </select>
+          <small>{{ selectedParameterCatalogLabel }}</small>
+        </label>
+
+        <label class="b5d-report-field">
+          <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantification') }}</span>
+          <select [ngModel]="selectedQuantificationId" (ngModelChange)="selectQuantification($event)">
+            @if (!quantificationsWithWorkbook.length) {
+              <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noWorkbook') }}</option>
+            }
+            @for (quantification of quantificationsWithWorkbook; track quantification.id) {
+              <option [ngValue]="quantification.id">{{ quantification.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantificationLabel') + ' ' + quantification.id) }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="b5d-report-field">
+          <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.sheet') }}</span>
+          <select [ngModel]="selectedSheetIndex" (ngModelChange)="selectSheet($event)" [disabled]="!boqSheets.length">
+            @if (!boqSheets.length) {
+              <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noSheets') }}</option>
+            }
+            @for (sheet of boqSheets; track sheet.index) {
+              <option [ngValue]="sheet.index">{{ sheet.name }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="b5d-report-field">
+          <span>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.costCatalog') }}</span>
+          <select [ngModel]="selectedCatalogId" (ngModelChange)="selectCatalog($event)">
+            @if (!availableCostCatalogs.length) {
+              <option [ngValue]="null">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noCatalogs') }}</option>
+            }
+            @for (catalog of availableCostCatalogs; track catalog.id) {
+              <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.catalogLabel') + ' ' + catalog.id) }}</option>
+            }
+          </select>
+          <small>{{ selectedCatalogLabel }}</small>
+        </label>
+      </section>
+
+      <section class="b5d-report-grid">
+        @if (isQuantityView) {
+          <article class="b5d-report-table-card b5d-report-table-card--wide">
+            <header class="b5d-report-table-card__header">
+              <div>
+                <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity.title') }}</strong>
+                <div class="b5d-report-table-card__meta">{{ reportData.quantityRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
+              </div>
+            </header>
+
+            <div class="b5d-table-wrapper">
+              <table class="b5d-data-table">
+                <thead>
+                  <tr>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unit') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantityPerM2') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.reason') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of reportData.quantityRows; track trackByRow($index, row)) {
+                    <tr>
+                      <td>{{ row.clave || '-' }}</td>
+                      <td>{{ row.descripcion || '-' }}</td>
+                      <td>{{ formatReportNumber(row.cantidad) }}</td>
+                      <td>{{ row.unidad || '-' }}</td>
+                      <td>{{ row.cantidadPorM2 }}</td>
+                      <td>{{ row.rango }}</td>
+                      <td>
+                        <span class="b5d-report-state-pill" [class]="getReportStateClass(row.state)">{{ row.estado }}</span>
+                      </td>
+                      <td>{{ row.observacion }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="8" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noQuantityMatches') }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+        } @else {
+          <article class="b5d-report-table-card b5d-report-table-card--wide">
+            <header class="b5d-report-table-card__header">
+              <div>
+                <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.cost.title') }}</strong>
+                <div class="b5d-report-table-card__meta">{{ reportData.costRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
+              </div>
+            </header>
+
+            <div class="b5d-table-wrapper">
+              <table class="b5d-data-table">
+                <thead>
+                  <tr>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.evaluated') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.reason') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of reportData.costRows; track trackByRow($index, row)) {
+                    <tr>
+                      <td>{{ row.clave || '-' }}</td>
+                      <td>{{ row.descripcion || '-' }}</td>
+                      <td>{{ row.evaluado }}</td>
+                      <td>{{ row.rango }}</td>
+                      <td>
+                        <span class="b5d-report-state-pill" [class]="getReportStateClass(row.state)">{{ row.estado }}</span>
+                      </td>
+                      <td>{{ row.observacion }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="6" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noCostMatches') }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="b5d-report-table-card b5d-report-table-card--wide">
+            <header class="b5d-report-table-card__header">
+              <div>
+                <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.costPercent.title') }}</strong>
+                <div class="b5d-report-table-card__meta">{{ reportData.percentCostRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
+              </div>
+            </header>
+
+            <div class="b5d-table-wrapper">
+              <table class="b5d-data-table">
+                <thead>
+                  <tr>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.evaluated') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
+                    <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.reason') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of reportData.percentCostRows; track trackByRow($index, row)) {
+                    <tr>
+                      <td>{{ row.clave || '-' }}</td>
+                      <td>{{ row.descripcion || '-' }}</td>
+                      <td>{{ row.evaluado }}</td>
+                      <td>{{ row.rango }}</td>
+                      <td>
+                        <span class="b5d-report-state-pill" [class]="getReportStateClass(row.state)">{{ row.estado }}</span>
+                      </td>
+                      <td>{{ row.observacion }}</td>
+                    </tr>
+                  } @empty {
+                    <tr>
+                      <td colspan="6" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noCostPercentMatches') }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+        }
       </section>
     }
-
-  @if (selectedReportMode === 'parameters') {
-  @if (b5dLoading || loading) {
-    <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingSummary') }}</div>
-  } @else if (error) {
-    <div class="b5d-report-empty b5d-report-empty--error">{{ error }}</div>
-  } @else if (!activeProject) {
-    <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.status.noActiveProject') }}</div>
-  } @else if (!selectedQuantificationId) {
-    <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.placeholder.selectQuantificationPreview') }}</div>
-  } @else if (!hasReportData) {
-    <div class="b5d-report-empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.noValidConcepts') }}</div>
-  } @else {
-    <section class="b5d-summary-grid">
-      @if (showQuantitySection) {
-        <article class="b5d-summary-card">
-          <header class="b5d-summary-head">
-            <div class="b5d-summary-pie" [style.background]="reportData.quantitySummary.background"></div>
-            <div class="b5d-summary-head-copy">
-              <div class="b5d-summary-total">{{ reportData.quantitySummary.total }}</div>
-              <div class="b5d-summary-label">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.summary.quantity') }}</div>
-              <div class="b5d-summary-meta">
-                {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.quantification') }}: {{ selectedQuantificationLabel }} | {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.sheet') }}: {{ selectedSheetLabel }}
-              </div>
-            </div>
-          </header>
-
-          <div class="b5d-summary-list">
-            @for (slice of reportData.quantitySummary.slices; track slice.key) {
-              <div class="b5d-summary-list-item">
-                <span class="b5d-summary-dot" [style.background]="slice.color"></span>
-                <span class="b5d-summary-list-label">{{ slice.label }}</span>
-                <strong>{{ slice.count }}</strong>
-                <span class="b5d-summary-list-percent">{{ formatPercent(slice.percent) }}</span>
-              </div>
-            }
-          </div>
-        </article>
-      }
-
-      @if (showCostSection) {
-      <article class="b5d-summary-card">
-        <header class="b5d-summary-head">
-          <div class="b5d-summary-pie" [style.background]="reportData.costSummary.background"></div>
-          <div class="b5d-summary-head-copy">
-            <div class="b5d-summary-total">{{ reportData.costSummary.total }}</div>
-              <div class="b5d-summary-label">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.summary.cost') }}</div>
-              <div class="b5d-summary-meta">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.costCatalog') }}: {{ selectedCatalogLabel }}</div>
-            </div>
-          </header>
-
-          <div class="b5d-summary-list">
-            @for (slice of reportData.costSummary.slices; track slice.key) {
-              <div class="b5d-summary-list-item">
-                <span class="b5d-summary-dot" [style.background]="slice.color"></span>
-                <span class="b5d-summary-list-label">{{ slice.label }}</span>
-                <strong>{{ slice.count }}</strong>
-                <span class="b5d-summary-list-percent">{{ formatPercent(slice.percent) }}</span>
-              </div>
-            }
-          </div>
-        </article>
-      }
-
-      @if (showCostPercentSection) {
-        <article class="b5d-summary-card">
-          <header class="b5d-summary-head">
-            <div class="b5d-summary-pie" [style.background]="reportData.percentCostSummary.background"></div>
-            <div class="b5d-summary-head-copy">
-              <div class="b5d-summary-total">{{ reportData.percentCostSummary.total }}</div>
-              <div class="b5d-summary-label">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.summary.costPercent') }}</div>
-              <div class="b5d-summary-meta">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.panel.costCatalog') }}: {{ selectedCatalogLabel }}</div>
-            </div>
-          </header>
-
-          <div class="b5d-summary-list">
-            @for (slice of reportData.percentCostSummary.slices; track slice.key) {
-              <div class="b5d-summary-list-item">
-                <span class="b5d-summary-dot" [style.background]="slice.color"></span>
-                <span class="b5d-summary-list-label">{{ slice.label }}</span>
-                <strong>{{ slice.count }}</strong>
-                <span class="b5d-summary-list-percent">{{ formatPercent(slice.percent) }}</span>
-              </div>
-            }
-          </div>
-        </article>
-      }
-    </section>
-
-    <section class="b5d-report-grid">
-      @if (showQuantitySection) {
-      <article class="b5d-report-table-card">
-        <header class="b5d-report-table-card__header">
-          <div>
-            <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity.title') }}</strong>
-            <div class="b5d-report-table-card__meta">{{ reportData.quantityRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
-          </div>
-        </header>
-
-        <div class="b5d-table-wrapper">
-          <table class="b5d-data-table">
-            <thead>
-              <tr>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.row') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unit') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.parameter') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.parameterUnit') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.evaluated') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.difference') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (row of reportData.quantityRows; track trackByRow($index, row)) {
-                <tr>
-                  <td>{{ row.row }}</td>
-                  <td>{{ row.clave || '-' }}</td>
-                  <td>{{ row.descripcion || '-' }}</td>
-                  <td>{{ formatReportNumber(row.cantidad) }}</td>
-                  <td>{{ row.unidad || '-' }}</td>
-                  <td>{{ row.parametro }}</td>
-                  <td>{{ row.parametroUnidad }}</td>
-                  <td>{{ row.evaluado }}</td>
-                  <td>{{ row.rango }}</td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.diferencia }}
-                  </td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.resultado }}
-                  </td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="11" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noQuantityMatches') }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </article>
-      }
-
-      @if (showCostSection) {
-      <article class="b5d-report-table-card">
-        <header class="b5d-report-table-card__header">
-          <div>
-            <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.cost.title') }}</strong>
-            <div class="b5d-report-table-card__meta">{{ reportData.costRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
-          </div>
-        </header>
-
-        <div class="b5d-table-wrapper">
-          <table class="b5d-data-table">
-            <thead>
-              <tr>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.row') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unit') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.parameter') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.costConcept') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unitCost') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.evaluated') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.difference') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (row of reportData.costRows; track trackByRow($index, row)) {
-                <tr>
-                  <td>{{ row.row }}</td>
-                  <td>{{ row.clave || '-' }}</td>
-                  <td>{{ row.descripcion || '-' }}</td>
-                  <td>{{ formatReportNumber(row.cantidad) }}</td>
-                  <td>{{ row.unidad || '-' }}</td>
-                  <td>{{ row.parametro }}</td>
-                  <td>{{ row.conceptoCosto }}</td>
-                  <td>{{ row.costoUnitario }}</td>
-                  <td>{{ row.evaluado }}</td>
-                  <td>{{ row.rango }}</td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.diferencia }}
-                  </td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.resultado }}
-                  </td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="12" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noCostMatches') }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </article>
-      }
-
-      @if (showCostPercentSection) {
-      <article class="b5d-report-table-card">
-        <header class="b5d-report-table-card__header">
-          <div>
-            <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.costPercent.title') }}</strong>
-            <div class="b5d-report-table-card__meta">{{ reportData.percentCostRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.matches') }}</div>
-          </div>
-        </header>
-
-        <div class="b5d-table-wrapper">
-          <table class="b5d-data-table">
-            <thead>
-              <tr>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.row') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unit') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.parameter') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.costPercentConcept') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.costPercentValue') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.evaluated') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.range') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.difference') }}</th>
-                <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.result') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (row of reportData.percentCostRows; track trackByRow($index, row)) {
-                <tr>
-                  <td>{{ row.row }}</td>
-                  <td>{{ row.clave || '-' }}</td>
-                  <td>{{ row.descripcion || '-' }}</td>
-                  <td>{{ formatReportNumber(row.cantidad) }}</td>
-                  <td>{{ row.unidad || '-' }}</td>
-                  <td>{{ row.parametro }}</td>
-                  <td>{{ row.conceptoCosto }}</td>
-                  <td>{{ row.costoUnitario }}</td>
-                  <td>{{ row.evaluado }}</td>
-                  <td>{{ row.rango }}</td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.diferencia }}
-                  </td>
-                  <td [class]="row.kind === 'ok' ? 'b5d-report-result--ok' : row.kind === 'error' ? 'b5d-report-result--error' : 'b5d-report-result--warning'">
-                    {{ row.resultado }}
-                  </td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="12" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noCostPercentMatches') }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </article>
-      }
-
-      @if (showUnassignedSection) {
-      <article class="b5d-report-table-card b5d-report-table-card--wide">
-        <header class="b5d-report-table-card__header">
-          <div>
-            <strong>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unassigned.title') }}</strong>
-            <div class="b5d-report-table-card__meta">{{ reportData.unassignedRows.length }} {{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.concepts') }}</div>
-          </div>
-        </header>
-
-        <div class="b5d-table-wrapper">
-          <table class="b5d-data-table">
-            <thead>
-              <tr>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.row') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.code') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.description') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.quantity') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.unit') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.assignParameter') }}</th>
-              <th>{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.reason') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of reportData.unassignedRows; track trackByRow($index, row)) {
-                <tr>
-                  <td>{{ row.row }}</td>
-                  <td>{{ row.clave || '-' }}</td>
-                  <td>{{ row.descripcion || '-' }}</td>
-                  <td>{{ formatReportNumber(row.cantidad) }}</td>
-                  <td>{{ row.unidad || '-' }}</td>
-                  <td>
-                    <input
-                      class="b5d-report-input"
-                      type="search"
-                      [ngModel]="getManualParameterSearch(row.conceptKey)"
-                      (ngModelChange)="updateManualParameterSearch(row.conceptKey, $event)"
-                      [attr.list]="'manual-parameters-' + $index"
-                      [placeholder]="i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.searchParameter')"
-                    />
-                    <datalist [id]="'manual-parameters-' + $index">
-                      @for (parameter of getManualParameterMatches(row.conceptKey); track parameter.id) {
-                        <option [value]="getManualParameterLabel(parameter)"></option>
-                      }
-                    </datalist>
-                  </td>
-                  <td>{{ row.motivo }}</td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="7" class="b5d-report-table-card__empty">{{ i18n.translateForComponent(parametersReportPanelTranslations, 'parametersReport.table.noUnassigned') }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </article>
-      }
-    </section>
-  }
   } @else {
     @if (b5dLoading || loading) {
       <div class="b5d-report-empty">{{ i18n.translateForComponent(globalTranslations, 'common.status.loadingSummary') }}</div>

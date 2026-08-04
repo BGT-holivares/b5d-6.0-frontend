@@ -10,6 +10,7 @@
     "build": "ng build",
     "build:server": "ng build --configuration server",
     "build:private-vm": "ng build --configuration private-vm",
+    "deploy:frontend": "bash scripts/deploy-frontend.sh",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:frontend": "node dist/frontend/server/server.mjs"

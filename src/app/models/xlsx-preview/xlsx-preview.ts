@@ -446,9 +446,26 @@ export class XlsxPreview implements OnChanges, OnDestroy {
 
   private resolveCellText(cellData: WorkbookCellOrm | null): string {
     if (!cellData) return '';
-    if (cellData.formattedValue != null) return String(cellData.formattedValue);
-    if (cellData.value == null) return '';
-    return String(cellData.value);
+    const cellType = typeof cellData.type === 'string' ? cellData.type.toLowerCase() : '';
+    const displayValue = cellData.formattedValue ?? cellData.value;
+    if (cellType === 'n') {
+      if (typeof displayValue === 'number' && Number.isFinite(displayValue)) {
+        return displayValue.toFixed(2);
+      }
+
+      if (typeof displayValue === 'string') {
+        const trimmedValue = displayValue.trim();
+        if (/^-?\d+(?:\.\d+)?$/.test(trimmedValue)) {
+          const numericValue = Number(trimmedValue);
+          if (Number.isFinite(numericValue)) {
+            return numericValue.toFixed(2);
+          }
+        }
+      }
+    }
+
+    if (displayValue == null) return '';
+    return String(displayValue);
   }
 
   private renderCellText(cellData: WorkbookCellOrm | null): string {

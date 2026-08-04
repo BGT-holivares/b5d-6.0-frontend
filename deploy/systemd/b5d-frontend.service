@@ -1,0 +1,17 @@
+[Unit]
+Description=Budgeto Angular Frontend Publish
+After=network.target
+Before=nginx.service
+ConditionPathExists=/apps/frontend/package.json
+
+[Service]
+Type=oneshot
+WorkingDirectory=/apps/frontend
+ExecStart=/usr/bin/env bash /apps/frontend/scripts/deploy-frontend.sh
+RemainAfterExit=yes
+User=root
+Group=root
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

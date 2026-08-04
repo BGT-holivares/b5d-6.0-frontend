@@ -1,107 +1,112 @@
 @if (row; as parameterRow) {
   @for (column of columns; track column.key) {
     <td>
-      @if (editing) {
-        @switch (column.key) {
-          @case ('activo') {
-            <input
-              type="checkbox"
-              [checked]="parameterRow.activo"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-              (change)="parameterRow.activo = $any($event.target).checked"
-            />
-          }
-          @case ('clave') {
-            <input
-              type="text"
-              [value]="parameterRow.clave ?? ''"
-              (input)="parameterRow.clave = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
-          @case ('descripcion') {
-            <textarea
-              rows="1"
-              [value]="parameterRow.descripcion ?? ''"
-              (input)="parameterRow.descripcion = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            ></textarea>
-          }
-          @case ('tipo_comparacion') {
-            <select
-              [value]="parameterRow.tipo_comparacion"
-              (change)="parameterRow.tipo_comparacion = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            >
-              <option value="clave_exacta">Clave exacta</option>
-              <option value="clave_parcial">Clave parcial</option>
-              <option value="descripcion_parcial">Descripción parcial</option>
-            </select>
-          }
-          @case ('tipo_parametro') {
-            <select
-              [value]="parameterRow.tipo_parametro"
-              (change)="parameterRow.tipo_parametro = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            >
-              <option value="cantidad">Cantidades</option>
-              <option value="costo">Costos</option>
-              <option value="costo_porcentaje">Costo %</option>
-            </select>
-          }
-          @case ('tipo_edificacion') {
-            <input
-              type="text"
-              [value]="parameterRow.tipo_edificacion ?? ''"
-              (input)="parameterRow.tipo_edificacion = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
-          @case ('unidad') {
-            <input
-              type="text"
-              [value]="parameterRow.unidad ?? ''"
-              (input)="parameterRow.unidad = $any($event.target).value"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
-          @case ('minimo') {
-            <input
-              type="text"
-              [value]="parameterRow.minimo ?? ''"
-              (input)="onNumericChange('minimo', $any($event.target).value)"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
-          @case ('maximo') {
-            <input
-              type="text"
-              [value]="parameterRow.maximo ?? ''"
-              (input)="onNumericChange('maximo', $any($event.target).value)"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
-          @case ('promedio') {
-            <input
-              type="text"
-              [value]="parameterRow.promedio ?? ''"
-              (input)="onNumericChange('promedio', $any($event.target).value)"
-              [disabled]="saving"
-              (click)="$event.stopPropagation()"
-            />
-          }
+      @switch (column.key) {
+        @case ('activo') {
+          <input
+            type="checkbox"
+            [checked]="parameterRow.activo"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+            (change)="parameterRow.activo = $any($event.target).checked"
+          />
         }
-      } @else {
-        {{ getDisplayValue(column.key) }}
+        @case ('clave') {
+          <input
+            type="text"
+            [value]="parameterRow.clave ?? ''"
+            (input)="parameterRow.clave = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('descripcion') {
+          <textarea
+            rows="1"
+            [value]="parameterRow.descripcion ?? ''"
+            (input)="parameterRow.descripcion = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          ></textarea>
+        }
+        @case ('tipo_comparacion') {
+          <select
+            [value]="parameterRow.tipo_comparacion"
+            (change)="parameterRow.tipo_comparacion = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          >
+            <option value="clave_exacta">Clave exacta</option>
+            <option value="clave_parcial">Clave parcial</option>
+            <option value="descripcion_parcial">Descripción parcial</option>
+          </select>
+        }
+        @case ('tipo_parametro') {
+          <select
+            [value]="parameterRow.tipo_parametro"
+            (change)="parameterRow.tipo_parametro = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          >
+            <option value="cantidad">Cantidades</option>
+            <option value="costo">Costos</option>
+            <option value="costo_porcentaje">Costo %</option>
+          </select>
+        }
+        @case ('tipo_edificacion') {
+          <input
+            type="text"
+            [value]="parameterRow.tipo_edificacion ?? ''"
+            (input)="parameterRow.tipo_edificacion = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('unidad') {
+          <input
+            type="text"
+            [value]="parameterRow.unidad ?? ''"
+            (input)="parameterRow.unidad = $any($event.target).value"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('minimo') {
+          <input
+            type="text"
+            [value]="parameterRow.minimo ?? ''"
+            (input)="onNumericChange('minimo', $any($event.target).value)"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('maximo') {
+          <input
+            type="text"
+            [value]="parameterRow.maximo ?? ''"
+            (input)="onNumericChange('maximo', $any($event.target).value)"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('promedio') {
+          <input
+            type="text"
+            [value]="parameterRow.promedio ?? ''"
+            (input)="onNumericChange('promedio', $any($event.target).value)"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
+        @case ('sigma') {
+          <input
+            type="text"
+            [value]="parameterRow.sigma ?? ''"
+            (input)="onNumericChange('sigma', $any($event.target).value)"
+            [disabled]="saving"
+            (click)="$event.stopPropagation()"
+          />
+        }
       }
     </td>
   }

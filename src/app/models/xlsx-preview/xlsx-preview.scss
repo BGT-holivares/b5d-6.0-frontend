@@ -132,7 +132,8 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, var(--b5d-border-control-strong) 0 50%, transparent 50% 100%);
+  border-top: 18px solid var(--b5d-border-control-strong);
+  border-right: 18px solid transparent;
 }
 
 .b5d-xlsx-preview__cell--selected {

@@ -295,7 +295,7 @@
         }
 
         <footer class="b5d-catalog-dialog__footer">
-          <button type="button" class="b5d-catalog-dialog__button" (click)="closeDialog()" [disabled]="loading">
+          <button type="button" class="b5d-catalog-dialog__button b5d-catalog-dialog__button--danger" (click)="closeDialog()" [disabled]="loading">
             {{ i18n.translateForComponent(translations, 'catalogDialog.cancel') }}
           </button>
           @if (mode === 'info') {

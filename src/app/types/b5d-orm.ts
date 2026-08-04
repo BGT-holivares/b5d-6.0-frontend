@@ -141,9 +141,11 @@ export interface ParametroB5DOrm {
   tipo_obra: string | null;
   zona: string | null;
   unidad: string | null;
+  size?: number | null;
   minimo: number | null;
   maximo: number | null;
   promedio: number | null;
+  sigma: number | null;
   activo: boolean;
 }
 

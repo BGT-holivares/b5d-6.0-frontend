@@ -23,7 +23,6 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.panel.analysisResults': 'Resultados de análisis',
     'parameters.panel.extractingBoq': 'Extrayendo datos de la cuantificación para análisis...',
     'parameters.panel.emptyState': 'Activa alguna vista de parámetros desde la barra superior.',
-    'parameters.panel.importXdb': 'Importar XDB',
 
     'parameters.filter.all': 'Todos',
     'parameters.filter.quantities': 'Cantidades',
@@ -46,7 +45,6 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.catalog.errorUpdate': 'No fue posible actualizar el catálogo de parámetros.',
     'parameters.catalog.errorDelete': 'No fue posible eliminar el catálogo de parámetros.',
     'parameters.catalog.errorNoSelection': 'Selecciona un catálogo de parámetros para editarlo.',
-    'parameters.catalog.confirmDelete': '¿Eliminar el catálogo de parámetros seleccionado? Los parámetros quedarán sin catálogo.',
     'parameters.catalog.errorSelect': 'No fue posible cambiar el catálogo de parámetros activo.',
 
     'parameters.column.active': 'Activo',
@@ -59,6 +57,7 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.column.min': 'Mínimo',
     'parameters.column.max': 'Máximo',
     'parameters.column.average': 'Promedio',
+    'parameters.column.sigma': 'Sigma',
 
     'parameters.catalog.costs': 'Catálogo de costos',
 
@@ -117,7 +116,6 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.panel.analysisResults': 'Analysis results',
     'parameters.panel.extractingBoq': 'Extracting bill of quantities data for analysis...',
     'parameters.panel.emptyState': 'Activate a parameters view from the top bar.',
-    'parameters.panel.importXdb': 'Import XDB',
 
     'parameters.filter.all': 'All',
     'parameters.filter.quantities': 'Quantities',
@@ -140,7 +138,6 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.catalog.errorUpdate': 'Could not update the parameter catalog.',
     'parameters.catalog.errorDelete': 'Could not delete the parameter catalog.',
     'parameters.catalog.errorNoSelection': 'Select a parameter catalog to edit it.',
-    'parameters.catalog.confirmDelete': 'Delete the selected parameter catalog? Its parameters will remain without a catalog.',
     'parameters.catalog.errorSelect': 'Could not change the active parameter catalog.',
 
     'parameters.column.active': 'Active',
@@ -153,6 +150,7 @@ export const PARAMETERS_PANEL_TRANSLATIONS: ComponentTranslations = {
     'parameters.column.min': 'Min',
     'parameters.column.max': 'Max',
     'parameters.column.average': 'Average',
+    'parameters.column.sigma': 'Sigma',
 
     'parameters.catalog.costs': 'Cost catalog',
 

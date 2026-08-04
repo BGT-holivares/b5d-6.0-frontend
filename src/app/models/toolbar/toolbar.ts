@@ -156,6 +156,7 @@ export class Toolbar {
   @Input() toolbarContentVisible = true;
   @Input() usuarioSesion: UsuarioSesionOrm | null = null;
   @Input() activeProject: ProyectoTrabajoOrm | null = null;
+  @Input() activeProjects: ProyectoTrabajoOrm[] = [];
   @Input() activeMeasurementMode: MeasurementMode | null = null;
   @Input() activeLengthMeasurementMode: MeasurementLengthMode = 'edge';
   @Input() activeCountMeasurementMode: MeasurementCountMode = 'selected';
@@ -190,6 +191,8 @@ export class Toolbar {
   @Output() guardarB5dSolicitado = new EventEmitter<void>();
   @Output() loginSolicitado = new EventEmitter<void>();
   @Output() logoutSolicitado = new EventEmitter<void>();
+  @Output() activeProjectRequested = new EventEmitter<number>();
+  @Output() activeProjectCloseRequested = new EventEmitter<number>();
   @Output() toolbarAction = new EventEmitter<ToolbarActionId>();
   @Output() toggleFloatingPanel = new EventEmitter<FloatingPanelId>();
   @Output() toolbarContentVisibleChange = new EventEmitter<boolean>();

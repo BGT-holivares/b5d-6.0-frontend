@@ -54,7 +54,7 @@
     </nav>
 
     <section class="b5d-float-file-tab__recent">
-      <h3>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.recentLabel') }}</h3>
+      <h3>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.currentProjectLabel') }}</h3>
       @if (activeProject) {
         <div class="b5d-float-file-tab__recent-line">
           <strong>{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.b5dProyect') }}</strong> {{ activeProject.nombre }}
@@ -68,6 +68,42 @@
         </div>
       } @else {
         <div class="b5d-float-file-tab__recent-line">{{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.noActiveProject') }}</div>
+      }
+
+      <h3 class="b5d-float-file-tab__projects-title">
+        {{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.activeProjectsLabel') }}
+      </h3>
+
+      @if (activeProjects.length) {
+        <div class="b5d-float-file-tab__projects-list">
+          @for (project of activeProjects; track project.id) {
+            <div class="b5d-float-file-tab__project-item" [class.b5d-float-file-tab__project-item--current]="esProyectoActual(project)">
+              <button
+                class="b5d-float-file-tab__project-select"
+                type="button"
+                [disabled]="esProyectoActual(project)"
+                (click)="activeProjectRequested.emit(project.id)"
+              >
+                <span class="b5d-float-file-tab__project-name">{{ project.nombre }}</span>
+                <span class="b5d-float-file-tab__project-meta">
+                  #{{ project.id }} · {{ obtenerEstadoProyecto(project) }}
+                </span>
+              </button>
+              <button
+                class="b5d-float-file-tab__project-close"
+                type="button"
+                [title]="i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.closeProject')"
+                (click)="activeProjectCloseRequested.emit(project.id)"
+              >
+                ×
+              </button>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="b5d-float-file-tab__recent-line">
+          {{ i18n.translateForComponent(floatFileTabTranslations, 'toolbar.file.noActiveProjects') }}
+        </div>
       }
     </section>
   </div>

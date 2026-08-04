@@ -210,7 +210,7 @@
       </div>
 
       <footer class="b5d-parameters-import-dialog__footer">
-        <button type="button" class="b5d-parameters-import-dialog__button" (click)="closeDialog()" [disabled]="importInProgress">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
+        <button type="button" class="b5d-parameters-import-dialog__button b5d-parameters-import-dialog__button--danger" (click)="closeDialog()" [disabled]="importInProgress">{{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}</button>
         <button
           type="button"
           class="b5d-parameters-import-dialog__button b5d-parameters-import-dialog__button--primary"

@@ -2,22 +2,23 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { BackendProyectosService, type PrevisualizarParametrosXdbResponse } from '../../services/backend-proyectos.service';
+import { BackendProyectosService } from '../../services/backend-proyectos.service';
 import { LoadingPanelService } from '../../services/loading-panel.service';
 import { createParameterImportPlan } from '../../utils/loading-panel/loading-plans';
 import { I18nService } from '../../utils/i18n/i18n.service';
 import { GLOBAL_TRANSLATIONS } from '../../utils/i18n/global.translations';
+import { buildParameterImportPreviewRows, type ParameterImportPreviewRow } from '../../utils/parameters/parameter-preview-grouping';
 import { PARAMETERS_XDB_IMPORT_DIALOG_TRANSLATIONS } from './parameters-xdb-import-dialog.translations';
 
 type XdbImportCandidate = {
   file: File;
   relativePath: string;
   enabled: boolean;
+  size: string;
 };
 
-type XdbPreviewRow = PrevisualizarParametrosXdbResponse['preview']['resultados'][number];
-type XdbGroupingMode = 'hojas' | 'agrupadores';
-type XdbParameterType = 'costo' | 'costo_porcentaje';
+type XdbPreviewRow = ParameterImportPreviewRow;
+type XdbSelectionMode = 'conceptos' | 'agrupadores' | '';
 
 export type XdbParameterImportSummary = {
   created: number;
@@ -47,8 +48,7 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
 
   folderName = '';
   candidates: XdbImportCandidate[] = [];
-  tipoParametro: XdbParameterType = 'costo_porcentaje';
-  modoAgrupacion: XdbGroupingMode = 'hojas';
+  selectionMode: XdbSelectionMode = '';
   tipoEdificacionValue = '';
   tipoObraValue = '';
   zonaValue = '';
@@ -96,58 +96,94 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     return this.candidates.length;
   }
 
+  get hasSelectedFiles(): boolean {
+    return this.totalCount > 0;
+  }
+
+  get hasRequiredMetadata(): boolean {
+    return !!this.tipoEdificacionValue.trim() && !!this.tipoObraValue.trim() && !!this.zonaValue.trim();
+  }
+
+  get hasSelectionMode(): boolean {
+    return this.selectionMode === 'conceptos' || this.selectionMode === 'agrupadores';
+  }
+
+  get hasValidSelectedFileSizes(): boolean {
+    return this.selectedCandidates.every((candidate) => this.parseCandidateSize(candidate.size) != null);
+  }
+
   get canImport(): boolean {
-    return !!this.activeProjectId && !this.isImporting && !this.loading && this.selectedCount > 0;
+    return (
+      !!this.activeProjectId &&
+      !this.isImporting &&
+      !this.loading &&
+      this.hasPreview &&
+      !this.previewLoading &&
+      !this.previewDirty &&
+      this.hasValidSelectedFileSizes
+    );
   }
 
   get canGeneratePreview(): boolean {
-    return !!this.activeProjectId && !this.isImporting && !this.loading && this.selectedCount > 0;
+    return (
+      !!this.activeProjectId &&
+      !this.isImporting &&
+      !this.loading &&
+      this.selectedCount > 0 &&
+      this.hasRequiredMetadata &&
+      this.hasSelectionMode &&
+      this.hasValidSelectedFileSizes
+    );
   }
 
   get isGroupingMode(): boolean {
-    return this.modoAgrupacion === 'agrupadores';
+    return this.selectionMode === 'agrupadores';
   }
 
   get previewTitleKey(): string {
+    if (!this.hasSelectionMode) {
+      return 'parametersXdbImport.previewTitle';
+    }
     return this.isGroupingMode
       ? 'parametersXdbImport.previewTitleGrouping'
       : 'parametersXdbImport.previewTitle';
   }
 
   get previewHintKey(): string {
+    if (!this.hasSelectionMode) {
+      return 'parametersXdbImport.previewHint';
+    }
     return this.isGroupingMode
       ? 'parametersXdbImport.previewHintGrouping'
       : 'parametersXdbImport.previewHint';
   }
 
-  get selectedParameterTypeHintKey(): string {
-    return this.tipoParametro === 'costo'
-      ? 'parametersXdbImport.parameterTypeHintCost'
-      : 'parametersXdbImport.parameterTypeHintCostPercent';
+  get selectionHintKey(): string {
+    if (!this.hasSelectionMode) {
+      return 'parametersXdbImport.selectionHintRequired';
+    }
+    return this.isGroupingMode
+      ? 'parametersXdbImport.selectionHintGrouping'
+      : 'parametersXdbImport.selectionHintConcepts';
   }
 
   get sourceLabelValue(): string {
-    return this.folderName || this.i18n.translateForComponent(this.translations, 'parametersXdbImport.noFolder');
+    return this.folderName || this.i18n.translateForComponent(this.translations, 'parametersXdbImport.noFiles');
   }
 
-  setGroupingMode(mode: XdbGroupingMode): void {
-    if (this.modoAgrupacion === mode) return;
-    this.modoAgrupacion = mode;
+  setSelectionMode(mode: XdbSelectionMode): void {
+    if (this.selectionMode === mode) return;
+    this.selectionMode = mode;
     this.markPreviewStale();
-  }
-
-  setParameterType(tipoParametro: XdbParameterType): void {
-    if (this.tipoParametro === tipoParametro) return;
-    this.tipoParametro = tipoParametro;
-    this.markPreviewStale();
-  }
-
-  handleFolderChange(event: Event): void {
-    this.handleFilesSelection(event, true);
   }
 
   handleFilesChange(event: Event): void {
-    this.handleFilesSelection(event, false);
+    this.handleFilesSelection(event);
+  }
+
+  onMetadataChange(): void {
+    if (!this.hasSelectedFiles) return;
+    this.markPreviewStale();
   }
 
   toggleCandidate(relativePath: string, enabled: boolean): void {
@@ -159,6 +195,10 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
 
   setAllCandidates(enabled: boolean): void {
     this.candidates = this.candidates.map((candidate) => ({ ...candidate, enabled }));
+    this.markPreviewStale();
+  }
+
+  onCandidateSizeChange(): void {
     this.markPreviewStale();
   }
 
@@ -175,8 +215,25 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     if (!this.activeProjectId || this.isImporting) return;
 
     const selectedFiles = this.selectedCandidates.map((candidate) => candidate.file);
+    const selectedSizes = this.getSelectedFileSizes();
     if (!selectedFiles.length) {
       this.validationMessage = 'Selecciona al menos un archivo XDB.';
+      return;
+    }
+    if (!this.hasSelectionMode) {
+      this.validationMessage = 'Selecciona Conceptos o Agrupadores antes de importar.';
+      return;
+    }
+    if (!this.hasRequiredMetadata) {
+      this.validationMessage = 'Completa Tipo de edificación, Tipo de obra y Zona antes de importar.';
+      return;
+    }
+    if (!this.hasPreview || this.previewDirty || this.previewLoading) {
+      this.validationMessage = 'Genera la vista previa antes de importar.';
+      return;
+    }
+    if (!this.hasValidSelectedFileSizes) {
+      this.validationMessage = this.i18n.translateForComponent(this.translations, 'parametersXdbImport.sizeRequired');
       return;
     }
 
@@ -188,13 +245,17 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = 'Importando parámetros desde XDB...';
+    const tipoParametro = this.isGroupingMode ? 'costo_porcentaje' : 'costo';
+    const modoAgrupacion = this.isGroupingMode ? 'agrupadores' : 'hojas';
 
     try {
       const response = await firstValueFrom(
         this.backendProyectos.importarParametrosDesdeXdb(this.activeProjectId, {
           archivos: selectedFiles,
-          tipo_parametro: this.tipoParametro,
-          modo_agrupacion: this.modoAgrupacion,
+          sizes: selectedSizes,
+          preview_rows: this.getPreviewSelections(),
+          tipo_parametro: tipoParametro,
+          modo_agrupacion: modoAgrupacion,
           tipo_edificacion: this.tipoEdificacionValue.trim() || null,
           tipo_obra: this.tipoObraValue.trim() || null,
           zona: this.zonaValue.trim() || null,
@@ -228,6 +289,13 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     return `${numericValue.toFixed(2)}%`;
   }
 
+  formatValue(value: number | string | null | undefined): string {
+    const numericValue = this.toNumericValue(value);
+    if (numericValue == null) return '-';
+    const rounded = Number(numericValue.toFixed(4));
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  }
+
   private toNumericValue(value: unknown): number | null {
     if (value == null) return null;
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -256,8 +324,7 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.previewDirty = false;
     this.previewProgress = 0;
     this.isImporting = false;
-    this.tipoParametro = 'costo_porcentaje';
-    this.modoAgrupacion = 'hojas';
+    this.selectionMode = 'conceptos';
     this.previewRequestId += 1;
   }
 
@@ -266,8 +333,17 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
 
     const requestId = ++this.previewRequestId;
     const selectedFiles = this.selectedCandidates.map((candidate) => candidate.file);
+    const selectedSizes = this.getSelectedFileSizes();
     if (!selectedFiles.length) {
       this.clearPreviewState('parametersXdbImport.previewEmpty', false);
+      return;
+    }
+    if (!this.hasValidSelectedFileSizes) {
+      this.clearPreviewState('parametersXdbImport.sizeRequired', true);
+      return;
+    }
+    if (!this.hasSelectionMode || !this.hasRequiredMetadata) {
+      this.clearPreviewState('parametersXdbImport.previewPending', true);
       return;
     }
 
@@ -275,20 +351,23 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.startPreviewStatusPolling(requestId);
     this.previewLoading = true;
     this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersXdbImport.previewLoading');
+    const tipoParametro = this.isGroupingMode ? 'costo_porcentaje' : 'costo';
+    const modoAgrupacion = this.isGroupingMode ? 'agrupadores' : 'hojas';
 
     try {
       const response = await firstValueFrom(
         this.backendProyectos.previsualizarParametrosDesdeXdb(this.activeProjectId, {
           archivos: selectedFiles,
-          tipo_parametro: this.tipoParametro,
-          modo_agrupacion: this.modoAgrupacion,
+          sizes: selectedSizes,
+          tipo_parametro: tipoParametro,
+          modo_agrupacion: modoAgrupacion,
           tipo_edificacion: this.tipoEdificacionValue.trim() || null,
           tipo_obra: this.tipoObraValue.trim() || null,
           zona: this.zonaValue.trim() || null,
         }),
       );
       if (requestId !== this.previewRequestId) return;
-      this.previewRows = response.preview.resultados;
+      this.previewRows = buildParameterImportPreviewRows(response.preview.resultados);
       this.previewDirty = false;
       this.previewMessage = this.previewRows.length
         ? this.i18n.translateForComponent(
@@ -330,6 +409,28 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     this.previewLoading = false;
     this.previewProgress = 0;
     this.previewRequestId += 1;
+  }
+
+  private getSelectedFileSizes(): number[] {
+    return this.selectedCandidates
+      .map((candidate) => this.parseCandidateSize(candidate.size))
+      .filter((value): value is number => value != null);
+  }
+
+  private getPreviewSelections(): Array<{ groupKey: string; descripcion: string | null; unidad: string | null }> {
+    return this.previewRows.map((row) => ({
+      groupKey: row.groupKey,
+      descripcion: row.descripcion || null,
+      unidad: row.unidad || null,
+    }));
+  }
+
+  private parseCandidateSize(value: string | null | undefined): number | null {
+    if (value == null) return null;
+    const normalizedValue = value.toString().trim().replace(',', '.');
+    if (!normalizedValue) return null;
+    const numericValue = Number(normalizedValue);
+    return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
   }
 
   private startPreviewProgress(): void {
@@ -465,7 +566,7 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
     return fallback;
   }
 
-  private handleFilesSelection(event: Event, isFolderSelection: boolean): void {
+  private handleFilesSelection(event: Event): void {
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
     input.value = '';
@@ -477,23 +578,23 @@ export class ParametersXdbImportDialog implements OnChanges, OnDestroy {
       .filter((file) => file.name.toLowerCase().endsWith('.xdb'))
       .map((file) => ({
         file,
-        relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+        relativePath: file.name,
         enabled: true,
+        size: '',
       }))
       .sort((left, right) => left.relativePath.localeCompare(right.relativePath, 'es'));
 
     this.candidates = xdbFiles;
-    if (isFolderSelection) {
-      this.folderName = xdbFiles[0]?.relativePath.split('/')[0] ?? '';
-    } else {
-      this.folderName = xdbFiles.length
+    this.folderName = xdbFiles.length === 1
+      ? xdbFiles[0]?.relativePath ?? ''
+      : xdbFiles.length
         ? `${xdbFiles.length} ${this.i18n.translateForComponent(this.translations, 'parametersXdbImport.filesSelected')}`
         : '';
-    }
 
     if (!this.candidates.length) {
       this.validationMessage = this.i18n.translateForComponent(this.translations, 'parametersXdbImport.noFilesFound');
       this.clearPreviewState('parametersXdbImport.noFilesFound', false);
+      this.selectionMode = '';
       return;
     }
 

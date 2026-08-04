@@ -22,8 +22,9 @@
 }
 
 .b5d-tree-panel__header {
-  background: #eef3fb;
-  border-bottom: 1px solid var(--b5d-border-strong);
+  background: var(--b5d-brand-secondary-strong);
+  border-bottom: 1px solid var(--b5d-brand-secondary-strong);
+  color: var(--white-color);
   font-size: var(--font-size-sm);
   font-weight: 700;
 }

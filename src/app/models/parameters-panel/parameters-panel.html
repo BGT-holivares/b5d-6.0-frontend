@@ -15,12 +15,28 @@
   }
 
   <div class="b5d-parameters-panel__filters">
+    <label class="b5d-parameters-panel__catalog-selector">
+      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.parameterCatalog') }}</span>
+      <select
+        [ngModel]="selectedParameterCatalogId"
+        (ngModelChange)="onParameterCatalogChange($event)"
+        [disabled]="parameterCatalogActionInProgress || !activeProject"
+      >
+        @if (!availableParameterCatalogs.length) {
+          <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noParameterCatalogs') }}</option>
+        }
+        @for (catalog of availableParameterCatalogs; track catalog.id) {
+          <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.catalogLabel') + ' ' + catalog.id) }}</option>
+        }
+      </select>
+    </label>
+
     <label>
       <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.parameterType') }}</span>
       <select [(ngModel)]="selectedParameterType" (ngModelChange)="onFilterChange()">
-        <option value="cantidad">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.quantities') }}</option>
-        <option value="costo">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.filter.costs') }}</option>
-        <option value="costo_porcentaje">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.parameter.costPercent') }}</option>
+        @for (parameterType of parameterTypeOptions; track parameterType.value) {
+          <option [value]="parameterType.value">{{ parameterType.label }}</option>
+        }
       </select>
     </label>
 
@@ -55,86 +71,70 @@
     </label>
   </div>
 
-  <div class="b5d-parameters-panel__catalog-bar">
-    <label class="b5d-parameters-panel__catalog-selector">
-      <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.parameterCatalog') }}</span>
-      <select
-        [ngModel]="selectedParameterCatalogId"
-        (ngModelChange)="onParameterCatalogChange($event)"
-        [disabled]="parameterCatalogActionInProgress || !activeProject"
-      >
-        @if (!availableParameterCatalogs.length) {
-          <option [ngValue]="null">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.noParameterCatalogs') }}</option>
-        }
-        @for (catalog of availableParameterCatalogs; track catalog.id) {
-          <option [ngValue]="catalog.id">{{ catalog.nombre || (i18n.translateForComponent(parametersPanelTranslations, 'parameters.panel.catalogLabel') + ' ' + catalog.id) }}</option>
-        }
-      </select>
-    </label>
-  </div>
-
   @if (parameterCatalogEditorVisible) {
-    <section class="b5d-floating-helper-panel" [style.right.px]="16" [style.top.px]="16">
-      <header class="b5d-floating-helper-panel__header">
-        <span class="b5d-floating-helper-panel__title">
-          {{
-            parameterCatalogEditorMode === 'edit'
-              ? i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.editTitle')
-              : i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createTitle')
-          }}
-        </span>
-        <span class="b5d-floating-helper-panel__actions">
-          <button
-            type="button"
-            class="b5d-floating-helper-panel__action"
-            [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
-            [disabled]="parameterCatalogActionInProgress"
-            (click)="cancelParameterCatalogEditor()"
-          >
-            x
-          </button>
-        </span>
-      </header>
+    <div class="b5d-floating-helper-panel__backdrop" (click)="cancelParameterCatalogEditor()">
+      <section class="b5d-floating-helper-panel b5d-floating-helper-panel--modal" (click)="$event.stopPropagation()">
+        <header class="b5d-floating-helper-panel__header">
+          <span class="b5d-floating-helper-panel__title">
+            {{
+              parameterCatalogEditorMode === 'edit'
+                ? i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.editTitle')
+                : i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.createTitle')
+            }}
+          </span>
+          <span class="b5d-floating-helper-panel__actions">
+            <button
+              type="button"
+              class="b5d-floating-helper-panel__action"
+              [title]="i18n.translateForComponent(globalTranslations, 'common.action.close')"
+              [disabled]="parameterCatalogActionInProgress"
+              (click)="cancelParameterCatalogEditor()"
+            >
+              x
+            </button>
+          </span>
+        </header>
 
-      <div class="b5d-floating-helper-panel__body">
-        <div class="b5d-floating-helper-panel__row">
-          <div class="b5d-floating-helper-panel__row-main">
-            <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-name">
-              <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.name') }}</span>
-            </label>
-            <input
-              id="parameter-catalog-editor-name"
-              class="b5d-width-100"
-              type="text"
-              [(ngModel)]="parameterCatalogEditorName"
-              [disabled]="parameterCatalogActionInProgress"
-            />
+        <div class="b5d-floating-helper-panel__body">
+          <div class="b5d-floating-helper-panel__row">
+            <div class="b5d-floating-helper-panel__row-main">
+              <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-name">
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.name') }}</span>
+              </label>
+              <input
+                id="parameter-catalog-editor-name"
+                class="b5d-width-100"
+                type="text"
+                [(ngModel)]="parameterCatalogEditorName"
+                [disabled]="parameterCatalogActionInProgress"
+              />
+            </div>
+          </div>
+          <div class="b5d-floating-helper-panel__row">
+            <div class="b5d-floating-helper-panel__row-main">
+              <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-description">
+                <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.description') }}</span>
+              </label>
+              <textarea
+                id="parameter-catalog-editor-description"
+                class="b5d-width-100"
+                rows="2"
+                [(ngModel)]="parameterCatalogEditorDescription"
+                [disabled]="parameterCatalogActionInProgress"
+              ></textarea>
+            </div>
+          </div>
+          <div class="b5d-floating-helper-panel__row-actions">
+            <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="saveParameterCatalogEditor()">
+              {{ parameterCatalogActionInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
+            </button>
+            <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="cancelParameterCatalogEditor()">
+              {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
+            </button>
           </div>
         </div>
-        <div class="b5d-floating-helper-panel__row">
-          <div class="b5d-floating-helper-panel__row-main">
-            <label class="b5d-floating-helper-panel__row-label" for="parameter-catalog-editor-description">
-              <span>{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.catalog.description') }}</span>
-            </label>
-            <textarea
-              id="parameter-catalog-editor-description"
-              class="b5d-width-100"
-              rows="2"
-              [(ngModel)]="parameterCatalogEditorDescription"
-              [disabled]="parameterCatalogActionInProgress"
-            ></textarea>
-          </div>
-        </div>
-        <div class="b5d-floating-helper-panel__row-actions">
-          <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="saveParameterCatalogEditor()">
-            {{ parameterCatalogActionInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
-          </button>
-          <button type="button" class="b5d-parameters-panel__tool-button" [disabled]="parameterCatalogActionInProgress" (click)="cancelParameterCatalogEditor()">
-            {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
-          </button>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
   }
 
   @if (actionError) {
@@ -228,12 +228,13 @@
               }
 
               @if (visibleParameterColumns.length) {
-                <table
-                  class="b5d-parameters-panel__table"
-                  [b5dResizableTable]="parameterTableResizableStorageKey"
-                  [b5dResizableRefreshToken]="parameterTableRefreshToken"
-                  (contextmenu)="openParameterTableContextMenu($event)"
-                >
+                <div class="b5d-parameters-panel__table-wrapper">
+                  <table
+                    class="b5d-parameters-panel__table"
+                    [b5dResizableTable]="parameterTableResizableStorageKey"
+                    [b5dResizableRefreshToken]="parameterTableRefreshToken"
+                    (contextmenu)="openParameterTableContextMenu($event)"
+                  >
                   <thead>
                     <tr>
                       @for (column of visibleParameterColumns; track column.key) {
@@ -283,16 +284,16 @@
                         <td [attr.colspan]="visibleParameterColumns.length" [style.height.px]="parameterListVirtualTopSpacerHeight"></td>
                       </tr>
                     }
-                    @for (row of renderedVisibleRows; track row.id) {
+                    @for (row of renderedVisibleRows; track row.id; let rowIndex = $index) {
                       <tr
                         b5dParameterRow
                         [row]="row"
                         [columns]="visibleParameterColumns"
-                        [editing]="editingParameterId === row.id"
                         [saving]="isSavingParameterActive(row.id)"
+                        [rowIndex]="renderedVisibleRowsStartIndex + rowIndex"
                         [class.b5d-parameters-panel__selectable--active]="isSelectedRow(row.id)"
                         (click)="onRowClick(row.id, $event)"
-                        (focusout)="saveParameterRow(row)"
+                        (focusout)="onParameterRowFocusOut(row, $event)"
                       ></tr>
 
                       @if (isInlineEditorAnchoredAfter(row.id)) {
@@ -348,6 +349,21 @@
                                     </div>
                                   } @else {
                                     <input type="text" [(ngModel)]="creatingDraft.promedio" />
+                                  }
+                                }
+                                @case ('sigma') {
+                                  @if (isParameterTableLastColumn(column.key)) {
+                                    <div class="b5d-parameters-panel__editor-actions">
+                                      <input type="text" [(ngModel)]="creatingDraft.sigma" />
+                                      <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                                        {{ creatingInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
+                                      </button>
+                                      <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                                        {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
+                                      </button>
+                                    </div>
+                                  } @else {
+                                    <input type="text" [(ngModel)]="creatingDraft.sigma" />
                                   }
                                 }
                               }
@@ -411,6 +427,21 @@
                                     <input type="text" [(ngModel)]="creatingDraft.promedio" />
                                   }
                                 }
+                                @case ('sigma') {
+                                  @if (isParameterTableLastColumn(column.key)) {
+                                    <div class="b5d-parameters-panel__editor-actions">
+                                      <input type="text" [(ngModel)]="creatingDraft.sigma" />
+                                      <button type="button" [disabled]="creatingInProgress" (click)="saveInlineCreate()">
+                                        {{ creatingInProgress ? i18n.translateForComponent(globalTranslations, 'common.action.saving') : i18n.translateForComponent(globalTranslations, 'common.action.save') }}
+                                      </button>
+                                      <button type="button" [disabled]="creatingInProgress" (click)="cancelInlineCreate()">
+                                        {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
+                                      </button>
+                                    </div>
+                                  } @else {
+                                    <input type="text" [(ngModel)]="creatingDraft.sigma" />
+                                  }
+                                }
                               }
                             </td>
                           }
@@ -429,7 +460,8 @@
                       </tr>
                     }
                   </tbody>
-                </table>
+                  </table>
+                </div>
               } @else {
                 <div class="b5d-parameters-panel__muted">
                   {{ i18n.translateForComponent(globalTranslations, 'common.table.noVisibleColumns') }}
@@ -642,10 +674,11 @@
               } @else if (boqError) {
                 <div class="b5d-parameters-panel__error">{{ boqError }}</div>
               } @else {
-                <table
-                  class="b5d-parameters-panel__analysis-table"
-                  [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey"
-                >
+                <div class="b5d-parameters-panel__table-wrapper">
+                  <table
+                    class="b5d-parameters-panel__analysis-table"
+                    [b5dResizableTable]="parameterBoqAnalysisResizableStorageKey"
+                  >
                   <thead>
                     <tr>
                       <th data-b5d-column-key="row">{{ i18n.translateForComponent(parametersPanelTranslations, 'parameters.analysis.row') }}</th>
@@ -701,7 +734,8 @@
                       </tr>
                     }
                   </tbody>
-                </table>
+                  </table>
+                </div>
               }
             </div>
           </section>

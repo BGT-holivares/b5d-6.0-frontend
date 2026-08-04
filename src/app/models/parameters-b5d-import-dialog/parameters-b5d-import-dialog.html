@@ -12,7 +12,7 @@
         <div class="b5d-parameters-xdb-dialog__section">
           <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersB5dImport.sourceTitle') }}</div>
           <label class="b5d-parameters-xdb-dialog__field">
-            <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.folderLabel') }}</span>
+            <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.filesLabel') }}</span>
             <div class="b5d-parameters-xdb-dialog__file-row">
               <input
                 type="text"
@@ -20,17 +20,6 @@
                 [value]="sourceLabelValue"
                 readonly
               />
-              <label class="b5d-parameters-xdb-dialog__file-button" [class.b5d-parameters-xdb-dialog__file-button--disabled]="isImporting || loading">
-                {{ i18n.translateForComponent(translations, 'parametersB5dImport.chooseFolder') }}
-                <input
-                  type="file"
-                  webkitdirectory
-                  multiple
-                  accept=".b5d"
-                  [disabled]="isImporting || loading"
-                  (change)="handleFolderChange($event)"
-                />
-              </label>
               <label class="b5d-parameters-xdb-dialog__file-button" [class.b5d-parameters-xdb-dialog__file-button--disabled]="isImporting || loading">
                 {{ i18n.translateForComponent(translations, 'parametersB5dImport.chooseFiles') }}
                 <input
@@ -44,7 +33,7 @@
             </div>
           </label>
           <div class="b5d-parameters-xdb-dialog__hint">
-            {{ i18n.translateForComponent(translations, 'parametersB5dImport.folderHint') }}
+            {{ i18n.translateForComponent(translations, 'parametersB5dImport.filesHint') }}
           </div>
           <div class="b5d-parameters-xdb-dialog__inline-actions">
             <button type="button" class="b5d-parameters-xdb-dialog__button" [disabled]="!totalCount" (click)="setAllCandidates(true)">
@@ -62,34 +51,69 @@
         <div class="b5d-parameters-xdb-dialog__section">
           <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersB5dImport.metadataTitle') }}</div>
           <div class="b5d-parameters-xdb-dialog__three-columns">
-            <label class="b5d-parameters-xdb-dialog__field">
-              <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.buildingTypeLabel') }}</span>
-              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="tipoEdificacionValue" />
-            </label>
-            <label class="b5d-parameters-xdb-dialog__field">
-              <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.workTypeLabel') }}</span>
-              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="tipoObraValue" />
-            </label>
-            <label class="b5d-parameters-xdb-dialog__field">
-              <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.zoneLabel') }}</span>
-              <input class="b5d-parameters-xdb-dialog__input" type="text" [(ngModel)]="zonaValue" />
-            </label>
-          </div>
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.buildingTypeLabel') }}</span>
+            <input
+              class="b5d-parameters-xdb-dialog__input"
+              type="text"
+              [(ngModel)]="tipoEdificacionValue"
+              (ngModelChange)="onMetadataChange()"
+              [disabled]="!hasSelectedFiles || isImporting || loading"
+            />
+          </label>
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.workTypeLabel') }}</span>
+            <input
+              class="b5d-parameters-xdb-dialog__input"
+              type="text"
+              [(ngModel)]="tipoObraValue"
+              (ngModelChange)="onMetadataChange()"
+              [disabled]="!hasSelectedFiles || isImporting || loading"
+            />
+          </label>
+          <label class="b5d-parameters-xdb-dialog__field">
+            <span>{{ i18n.translateForComponent(translations, 'parametersB5dImport.zoneLabel') }}</span>
+            <input
+              class="b5d-parameters-xdb-dialog__input"
+              type="text"
+              [(ngModel)]="zonaValue"
+              (ngModelChange)="onMetadataChange()"
+              [disabled]="!hasSelectedFiles || isImporting || loading"
+            />
+          </label>
         </div>
+        @if (hasSelectedFiles && !hasRequiredMetadata) {
+          <div class="b5d-parameters-xdb-dialog__hint">{{ i18n.translateForComponent(translations, 'parametersB5dImport.metadataHint') }}</div>
+        }
+      </div>
 
         @if (totalCount) {
           <div class="b5d-parameters-xdb-dialog__section">
             <div class="b5d-parameters-xdb-dialog__section-title">{{ i18n.translateForComponent(translations, 'parametersB5dImport.filesTitle') }}</div>
             <div class="b5d-parameters-xdb-dialog__files">
               @for (candidate of candidates; track candidate.relativePath) {
-                <label class="b5d-parameters-xdb-dialog__file-item">
-                  <input
-                    type="checkbox"
-                    [checked]="candidate.enabled"
-                    (change)="toggleCandidate(candidate.relativePath, $any($event.target).checked)"
-                  />
-                  <span class="b5d-parameters-xdb-dialog__file-path">{{ candidate.relativePath }}</span>
-                </label>
+                <div class="b5d-parameters-xdb-dialog__file-item">
+                  <label class="b5d-parameters-xdb-dialog__file-toggle">
+                    <input
+                      type="checkbox"
+                      [checked]="candidate.enabled"
+                      (change)="toggleCandidate(candidate.relativePath, $any($event.target).checked)"
+                    />
+                    <span class="b5d-parameters-xdb-dialog__file-path">{{ candidate.relativePath }}</span>
+                  </label>
+                  <label class="b5d-parameters-xdb-dialog__file-size">
+                    <span class="b5d-parameters-xdb-dialog__file-size-label">{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewSize') }}</span>
+                    <input
+                      class="b5d-parameters-xdb-dialog__input b5d-parameters-xdb-dialog__file-size-input"
+                      type="number"
+                      min="0"
+                      step="any"
+                      [(ngModel)]="candidate.size"
+                      (ngModelChange)="onCandidateSizeChange()"
+                      [disabled]="isImporting || loading"
+                    />
+                  </label>
+                </div>
               }
             </div>
           </div>
@@ -139,6 +163,7 @@
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewCode') }}</th>
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewDescription') }}</th>
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewUnit') }}</th>
+                    <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewSize') }}</th>
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewFiles') }}</th>
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewConcepts') }}</th>
                     <th>{{ i18n.translateForComponent(translations, 'parametersB5dImport.previewMin') }}</th>
@@ -147,11 +172,36 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (row of previewRows; track $index) {
+                  @for (row of previewRows; track row.groupKey) {
                     <tr>
-                      <td class="b5d-parameters-xdb-dialog__table-cell--strong" [title]="row.clave">{{ row.clave }}</td>
-                      <td>{{ row.descripcion }}</td>
-                      <td>{{ row.unidad || '-' }}</td>
+                      <td class="b5d-parameters-xdb-dialog__table-cell--strong" [title]="row.firmas.join(' · ') || row.firma">{{ row.clave }}</td>
+                      <td>
+                        @if (row.descriptionOptions.length > 1) {
+                          <select class="b5d-parameters-xdb-dialog__table-select" [(ngModel)]="row.descripcion">
+                            @for (option of row.descriptionOptions; track option.value + '-' + option.count) {
+                              <option [ngValue]="option.value">
+                                {{ option.value || '-' }} ({{ option.count }})
+                              </option>
+                            }
+                          </select>
+                        } @else {
+                          {{ row.descripcion || '-' }}
+                        }
+                      </td>
+                      <td>
+                        @if (row.unitOptions.length > 1) {
+                          <select class="b5d-parameters-xdb-dialog__table-select" [(ngModel)]="row.unidad">
+                            @for (option of row.unitOptions; track option.value + '-' + option.count) {
+                              <option [ngValue]="option.value">
+                                {{ option.value || '-' }} ({{ option.count }})
+                              </option>
+                            }
+                          </select>
+                        } @else {
+                          {{ row.unidad || '-' }}
+                        }
+                      </td>
+                      <td>{{ formatValue(row.size) }}</td>
                       <td [title]="row.origenes.join(', ') || '-'">{{ row.cantidad_origenes }}</td>
                       <td>{{ row.cantidad_conceptos }}</td>
                       <td>{{ formatValue(row.minimo) }}</td>
@@ -181,7 +231,7 @@
       </div>
 
       <footer class="b5d-parameters-xdb-dialog__footer">
-        <button type="button" class="b5d-parameters-xdb-dialog__button" (click)="closeDialog()" [disabled]="isImporting">
+        <button type="button" class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--danger" (click)="closeDialog()" [disabled]="isImporting">
           {{ i18n.translateForComponent(globalTranslations, 'common.action.cancel') }}
         </button>
         <button type="button" class="b5d-parameters-xdb-dialog__button b5d-parameters-xdb-dialog__button--primary" (click)="importParameters()" [disabled]="!canImport">

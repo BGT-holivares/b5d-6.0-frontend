@@ -67,6 +67,7 @@ type ParameterDraftRow = {
   minimo: string;
   maximo: string;
   promedio: string;
+  sigma: string;
   activo: boolean;
 };
 
@@ -132,9 +133,16 @@ type ParameterTableColumnKey =
   | 'unidad'
   | 'minimo'
   | 'maximo'
-  | 'promedio';
+  | 'promedio'
+  | 'sigma';
 
 type ParameterPaneId = 'parameter-list' | 'description-matches' | 'analysis';
+type ParameterMetadataFilterKey = 'tipo_parametro' | 'tipo_edificacion' | 'tipo_obra' | 'zona';
+
+type ParameterTypeOption = {
+  value: TipoParametroOrm;
+  label: string;
+};
 
 @Component({
   selector: 'app-parameters-panel',
@@ -311,9 +319,14 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   private visibleRowsCache: ParametroB5DOrm[] = [];
   private visibleRowsCount = 0;
   renderedVisibleRowsCache: ParametroB5DOrm[] = [];
+  renderedVisibleRowsStartIndex = 0;
   parameterListVirtualTopSpacerHeight = 0;
   parameterListVirtualBottomSpacerHeight = 0;
   editingParameterId: number | null = null;
+  private boqAnalysisRowsCache: BoqAnalysisRow[] = [];
+  private descriptionMatchCandidateGroupsCache: DescriptionMatchCandidateGroup[] = [];
+  private costMatchCandidateGroupsCache: CostMatchCandidateGroup[] = [];
+  private costPercentMatchCandidateGroupsCache: CostPercentMatchCandidateGroup[] = [];
   private lastAppliedStorageScopeKey = '';
   private parameterColumnChooserPositionReady = false;
   parameterColumnDragKey: string | null = null;
@@ -356,31 +369,30 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       if (this.editingParameterId != null && !this.workParameters.some((row) => row.id === this.editingParameterId)) {
         this.editingParameterId = null;
       }
+      this.syncParameterMetadataSelections();
       this.synchronizeDescriptionSelections();
       this.synchronizeCostSelections();
       this.syncParameterTablePreferences();
       this.rebuildVisibleRows();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     }
 
     if (changes['activeCatalogId'] || changes['concepts']) {
       this.syncCostCatalogSelection();
       this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     }
 
     if (changes['catalogs']) {
       this.syncCostCatalogSelection();
       this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     }
 
-    if (changes['activeParameterCatalogId']) {
-      this.selectedParameterCatalogId = this.activeParameterCatalogId;
-      this.emitToolbarState();
-    }
-
-    if (changes['parameterCatalogs']) {
+    if (changes['activeParameterCatalogId'] || changes['parameterCatalogs']) {
       this.syncParameterCatalogSelection();
       this.emitToolbarState();
     }
@@ -444,16 +456,37 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
     return this.bottomRowPaneIds.length === 2;
   }
 
+  get parameterTypeOptions(): ParameterTypeOption[] {
+    const availableTypes = new Set(
+      this.getParameterMetadataFilterRows('tipo_parametro').map((row) => row.tipo_parametro),
+    );
+    const parameterTypeOptions: ParameterTypeOption[] = [
+      { value: 'cantidad', label: this.t('parameters.filter.quantities') },
+      { value: 'costo', label: this.t('parameters.filter.costs') },
+      { value: 'costo_porcentaje', label: this.t('parameters.parameter.costPercent') },
+    ];
+    return parameterTypeOptions.filter((option) => availableTypes.has(option.value));
+  }
+
   get buildingTypeOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.tipo_edificacion);
+    return this.collectParameterMetadataOptions(
+      (row) => row.tipo_edificacion,
+      this.getParameterMetadataFilterRows('tipo_edificacion'),
+    );
   }
 
   get workTypeOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.tipo_obra);
+    return this.collectParameterMetadataOptions(
+      (row) => row.tipo_obra,
+      this.getParameterMetadataFilterRows('tipo_obra'),
+    );
   }
 
   get zoneOptions(): string[] {
-    return this.collectParameterMetadataOptions((row) => row.zona);
+    return this.collectParameterMetadataOptions(
+      (row) => row.zona,
+      this.getParameterMetadataFilterRows('zona'),
+    );
   }
 
   get parameterListVirtualizationEnabled(): boolean {
@@ -469,7 +502,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   get activeParametersForAnalysis(): ParametroB5DOrm[] {
-    return this.visibleRowsCache.filter((row) => row.activo);
+    return this.workParameters.filter((row) => row.activo);
   }
 
   get activeConceptsForAnalysis(): ConceptoB5DOrm[] {
@@ -520,71 +553,19 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   get boqAnalysisRows(): BoqAnalysisRow[] {
-    return this.boqRows.slice(0, 500).map((boqRow) => this.buildBoqAnalysisRow(boqRow));
+    return this.boqAnalysisRowsCache;
   }
 
   get descriptionMatchCandidateGroups(): DescriptionMatchCandidateGroup[] {
-    const groups: DescriptionMatchCandidateGroup[] = [];
-    for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_comparacion !== 'descripcion_parcial') continue;
-      const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
-      if (!normalizedDescription) continue;
-      const candidates = this.boqRows.filter((boqRow) =>
-        this.normalizeText(boqRow.descripcion).includes(normalizedDescription),
-      );
-      if (!candidates.length) continue;
-      groups.push({
-        parameterId: parameterRow.id,
-        parameterCode: parameterRow.clave ?? '-',
-        parameterDescription: parameterRow.descripcion ?? '-',
-        candidates,
-      });
-    }
-    return groups;
+    return this.descriptionMatchCandidateGroupsCache;
   }
 
   get costMatchCandidateGroups(): CostMatchCandidateGroup[] {
-    const groups: CostMatchCandidateGroup[] = [];
-    for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'costo') continue;
-      const candidates = this.getCostCandidateConcepts(parameterRow);
-      if (!candidates.length) continue;
-      groups.push({
-        parameterId: parameterRow.id,
-        parameterCode: parameterRow.clave ?? '-',
-        parameterDescription: parameterRow.descripcion ?? '-',
-        candidates: candidates.map((conceptRow) => ({
-          id: conceptRow.id,
-          clave: conceptRow.clave ?? '-',
-          descripcion: conceptRow.descripcion ?? '-',
-          unidad: conceptRow.unidad ?? '-',
-          precio_unitario: this.resolveConceptUnitCost(conceptRow),
-        })),
-      });
-    }
-    return groups;
+    return this.costMatchCandidateGroupsCache;
   }
 
   get costPercentMatchCandidateGroups(): CostPercentMatchCandidateGroup[] {
-    const groups: CostPercentMatchCandidateGroup[] = [];
-    for (const parameterRow of this.activeParametersForAnalysis) {
-      if (parameterRow.tipo_parametro !== 'costo_porcentaje') continue;
-      const candidates = this.getCostCandidateConcepts(parameterRow);
-      if (!candidates.length) continue;
-      groups.push({
-        parameterId: parameterRow.id,
-        parameterCode: parameterRow.clave ?? '-',
-        parameterDescription: parameterRow.descripcion ?? '-',
-        candidates: candidates.map((conceptRow) => ({
-          id: conceptRow.id,
-          clave: conceptRow.clave ?? '-',
-          descripcion: conceptRow.descripcion ?? '-',
-          unidad: conceptRow.unidad ?? '-',
-          porcentaje: this.resolveConceptPercentage(conceptRow),
-        })),
-      });
-    }
-    return groups;
+    return this.costPercentMatchCandidateGroupsCache;
   }
 
   get comparisonLabel(): string {
@@ -1010,6 +991,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   onFilterChange(): void {
+    this.syncParameterMetadataSelections();
     this.rebuildVisibleRows();
     this.emitToolbarState();
   }
@@ -1097,11 +1079,6 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       return;
     }
 
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm(this.t('parameters.catalog.confirmDelete'));
-      if (!confirmed) return;
-    }
-
     this.parameterCatalogActionInProgress = true;
     this.actionError = '';
     try {
@@ -1145,6 +1122,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   onCostCatalogChange(catalogId: number | null): void {
     this.selectedCostCatalogId = catalogId;
     this.synchronizeCostSelections();
+    this.refreshCoincidenciasCache();
     this.emitToolbarState();
   }
 
@@ -1167,9 +1145,11 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
           tipo_parametro: parameterRow.tipo_parametro,
           tipo_edificacion: parameterRow.tipo_edificacion ?? null,
           unidad: parameterRow.unidad ?? null,
+          size: parameterRow.size ?? null,
           minimo: parameterRow.minimo,
           maximo: parameterRow.maximo,
           promedio: parameterRow.promedio,
+          sigma: parameterRow.sigma,
           activo: parameterRow.activo,
         }),
       );
@@ -1177,6 +1157,8 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
       this.synchronizeDescriptionSelections();
+      this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     } catch (error) {
       this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.update'));
@@ -1200,6 +1182,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       selectedRows.delete(rowKey);
     }
     this.descriptionSelectionByParameterId.set(parameterId, selectedRows);
+    this.refreshCoincidenciasCache();
   }
 
   isCostConceptSelected(parameterId: number, conceptId: number): boolean {
@@ -1208,6 +1191,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
 
   onCostConceptToggle(parameterId: number, conceptId: number): void {
     this.costConceptSelectionByParameterId.set(parameterId, conceptId);
+    this.refreshCoincidenciasCache();
     this.emitToolbarState();
   }
 
@@ -1250,6 +1234,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
           minimo: this.parseNullableNumber(this.creatingDraft.minimo),
           maximo: this.parseNullableNumber(this.creatingDraft.maximo),
           promedio: this.parseNullableNumber(this.creatingDraft.promedio),
+          sigma: this.parseNullableNumber(this.creatingDraft.sigma),
           activo: !!this.creatingDraft.activo,
         }),
       );
@@ -1265,6 +1250,9 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       this.creatingDraft = this.getEmptyDraft();
       this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
+      this.synchronizeDescriptionSelections();
+      this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     } catch (error) {
       this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.create'));
@@ -1288,6 +1276,9 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       this.editingParameterId = null;
       this.rebuildVisibleRows();
       this.rowsChange.emit(this.workParameters.map((row) => ({ ...row })));
+      this.synchronizeDescriptionSelections();
+      this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
       this.emitToolbarState();
     } catch (error) {
       this.actionError = this.resolveErrorMessage(error, this.t('parameters.error.deleteSelected'));
@@ -1385,6 +1376,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
   private syncParameterListVirtualWindow(scrollTop?: number, viewportHeight?: number): void {
     if (!this.parameterListVirtualizationEnabled) {
       this.renderedVisibleRowsCache = this.visibleRowsCache;
+      this.renderedVisibleRowsStartIndex = 0;
       this.parameterListVirtualTopSpacerHeight = 0;
       this.parameterListVirtualBottomSpacerHeight = 0;
       return;
@@ -1399,6 +1391,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
     if (nextViewportHeight <= 0) {
       const initialCount = Math.min(this.visibleRowsCache.length, this.parameterListVirtualOverscan * 2 + 20);
       this.renderedVisibleRowsCache = this.visibleRowsCache.slice(0, initialCount);
+      this.renderedVisibleRowsStartIndex = 0;
       this.parameterListVirtualTopSpacerHeight = 0;
       this.parameterListVirtualBottomSpacerHeight = Math.max(0, (this.visibleRowsCache.length - initialCount) * estimatedRowHeight);
       return;
@@ -1410,6 +1403,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       Math.ceil((nextScrollTop + nextViewportHeight) / estimatedRowHeight) + this.parameterListVirtualOverscan,
     );
 
+    this.renderedVisibleRowsStartIndex = startIndex;
     this.renderedVisibleRowsCache = this.visibleRowsCache.slice(startIndex, endIndex);
     this.parameterListVirtualTopSpacerHeight = startIndex * estimatedRowHeight;
     this.parameterListVirtualBottomSpacerHeight = Math.max(0, (this.visibleRowsCache.length - endIndex) * estimatedRowHeight);
@@ -1479,9 +1473,109 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
     this.syncParameterListVirtualWindow();
   }
 
-  private collectParameterMetadataOptions(selector: (row: ParametroB5DOrm) => string | null | undefined): string[] {
+  private refreshCoincidenciasCache(): void {
+    const activeParameters = this.activeParametersForAnalysis;
+    const descriptionGroups: DescriptionMatchCandidateGroup[] = [];
+    const costGroups: CostMatchCandidateGroup[] = [];
+    const costPercentGroups: CostPercentMatchCandidateGroup[] = [];
+
+    for (const parameterRow of activeParameters) {
+      const normalizedDescription = this.normalizeText(parameterRow.descripcion ?? '');
+      if (parameterRow.tipo_comparacion === 'descripcion_parcial' && normalizedDescription) {
+        const candidates = this.boqRows.filter((boqRow) =>
+          this.normalizeText(boqRow.descripcion).includes(normalizedDescription),
+        );
+        if (candidates.length) {
+          descriptionGroups.push({
+            parameterId: parameterRow.id,
+            parameterCode: parameterRow.clave ?? '-',
+            parameterDescription: parameterRow.descripcion ?? '-',
+            candidates,
+          });
+        }
+      }
+
+      if (parameterRow.tipo_parametro === 'costo' || parameterRow.tipo_parametro === 'costo_porcentaje') {
+        const candidates = this.getCostCandidateConcepts(parameterRow);
+        if (!candidates.length) continue;
+
+        if (parameterRow.tipo_parametro === 'costo') {
+          costGroups.push({
+            parameterId: parameterRow.id,
+            parameterCode: parameterRow.clave ?? '-',
+            parameterDescription: parameterRow.descripcion ?? '-',
+            candidates: candidates.map((conceptRow) => ({
+              id: conceptRow.id,
+              clave: conceptRow.clave ?? '-',
+              descripcion: conceptRow.descripcion ?? '-',
+              unidad: conceptRow.unidad ?? '-',
+              precio_unitario: this.resolveConceptUnitCost(conceptRow),
+            })),
+          });
+          continue;
+        }
+
+        costPercentGroups.push({
+          parameterId: parameterRow.id,
+          parameterCode: parameterRow.clave ?? '-',
+          parameterDescription: parameterRow.descripcion ?? '-',
+          candidates: candidates.map((conceptRow) => ({
+            id: conceptRow.id,
+            clave: conceptRow.clave ?? '-',
+            descripcion: conceptRow.descripcion ?? '-',
+            unidad: conceptRow.unidad ?? '-',
+            porcentaje: this.resolveConceptPercentage(conceptRow),
+          })),
+        });
+      }
+    }
+
+    this.descriptionMatchCandidateGroupsCache = descriptionGroups;
+    this.costMatchCandidateGroupsCache = costGroups;
+    this.costPercentMatchCandidateGroupsCache = costPercentGroups;
+    this.boqAnalysisRowsCache = this.boqRows.slice(0, 500).map((boqRow) => this.buildBoqAnalysisRow(boqRow));
+  }
+
+  private getParameterMetadataFilterRows(excludedKey: ParameterMetadataFilterKey): ParametroB5DOrm[] {
+    return this.workParameters.filter((row) => {
+      if (excludedKey !== 'tipo_parametro' && row.tipo_parametro !== this.selectedParameterType) return false;
+      if (excludedKey !== 'tipo_edificacion' && this.selectedBuildingType !== 'all' && (row.tipo_edificacion ?? '') !== this.selectedBuildingType) {
+        return false;
+      }
+      if (excludedKey !== 'tipo_obra' && this.selectedWorkType !== 'all' && (row.tipo_obra ?? '') !== this.selectedWorkType) return false;
+      if (excludedKey !== 'zona' && this.selectedZone !== 'all' && (row.zona ?? '') !== this.selectedZone) return false;
+      return true;
+    });
+  }
+
+  private syncParameterMetadataSelections(): void {
+    const availableTypes = this.parameterTypeOptions.map((option) => option.value);
+    if (availableTypes.length && !availableTypes.includes(this.selectedParameterType)) {
+      this.selectedParameterType = availableTypes[0];
+    }
+
+    const availableBuildingTypes = this.buildingTypeOptions;
+    if (this.selectedBuildingType !== 'all' && !availableBuildingTypes.includes(this.selectedBuildingType)) {
+      this.selectedBuildingType = 'all';
+    }
+
+    const availableWorkTypes = this.workTypeOptions;
+    if (this.selectedWorkType !== 'all' && !availableWorkTypes.includes(this.selectedWorkType)) {
+      this.selectedWorkType = 'all';
+    }
+
+    const availableZones = this.zoneOptions;
+    if (this.selectedZone !== 'all' && !availableZones.includes(this.selectedZone)) {
+      this.selectedZone = 'all';
+    }
+  }
+
+  private collectParameterMetadataOptions(
+    selector: (row: ParametroB5DOrm) => string | null | undefined,
+    rows: ParametroB5DOrm[] = this.workParameters,
+  ): string[] {
     const options = new Set<string>();
-    for (const row of this.workParameters) {
+    for (const row of rows) {
       const value = (selector(row) ?? '').trim();
       if (value) options.add(value);
     }
@@ -1524,6 +1618,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       minimo: '',
       maximo: '',
       promedio: '',
+      sigma: '',
       activo: true,
     };
   }
@@ -1541,6 +1636,7 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       minimo: selected.minimo == null ? '' : String(selected.minimo),
       maximo: selected.maximo == null ? '' : String(selected.maximo),
       promedio: selected.promedio == null ? '' : String(selected.promedio),
+      sigma: selected.sigma == null ? '' : String(selected.sigma),
       activo: selected.activo,
     };
   }
@@ -1594,9 +1690,11 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       this.boqRows = this.extractBoqRows(layers.cells);
       this.synchronizeDescriptionSelections();
       this.synchronizeCostSelections();
+      this.refreshCoincidenciasCache();
     } catch (error) {
       this.boqRows = [];
       this.boqError = this.resolveErrorMessage(error, this.t('parameters.error.extractBoq'));
+      this.refreshCoincidenciasCache();
     } finally {
       this.boqLoading = false;
     }
@@ -2152,5 +2250,9 @@ export class ParametersPanel implements AfterViewInit, OnChanges, OnDestroy {
       if (typeof message === 'string' && message.trim()) return message;
     }
     return fallback;
+  }
+
+  onParameterRowFocusOut(parameterRow: ParametroB5DOrm, event: FocusEvent): void {
+    this.saveParameterRow(parameterRow);
   }
 }

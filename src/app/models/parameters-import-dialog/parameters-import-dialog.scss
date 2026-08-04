@@ -1,35 +1,9 @@
-.b5d-parameters-import-dialog__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1450;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(15, 23, 42, 0.45);
-}
-
 .b5d-parameters-import-dialog {
   width: min(1040px, 100%);
   max-height: min(90vh, 880px);
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  border-radius: 14px;
-  background: var(--white-color);
-  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.3);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
-.b5d-parameters-import-dialog__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--bd-soft);
-  font-size: var(--font-size-md);
-  font-weight: 700;
 }
 
 .b5d-parameters-import-dialog__project {
@@ -39,9 +13,6 @@
 }
 
 .b5d-parameters-import-dialog__body {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
   overflow: auto;
 }
 
@@ -60,14 +31,6 @@
   font-weight: 700;
 }
 
-.b5d-parameters-import-dialog__progress {
-  position: relative;
-  overflow: hidden;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--bg-chip);
-}
-
 .b5d-parameters-import-dialog__progress-bar {
   position: absolute;
   inset: 0 auto 0 0;
@@ -77,82 +40,9 @@
   animation: b5d-parameters-import-dialog-progress 1.2s ease-in-out infinite;
 }
 
-.b5d-parameters-import-dialog__field {
-  display: grid;
-  gap: 6px;
-  color: var(--b5d-text);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-}
-
-.b5d-parameters-import-dialog__input {
-  width: 100%;
-  border: 1px solid var(--b5d-border-strong);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: var(--white-color);
-  color: var(--b5d-text);
-  font: inherit;
-  font-size: var(--font-size-sm);
-}
-
-.b5d-parameters-import-dialog__input--file {
-  flex: 1 1 auto;
-}
-
-.b5d-parameters-import-dialog__file-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.b5d-parameters-import-dialog__file-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 110px;
-  padding: 8px 12px;
-  border: 1px solid var(--b5d-border-control-strong);
-  border-radius: 8px;
-  background: var(--bg-subtle);
-  color: var(--b5d-text);
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-align: center;
-}
-
-.b5d-parameters-import-dialog__file-button--disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.b5d-parameters-import-dialog__file-button input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: inherit;
-}
-
-.b5d-parameters-import-dialog__hint {
-  color: var(--b5d-text-subtle);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
-}
-
-.b5d-parameters-import-dialog__section {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--bd-soft);
-  border-radius: 10px;
-  background: var(--bg-subtle);
-}
-
 .b5d-parameters-import-dialog__section--preview {
   border-color: var(--b5d-border-info-strong);
-  background: linear-gradient(180deg, var(--bg-soft) 0%, var(--b5d-surface-ghost) 100%);
+  background: var(--bg-soft);
 }
 
 .b5d-parameters-import-dialog__section-title {
@@ -179,11 +69,6 @@
   gap: 10px 14px;
 }
 
-.b5d-parameters-import-dialog__mapping-row {
-  display: grid;
-  gap: 5px;
-}
-
 .b5d-parameters-import-dialog__mapping-label {
   display: flex;
   justify-content: space-between;
@@ -204,21 +89,8 @@
   line-height: 1.35;
 }
 
-.b5d-parameters-import-dialog__table-wrapper {
-  overflow: auto;
-  border: 1px solid var(--bd-muted);
-  border-radius: 8px;
-  background: var(--white-color);
-}
-
 .b5d-parameters-import-dialog__table-wrapper--wide {
   max-height: 260px;
-}
-
-.b5d-parameters-import-dialog__table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
 }
 
 .b5d-parameters-import-dialog__table th,
@@ -227,7 +99,6 @@
   border: 1px solid var(--bd-muted);
   vertical-align: top;
   text-align: left;
-  font-size: var(--font-size-xs);
 }
 
 .b5d-parameters-import-dialog__table th {
@@ -246,15 +117,6 @@
   font-weight: 700;
 }
 
-.b5d-parameters-import-dialog__message {
-  padding: 10px 12px;
-  border: 1px solid var(--b5d-border-strong);
-  border-radius: 8px;
-  background: var(--bg-subtle);
-  color: var(--b5d-text);
-  font-size: var(--font-size-xs);
-}
-
 .b5d-parameters-import-dialog__message--error {
   border-color: #fca5a5;
   background: #fef2f2;
@@ -267,31 +129,26 @@
   color: #166534;
 }
 
-.b5d-parameters-import-dialog__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 18px;
-  border-top: 1px solid var(--bd-soft);
-  background: var(--white-color);
-}
-
 .b5d-parameters-import-dialog__button {
   min-width: 120px;
-  padding: 8px 14px;
-  border: 1px solid var(--b5d-border-control-strong);
+  border: 1px solid var(--b5d-button-neutral-border);
   border-radius: 8px;
-  background: var(--bg-subtle);
-  color: var(--b5d-text);
+  background: var(--b5d-button-neutral-bg);
+  color: var(--b5d-button-neutral-color);
+  padding: 8px 14px;
   cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
 }
 
 .b5d-parameters-import-dialog__button--primary {
-  border-color: var(--primary-color);
-  background: var(--primary-color);
-  color: var(--white-color);
+  border-color: var(--b5d-button-primary-border);
+  background: var(--b5d-button-primary-bg);
+  color: var(--b5d-button-primary-color);
+}
+
+.b5d-parameters-import-dialog__button--danger {
+  border-color: var(--b5d-button-danger-border);
+  background: var(--b5d-button-danger-bg);
+  color: var(--b5d-button-danger-color);
 }
 
 .b5d-parameters-import-dialog__button:disabled {

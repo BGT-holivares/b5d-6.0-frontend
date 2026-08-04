@@ -5,7 +5,7 @@
   z-index: 1250;
   width: min(610px, calc(100vw - 16px));
   height: 420px;
-  border: 1px solid var(--primary-color);
+  border: 1px solid var(--b5d-brand-secondary-strong);
   background: var(--white-color);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   color: #374151;
@@ -15,7 +15,7 @@
 .b5d-float-file-tab__header {
   height: 26px;
   padding: 6px 12px 0;
-  background: var(--primary-color);
+  background: var(--b5d-brand-secondary-strong);
   color: var(--white-color);
   text-transform: uppercase;
 }
@@ -56,7 +56,7 @@
   height: 18px;
   align-items: center;
   justify-content: center;
-  color: var(--primary-color);
+  color: var(--b5d-brand-secondary-strong);
   font-weight: 700;
 }
 
@@ -76,6 +76,7 @@
 
 .b5d-float-file-tab__recent {
   padding: 8px 12px;
+  overflow: auto;
 }
 
 .b5d-float-file-tab__recent h3 {
@@ -88,10 +89,36 @@
   color: var(--b5d-text-secondary);
 }
 
-.b5d-float-file-tab__recent button {
+.b5d-float-file-tab__projects-title {
+  margin: 12px 0 8px;
+  font-size: var(--font-size-xs);
+}
+
+.b5d-float-file-tab__projects-list {
+  display: grid;
+  gap: 8px;
+}
+
+.b5d-float-file-tab__project-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--bd-muted);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.b5d-float-file-tab__project-item--current {
+  border-color: var(--b5d-brand-secondary-strong);
+  background: var(--bg-soft);
+}
+
+.b5d-float-file-tab__project-select {
   display: block;
   width: 100%;
-  padding: 5px 0;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
@@ -100,8 +127,40 @@
   text-align: left;
 }
 
-.b5d-float-file-tab__recent button:hover {
-  color: var(--primary-color);
+.b5d-float-file-tab__project-select:hover {
+  color: var(--b5d-brand-secondary-strong);
+}
+
+.b5d-float-file-tab__project-select:disabled {
+  cursor: default;
+  color: inherit;
+}
+
+.b5d-float-file-tab__project-name {
+  display: block;
+  font-weight: 600;
+}
+
+.b5d-float-file-tab__project-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--b5d-text-secondary);
+  font-size: 0.95em;
+}
+
+.b5d-float-file-tab__project-close {
+  min-width: 30px;
+  border: 1px solid var(--bd-muted);
+  border-radius: 6px;
+  background: #fff;
+  color: #b42318;
+  cursor: pointer;
+  font: inherit;
+}
+
+.b5d-float-file-tab__project-close:hover {
+  border-color: #d96565;
+  background: #fff1f1;
 }
 
 .b5d-float-file-tab__footer {

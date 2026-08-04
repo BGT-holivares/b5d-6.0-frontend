@@ -20,9 +20,11 @@ type ParameterImportField =
   | 'tipo_obra'
   | 'zona'
   | 'unidad'
+  | 'size'
   | 'minimo'
   | 'maximo'
-  | 'promedio';
+  | 'promedio'
+  | 'sigma';
 
 type ParameterImportFieldDefinition = {
   key: ParameterImportField;
@@ -89,6 +91,7 @@ const PARAMETER_IMPORT_FIELDS: ParameterImportFieldDefinition[] = [
   { key: 'tipo_obra', labelKey: 'parametersImport.field.workType', required: false, defaultValue: '' },
   { key: 'zona', labelKey: 'parametersImport.field.zone', required: false, defaultValue: '' },
   { key: 'unidad', labelKey: 'parametersImport.field.unit', required: false, defaultValue: '' },
+  { key: 'size', labelKey: 'parametersImport.field.size', required: false, defaultValue: '' },
   { key: 'minimo', labelKey: 'parametersImport.field.minimum', required: false, defaultValue: '' },
   { key: 'maximo', labelKey: 'parametersImport.field.maximum', required: false, defaultValue: '' },
   { key: 'promedio', labelKey: 'parametersImport.field.average', required: false, defaultValue: '' },
@@ -104,9 +107,11 @@ const FIELD_HEADER_ALIASES: Record<ParameterImportField, string[]> = {
   tipo_obra: ['tipo obra', 'tipo de obra', 'work type', 'obra'],
   zona: ['zona', 'zone'],
   unidad: ['unidad', 'unit'],
+  size: ['m2', 'm²', 'sqm', 'square meters', 'superficie', 'area construida', 'construction area'],
   minimo: ['minimo', 'mínimo', 'minimum', 'min'],
   maximo: ['maximo', 'máximo', 'maximum', 'max'],
   promedio: ['promedio', 'average', 'mean'],
+  sigma: ['sigma', 'stddev', 'standard deviation', 'desviacion estandar', 'desviación estándar', 'sd'],
 };
 
 @Component({
@@ -571,6 +576,7 @@ export class ParametersImportDialog implements OnChanges {
     const tipoObra = this.getFieldValueFromRow(row, 'tipo_obra');
     const zona = this.getFieldValueFromRow(row, 'zona');
     const unidad = this.getMappedCellValue(row, 'unidad');
+    const size = this.parseNumberLike(this.getMappedCellValue(row, 'size'));
 
     return {
       clave: clave || null,
@@ -581,9 +587,11 @@ export class ParametersImportDialog implements OnChanges {
       tipo_obra: tipoObra || null,
       zona: zona || null,
       unidad: unidad || null,
+      size,
       minimo: this.parseNumberLike(this.getMappedCellValue(row, 'minimo')),
       maximo: this.parseNumberLike(this.getMappedCellValue(row, 'maximo')),
       promedio: this.parseNumberLike(this.getMappedCellValue(row, 'promedio')),
+      sigma: this.parseNumberLike(this.getMappedCellValue(row, 'sigma')),
       activo: this.parseBooleanLike(this.getMappedCellValue(row, 'activo'), true),
     };
   }
@@ -632,9 +640,11 @@ export class ParametersImportDialog implements OnChanges {
       this.normalizeText(existing.tipo_obra ?? '') === this.normalizeText(payload.tipo_obra ?? '') &&
       this.normalizeText(existing.zona ?? '') === this.normalizeText(payload.zona ?? '') &&
       this.normalizeText(existing.unidad ?? '') === this.normalizeText(payload.unidad ?? '') &&
+      this.parseNumberLike(existing.size) === (payload.size ?? null) &&
       this.parseNumberLike(existing.minimo) === (payload.minimo ?? null) &&
       this.parseNumberLike(existing.maximo) === (payload.maximo ?? null) &&
       this.parseNumberLike(existing.promedio) === (payload.promedio ?? null) &&
+      this.parseNumberLike(existing.sigma) === (payload.sigma ?? null) &&
       !!existing.activo === !!payload.activo
     );
   }
@@ -878,9 +888,11 @@ export class ParametersImportDialog implements OnChanges {
       tipo_obra: null,
       zona: null,
       unidad: null,
+      size: null,
       minimo: null,
       maximo: null,
       promedio: null,
+      sigma: null,
     };
   }
 

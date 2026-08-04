@@ -7,8 +7,9 @@
 
 .b5d-model-visibility-panel__title {
   padding: 8px 10px;
-  background: var(--bg-chip);
-  border-bottom: 1px solid #bfc7d5;
+  background: var(--b5d-brand-secondary-strong);
+  border-bottom: 1px solid var(--b5d-brand-secondary-strong);
+  color: var(--white-color);
   font-weight: 700;
 }
 

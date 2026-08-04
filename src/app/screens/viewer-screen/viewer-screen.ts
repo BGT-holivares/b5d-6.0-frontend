@@ -29,6 +29,7 @@ import { ParametersReportPanel } from '../../models/parameters-report-panel/para
 import { ParametersImportDialog } from '../../models/parameters-import-dialog/parameters-import-dialog';
 import { ParametersB5dImportDialog, type B5dParameterImportSummary } from '../../models/parameters-b5d-import-dialog/parameters-b5d-import-dialog';
 import { ParametersXdbImportDialog, type XdbParameterImportSummary } from '../../models/parameters-xdb-import-dialog/parameters-xdb-import-dialog';
+import { ConfirmDialog } from '../../models/confirm-dialog/confirm-dialog';
 import { LoadingPanel } from '../../models/loading-panel/loading-panel';
 import {
   CatalogStructureDialog,
@@ -154,6 +155,7 @@ type ViewerUiState = {
     ParametersImportDialog,
     ParametersB5dImportDialog,
     ParametersXdbImportDialog,
+    ConfirmDialog,
     LoadingPanel,
     CatalogStructureDialog,
   ],
@@ -206,6 +208,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly b5dCargando = signal(false);
   readonly b5dMensaje = signal('');
   readonly usuarioSesion = signal<UsuarioSesionOrm | null>(null);
+  readonly proyectosB5d = signal<ProyectoTrabajoOrm[]>([]);
   readonly catalogStructureDialogVisible = signal(false);
   readonly catalogStructureDialogMode = signal<'create' | 'info'>('create');
   readonly catalogStructureDialogCatalog = signal<CatalogoB5DOrm | null>(null);
@@ -297,7 +300,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   readonly bottomPanelTabs: { id: BottomPanelTab; label: string }[] = [
     { id: 'links', label: 'Estructura de conceptos' },
     { id: 'boq', label: 'Cuantificaciones' },
-    { id: 'parameters', label: 'Parametros' },
+    { id: 'parameters', label: 'Parámetros' },
     { id: 'report', label: 'Reporte' },
   ];
   treeSectionHeight = 220;
@@ -355,6 +358,9 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   private persistedParametersPanelUiStateApplied = false;
   private persistedPropertiesPanelUiStateApplied = false;
   private lastLoadedIfcFile: File | null = null;
+  deleteConfirmationVisible = false;
+  deleteConfirmationMessage = '';
+  private deleteConfirmationAction: (() => void | Promise<void>) | null = null;
 
   get uiStorageScopeKey(): string {
     const userId = this.usuarioSesion()?.id;
@@ -852,36 +858,75 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     }
   }
 
+  private async cargarListaProyectosB5d(): Promise<ProyectoTrabajoOrm[]> {
+    const proyectos = await firstValueFrom(this.backendProyectos.listarProyectos());
+    this.proyectosB5d.set(proyectos.resultados);
+    return proyectos.resultados;
+  }
+
+  private limpiarDatosProyectoB5dActivo(): void {
+    this.b5dConcepts.set([]);
+    this.b5dLinks.set([]);
+    this.b5dCatalogs.set([]);
+    this.b5dParameterCatalogs.set([]);
+    this.cuantificacionesB5d.set([]);
+    this.parametrosB5d.set([]);
+    this.ifcElements.set([]);
+    this.sharedIfcSelectionLocalIds.set([]);
+    this.sharedSelectionInfo.set(null);
+    this.lastLoadedIfcFile = null;
+    this.visorIfc.destruirVisor();
+  }
+
+  private limpiarProyectoB5dActivoCompleto(): void {
+    this.proyectoB5dActivo.set(null);
+    this.limpiarDatosProyectoB5dActivo();
+  }
+
+  private sincronizarProyectoB5dEnListado(proyecto: ProyectoTrabajoOrm): void {
+    const proyectos = this.proyectosB5d();
+    if (!proyectos.length) return;
+
+    this.proyectosB5d.set(proyectos.map((item) => (item.id === proyecto.id ? proyecto : item)));
+  }
+
+  private async cargarProyectoB5dSeleccionado(proyecto: ProyectoTrabajoOrm): Promise<void> {
+    this.b5dCargando.set(true);
+    this.b5dMensaje.set('');
+    this.proyectoB5dActivo.set(proyecto);
+    this.limpiarDatosProyectoB5dActivo();
+    try {
+      if (proyecto.estado === 'importando') {
+        this.debugB5d('cargarProyectoB5dSeleccionado: waiting for importing project', proyecto.id);
+        await this.esperarProyectoImportado(proyecto.id);
+      }
+
+      this.debugB5d('cargarProyectoB5dSeleccionado: loading project data', proyecto.id);
+      await this.cargarDatosProyectoB5d(proyecto.id);
+      await this.restorePersistedIfcFileForProject(proyecto.id);
+      this.debugB5d('cargarProyectoB5dSeleccionado: project data loaded');
+    } finally {
+      this.b5dCargando.set(false);
+    }
+  }
+
   private async cargarProyectoReciente(): Promise<void> {
     this.debugB5d('cargarProyectoReciente: start');
     this.b5dCargando.set(true);
     this.b5dMensaje.set('');
     try {
-      const proyectos = await firstValueFrom(this.backendProyectos.listarProyectos());
-      const proyecto = proyectos.resultados[0] ?? null;
+      const proyectos = await this.cargarListaProyectosB5d();
+      const proyecto = proyectos[0] ?? null;
       this.debugB5d('cargarProyectoReciente: active project selected', {
         projectId: proyecto?.id ?? null,
         projectName: proyecto?.nombre ?? null,
       });
-      this.proyectoB5dActivo.set(proyecto);
       if (!proyecto) {
-        this.b5dConcepts.set([]);
-        this.b5dLinks.set([]);
-        this.b5dCatalogs.set([]);
-        this.cuantificacionesB5d.set([]);
-        this.parametrosB5d.set([]);
+        this.limpiarProyectoB5dActivoCompleto();
         this.b5dMensaje.set('No hay proyectos importados. Usa "Importar de base de datos B5D".');
         return;
       }
-
-      if (proyecto.estado === 'importando') {
-        this.debugB5d('cargarProyectoReciente: waiting for importing project', proyecto.id);
-        await this.esperarProyectoImportado(proyecto.id);
-      }
-
-      this.debugB5d('cargarProyectoReciente: loading active project data', proyecto.id);
-      await this.cargarDatosProyectoB5d(proyecto.id);
-      await this.restorePersistedIfcFileForProject(proyecto.id);
+      await this.cargarProyectoB5dSeleccionado(proyecto);
       this.debugB5d('cargarProyectoReciente: project data loaded');
     } catch (error) {
       this.debugB5d('cargarProyectoReciente: error', error);
@@ -1341,6 +1386,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       this.loadingPanel.completeStep(loadingSessionId, 'processing', 'Proyecto B5D procesado.');
       this.proyectoB5dActivo.set(proyectoImportado);
       await this.cargarDatosProyectoB5d(proyectoImportado.id);
+      await this.cargarListaProyectosB5d();
       this.loadingPanel.completeStep(loadingSessionId, 'refreshing', 'Vista actualizada.');
       this.b5dMensaje.set(`Proyecto importado: ${proyectoImportado.nombre} (ID ${proyectoImportado.id}).`);
     } catch (error) {
@@ -1395,6 +1441,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       if (loadingSessionId) {
         this.loadingPanel.setStepProgress(loadingSessionId, loadingStepId, progreso, mensajeProgreso);
       }
+      this.sincronizarProyectoB5dEnListado(proyecto);
       await new Promise<void>((resolve) => setTimeout(resolve, this.projectImportPollIntervalMs));
     }
   }
@@ -1553,6 +1600,94 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
   // Closes the XDB parameter import wizard.
   cerrarDialogoImportacionParametrosXdb(): void {
     this.parameterXdbImportDialogVisible.set(false);
+  }
+
+  private requestDeleteConfirmation(options: {
+    message: string;
+    action: () => void | Promise<void>;
+  }): void {
+    this.deleteConfirmationMessage = options.message;
+    this.deleteConfirmationAction = options.action;
+    this.deleteConfirmationVisible = true;
+  }
+
+  async seleccionarProyectoB5d(proyectoId: number): Promise<void> {
+    const proyectoSeleccionado = this.proyectosB5d().find((item) => item.id === proyectoId);
+    if (!proyectoSeleccionado) {
+      this.b5dMensaje.set('No se encontró el proyecto seleccionado.');
+      return;
+    }
+
+    if (this.proyectoB5dActivo()?.id === proyectoId) {
+      return;
+    }
+
+    const proyectoActual = this.proyectoB5dActivo();
+    if (proyectoActual && this.hasPendingDraftChanges) {
+      await this.flushPendingAutoSave(proyectoActual.id);
+    }
+
+    try {
+      await this.cargarProyectoB5dSeleccionado(proyectoSeleccionado);
+    } catch (error) {
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo cambiar al proyecto seleccionado.'));
+    }
+  }
+
+  solicitarCerrarProyectoB5d(proyectoId: number): void {
+    const proyectoSeleccionado = this.proyectosB5d().find((item) => item.id === proyectoId);
+    if (!proyectoSeleccionado) {
+      this.b5dMensaje.set('No se encontró el proyecto seleccionado.');
+      return;
+    }
+
+    this.requestDeleteConfirmation({
+      message: `¿Cerrar el proyecto "${proyectoSeleccionado.nombre}" (ID ${proyectoSeleccionado.id})?`,
+      action: () => this.cerrarProyectoB5d(proyectoSeleccionado.id),
+    });
+  }
+
+  private async cerrarProyectoB5d(proyectoId: number): Promise<void> {
+    const proyectoActual = this.proyectoB5dActivo();
+    const estabaActivo = proyectoActual?.id === proyectoId;
+
+    this.b5dMensaje.set('');
+    try {
+      await firstValueFrom(this.backendProyectos.eliminarProyecto(proyectoId));
+      const proyectosRestantes = await this.cargarListaProyectosB5d();
+
+      if (estabaActivo) {
+        const siguienteProyecto = proyectosRestantes[0] ?? null;
+        if (siguienteProyecto) {
+          await this.cargarProyectoB5dSeleccionado(siguienteProyecto);
+          this.b5dMensaje.set(`Proyecto cerrado. Proyecto activo: ${siguienteProyecto.nombre} (ID ${siguienteProyecto.id}).`);
+        } else {
+          this.limpiarProyectoB5dActivoCompleto();
+          this.b5dMensaje.set('Proyecto cerrado. No quedan proyectos activos.');
+        }
+        return;
+      }
+
+      if (proyectoActual) {
+        this.sincronizarProyectoB5dEnListado(proyectoActual);
+      }
+      this.b5dMensaje.set('Proyecto cerrado correctamente.');
+    } catch (error) {
+      this.b5dMensaje.set(this.obtenerMensajeError(error, 'No se pudo cerrar el proyecto.'));
+    }
+  }
+
+  confirmPendingDelete(): void {
+    const action = this.deleteConfirmationAction;
+    this.deleteConfirmationVisible = false;
+    this.deleteConfirmationAction = null;
+    if (!action) return;
+    void action();
+  }
+
+  cancelPendingDelete(): void {
+    this.deleteConfirmationVisible = false;
+    this.deleteConfirmationAction = null;
   }
 
   // Imports a PlanAXA catalog and refreshes the current project snapshot.
@@ -1788,10 +1923,6 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       return;
     }
 
-    const nombreCatalogo = catalogoSeleccionado.nombre ?? `ID ${catalogoSeleccionado.id}`;
-    const confirmado = window.confirm(`¿Eliminar la estructura de conceptos "${nombreCatalogo}"?`);
-    if (!confirmado) return;
-
     this.catalogStructureDialogLoading.set(true);
     this.b5dMensaje.set('');
     try {
@@ -1943,6 +2074,7 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     });
 
     this.proyectoB5dActivo.set(estado);
+    this.sincronizarProyectoB5dEnListado(estado);
     this.b5dConcepts.set(this.normalizarConceptosB5d(conceptos.resultados));
     this.b5dLinks.set(vinculos.resultados);
     this.b5dCatalogs.set(catalogos.resultados);
@@ -3007,6 +3139,27 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
       return;
     }
 
+    if (action === 'home-remove-item') {
+      if (activeTab === 'links') {
+        this.requestDeleteConfirmation({
+          message: '¿Eliminar elementos?',
+          action: () => this.linkingPanel?.triggerHomeAction(action),
+        });
+        return;
+      }
+
+      if (activeTab === 'parameters') {
+        const selectedParameterCount = this.parametersPanel?.selectedParameterIds.size ?? 0;
+        if (!selectedParameterCount) return;
+
+        this.requestDeleteConfirmation({
+          message: `¿Eliminar ${selectedParameterCount} parámetros?`,
+          action: () => this.parametersPanel?.deleteSelectedRows(),
+        });
+        return;
+      }
+    }
+
     if (action === 'parameter-catalog-create') {
       this.parametersPanel?.openParameterCatalogEditor('create');
       return;
@@ -3018,7 +3171,12 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     }
 
     if (action === 'parameter-catalog-delete') {
-      void this.parametersPanel?.deleteSelectedParameterCatalog();
+      const selectedParameterCatalog = this.parametersPanel;
+      if (!selectedParameterCatalog) return;
+      this.requestDeleteConfirmation({
+        message: '¿Eliminar catálogo?',
+        action: () => selectedParameterCatalog.deleteSelectedParameterCatalog(),
+      });
       return;
     }
 
@@ -3038,7 +3196,17 @@ export class ViewerScreen implements AfterViewChecked, AfterViewInit, OnDestroy,
     }
 
     if (action === 'home-coStru-remove') {
-      void this.eliminarCatalogoSeleccionado();
+      const catalogoSeleccionado = this.obtenerCatalogoSeleccionado();
+      if (!catalogoSeleccionado) {
+        void this.eliminarCatalogoSeleccionado();
+        return;
+      }
+
+      const nombreCatalogo = catalogoSeleccionado.nombre ?? `ID ${catalogoSeleccionado.id}`;
+      this.requestDeleteConfirmation({
+        message: `¿Eliminar "${nombreCatalogo}"?`,
+        action: () => this.eliminarCatalogoSeleccionado(),
+      });
       return;
     }
 

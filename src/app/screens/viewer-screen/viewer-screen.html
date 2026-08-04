@@ -6,6 +6,7 @@
     [toolbarContentVisible]="toolbarContentVisible()"
     [usuarioSesion]="usuarioSesion()"
     [activeProject]="proyectoB5dActivo()"
+    [activeProjects]="proyectosB5d()"
     [activeMeasurementMode]="activeMeasurementMode()"
     [activeLengthMeasurementMode]="activeLengthMeasurementMode()"
     [activeCountMeasurementMode]="activeCountMeasurementMode()"
@@ -19,6 +20,8 @@
     (guardarB5dSolicitado)="guardarYExportarProyectoB5dActivo()"
     (loginSolicitado)="irALogin()"
     (logoutSolicitado)="cerrarSesionBackend()"
+    (activeProjectRequested)="seleccionarProyectoB5d($event)"
+    (activeProjectCloseRequested)="solicitarCerrarProyectoB5d($event)"
     (toolbarAction)="handleToolbarAction($event)"
     (toggleFloatingPanel)="toggleFloatingPanel($event)"
     (toolbarContentVisibleChange)="setToolbarContentVisible($event)"
@@ -271,370 +274,406 @@
   }
 
   @if (windowMode() === 'viewer' && isFloatingPanelVisible('tree') && visorIfc.arbolVisible() && visorIfc.datosArbol().length) {
-    <section
-      class="b5d-floating-panel"
-      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('tree')"
-      [ngStyle]="getFloatingPanelStyles('tree')"
-      (pointerdown)="bringFloatingPanelToFront('tree')"
-    >
-      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'tree')">
-        <span class="b5d-floating-panel__title">Estructura IFC</span>
-        <span class="b5d-floating-panel__actions">
-          <button
-            class="b5d-floating-panel__action b5d-floating-panel__action--dock"
-            type="button"
-            [attr.aria-label]="getDockActionTitle('tree')"
-            [title]="getDockActionTitle('tree')"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="toggleFloatingPanelDock('tree')"
-          >
-            <i
-              class="bi"
-              [class.bi-pin-angle-fill]="isFloatingPanelDocked('tree')"
-              [class.bi-pin-angle]="!isFloatingPanelDocked('tree')"
-            ></i>
-          </button>
-          <button
-            class="b5d-floating-panel__action"
-            type="button"
-            aria-label="Hide panel"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="hideFloatingPanel('tree')"
-          >
-            x
-          </button>
-        </span>
-      </header>
+    @defer (on idle) {
+      <section
+        class="b5d-floating-panel"
+        [class.b5d-floating-panel--docked]="isFloatingPanelDocked('tree')"
+        [ngStyle]="getFloatingPanelStyles('tree')"
+        (pointerdown)="bringFloatingPanelToFront('tree')"
+      >
+        <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'tree')">
+          <span class="b5d-floating-panel__title">Estructura IFC</span>
+          <span class="b5d-floating-panel__actions">
+            <button
+              class="b5d-floating-panel__action b5d-floating-panel__action--dock"
+              type="button"
+              [attr.aria-label]="getDockActionTitle('tree')"
+              [title]="getDockActionTitle('tree')"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="toggleFloatingPanelDock('tree')"
+            >
+              <i
+                class="bi"
+                [class.bi-pin-angle-fill]="isFloatingPanelDocked('tree')"
+                [class.bi-pin-angle]="!isFloatingPanelDocked('tree')"
+              ></i>
+            </button>
+            <button
+              class="b5d-floating-panel__action"
+              type="button"
+              aria-label="Hide panel"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="hideFloatingPanel('tree')"
+            >
+              x
+            </button>
+          </span>
+        </header>
 
-      <div class="b5d-floating-panel__body">
-        <div class="b5d-viewer-screen__ifc-unified-panel" [style.grid-template-rows]="unifiedIfcPanelRowsTemplate">
-          <section class="b5d-viewer-screen__ifc-section">
-            <div class="b5d-viewer-screen__ifc-section-title">Estructura IFC</div>
-            <div class="b5d-viewer-screen__ifc-section-content">
-              <app-tree-panel
-                [visible]="true"
-                [datosArbol]="visorIfc.datosArbol()"
-                [nodosExpandidos]="visorIfc.nodosExpandidos()"
-                [localIdSeleccionado]="visorIfc.localIdSeleccionado"
-                (alternarNodo)="visorIfc.alternarNodoArbol($event)"
-                (seleccionarElemento)="visorIfc.seleccionarElementoDesdeArbol($event)"
-              />
-            </div>
-          </section>
-          <div class="b5d-viewer-screen__ifc-section-splitter" (pointerdown)="startTreePropertiesResize($event)"></div>
-          <section class="b5d-viewer-screen__ifc-section">
-            <div class="b5d-viewer-screen__ifc-section-title">Propiedades</div>
-            <div class="b5d-viewer-screen__ifc-section-content">
-              @if (visorIfc.informacionSeleccionada()) {
-                <app-properties-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />
-              } @else {
-                <div class="b5d-viewer-screen__ifc-empty">Selecciona un elemento IFC para ver sus propiedades.</div>
-              }
-            </div>
-          </section>
+        <div class="b5d-floating-panel__body">
+          <div class="b5d-viewer-screen__ifc-unified-panel" [style.grid-template-rows]="unifiedIfcPanelRowsTemplate">
+            <section class="b5d-viewer-screen__ifc-section">
+              <div class="b5d-viewer-screen__ifc-section-title">Estructura IFC</div>
+              <div class="b5d-viewer-screen__ifc-section-content">
+                <app-tree-panel
+                  [visible]="true"
+                  [datosArbol]="visorIfc.datosArbol()"
+                  [nodosExpandidos]="visorIfc.nodosExpandidos()"
+                  [localIdSeleccionado]="visorIfc.localIdSeleccionado"
+                  (alternarNodo)="visorIfc.alternarNodoArbol($event)"
+                  (seleccionarElemento)="visorIfc.seleccionarElementoDesdeArbol($event)"
+                />
+              </div>
+            </section>
+            <div class="b5d-viewer-screen__ifc-section-splitter" (pointerdown)="startTreePropertiesResize($event)"></div>
+            <section class="b5d-viewer-screen__ifc-section">
+              <div class="b5d-viewer-screen__ifc-section-title">Propiedades</div>
+              <div class="b5d-viewer-screen__ifc-section-content">
+                @if (visorIfc.informacionSeleccionada()) {
+                  <app-properties-panel [informacionSeleccionada]="visorIfc.informacionSeleccionada()" />
+                } @else {
+                  <div class="b5d-viewer-screen__ifc-empty">Selecciona un elemento IFC para ver sus propiedades.</div>
+                }
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'top')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'top-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'top-right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
-        (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom-right')"
-      ></span>
-    </section>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'top')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'top-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'top-right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
+          (pointerdown)="startFloatingPanelResize($event, 'tree', 'bottom-right')"
+        ></span>
+      </section>
+    } @placeholder {
+      <div></div>
+    }
   }
 
   @if (isFloatingPanelVisible('bottom')) {
-    <section
-      class="b5d-floating-panel"
-      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('bottom')"
-      [ngStyle]="getFloatingPanelStyles('bottom')"
-      (pointerdown)="bringFloatingPanelToFront('bottom')"
-    >
-      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'bottom')">
-        <span class="b5d-floating-panel__title">B5D</span>
-        <span class="b5d-floating-panel__actions">
-          <button
-            class="b5d-floating-panel__action b5d-floating-panel__action--dock"
-            type="button"
-            [attr.aria-label]="getDockActionTitle('bottom')"
-            [title]="getDockActionTitle('bottom')"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="toggleFloatingPanelDock('bottom')"
-          >
-            <i
-              class="bi"
-              [class.bi-pin-angle-fill]="isFloatingPanelDocked('bottom')"
-              [class.bi-pin-angle]="!isFloatingPanelDocked('bottom')"
-            ></i>
-          </button>
-          <button
-            class="b5d-floating-panel__action"
-            type="button"
-            aria-label="Hide panel"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="hideFloatingPanel('bottom')"
-          >
-            x
-          </button>
-        </span>
-      </header>
-
-      <div class="b5d-floating-panel__body">
-        <nav class="b5d-viewer-screen__bottom-tabs">
-          @for (tab of bottomPanelTabs; track tab.id) {
+    @defer (on idle) {
+      <section
+        class="b5d-floating-panel"
+        [class.b5d-floating-panel--docked]="isFloatingPanelDocked('bottom')"
+        [ngStyle]="getFloatingPanelStyles('bottom')"
+        (pointerdown)="bringFloatingPanelToFront('bottom')"
+      >
+        <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'bottom')">
+          <span class="b5d-floating-panel__title">B5D</span>
+          <span class="b5d-floating-panel__actions">
             <button
-              class="b5d-viewer-screen__bottom-tab"
+              class="b5d-floating-panel__action b5d-floating-panel__action--dock"
               type="button"
-              [class.b5d-viewer-screen__bottom-tab--active]="bottomPanelTab() === tab.id"
-              (click)="setBottomPanelTab(tab.id)"
+              [attr.aria-label]="getDockActionTitle('bottom')"
+              [title]="getDockActionTitle('bottom')"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="toggleFloatingPanelDock('bottom')"
             >
-              {{ tab.label }}
+              <i
+                class="bi"
+                [class.bi-pin-angle-fill]="isFloatingPanelDocked('bottom')"
+                [class.bi-pin-angle]="!isFloatingPanelDocked('bottom')"
+              ></i>
             </button>
-          }
-        </nav>
+            <button
+              class="b5d-floating-panel__action"
+              type="button"
+              aria-label="Hide panel"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="hideFloatingPanel('bottom')"
+            >
+              x
+            </button>
+          </span>
+        </header>
 
-        <div class="b5d-viewer-screen__bottom-content">
-          @switch (bottomPanelTab()) {
-            @case ('links') {
-            <app-linking-panel
-              [ifcData]="cuantificacion()"
-              [ifcElements]="ifcElements()"
-              [selectedIfcLocalIds]="sharedIfcSelectionLocalIds()"
-              [activeProject]="proyectoB5dActivo()"
-              [b5dConcepts]="b5dConcepts()"
-              [b5dLinks]="b5dLinks()"
-              [b5dCatalogs]="b5dCatalogs()"
-              [copyLinksFromCatalogId]="selectedCatalogLinkCopySourceId"
-              [b5dLoading]="b5dCargando()"
-              [activeBottomTab]="bottomPanelTab()"
-              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-              [storageScopeKey]="uiStorageScopeKey"
-              (toolbarStateChange)="onLinkingToolbarStateChange($event)"
-              (ifcObjectSelectionChange)="onLinkingIfcSelectionChange($event)"
-              (draftChanged)="onLinkingDraftChanged()"
-            />
-          }
-          @case ('boq') {
-            <app-boq-panel
-              #boqPanel
-              [activeProject]="proyectoB5dActivo()"
-              [cuantificacionesB5d]="cuantificacionesB5d()"
-              [b5dLoading]="b5dCargando()"
-              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-              [storageScopeKey]="uiStorageScopeKey"
-              (toolbarStateChange)="onBoqToolbarStateChange($event)"
-            />
-          }
-          @case ('parameters') {
-          <app-parameters-panel
-            [activeProject]="proyectoB5dActivo()"
-            [parameters]="parametrosB5d()"
-            [concepts]="b5dConcepts()"
-            [catalogs]="b5dCatalogs()"
-            [parameterCatalogs]="b5dParameterCatalogs()"
-              [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
-              [activeParameterCatalogId]="proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null"
-              [b5dLoading]="b5dCargando()"
-              [quantifications]="cuantificacionesB5d()"
-              [informacionSeleccionada]="sharedSelectionInfo()"
-              [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
-              [storageScopeKey]="uiStorageScopeKey"
-              (toolbarStateChange)="onParametersToolbarStateChange($event)"
-              (rowsChange)="onParametersRowsChange($event)"
-              (parameterCatalogChanged)="onParametersCatalogChanged()"
-            />
-          }
-          @case ('report') {
-            <app-parameters-report-panel
-              [activeProject]="proyectoB5dActivo()"
-              [parameters]="parametrosB5d()"
-              [concepts]="b5dConcepts()"
-              [catalogs]="b5dCatalogs()"
-              [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
-              [b5dLoading]="b5dCargando()"
-              [quantifications]="cuantificacionesB5d()"
-              [storageScopeKey]="uiStorageScopeKey"
-            />
-          }
-        }
+        <div class="b5d-floating-panel__body">
+          <nav class="b5d-viewer-screen__bottom-tabs">
+            @for (tab of bottomPanelTabs; track tab.id) {
+              <button
+                class="b5d-viewer-screen__bottom-tab"
+                type="button"
+                [class.b5d-viewer-screen__bottom-tab--active]="bottomPanelTab() === tab.id"
+                (click)="setBottomPanelTab(tab.id)"
+              >
+                {{ tab.label }}
+              </button>
+            }
+          </nav>
+
+          <div class="b5d-viewer-screen__bottom-content">
+            @switch (bottomPanelTab()) {
+              @case ('links') {
+                @defer (on idle) {
+                  <app-linking-panel
+                    [ifcData]="cuantificacion()"
+                    [ifcElements]="ifcElements()"
+                    [selectedIfcLocalIds]="sharedIfcSelectionLocalIds()"
+                    [activeProject]="proyectoB5dActivo()"
+                    [b5dConcepts]="b5dConcepts()"
+                    [b5dLinks]="b5dLinks()"
+                    [b5dCatalogs]="b5dCatalogs()"
+                    [copyLinksFromCatalogId]="selectedCatalogLinkCopySourceId"
+                    [b5dLoading]="b5dCargando()"
+                    [activeBottomTab]="bottomPanelTab()"
+                    [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+                    [storageScopeKey]="uiStorageScopeKey"
+                    (toolbarStateChange)="onLinkingToolbarStateChange($event)"
+                    (ifcObjectSelectionChange)="onLinkingIfcSelectionChange($event)"
+                    (draftChanged)="onLinkingDraftChanged()"
+                  />
+                } @placeholder { <div></div> }
+              }
+              @case ('boq') {
+                @defer (on idle) {
+                  <app-boq-panel
+                    #boqPanel
+                    [activeProject]="proyectoB5dActivo()"
+                    [cuantificacionesB5d]="cuantificacionesB5d()"
+                    [b5dLoading]="b5dCargando()"
+                    [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+                    [storageScopeKey]="uiStorageScopeKey"
+                    (toolbarStateChange)="onBoqToolbarStateChange($event)"
+                  />
+                } @placeholder { <div></div> }
+              }
+              @case ('parameters') {
+                @defer (on idle) {
+                  <app-parameters-panel
+                    [activeProject]="proyectoB5dActivo()"
+                    [parameters]="parametrosB5d()"
+                    [concepts]="b5dConcepts()"
+                    [catalogs]="b5dCatalogs()"
+                    [parameterCatalogs]="b5dParameterCatalogs()"
+                    [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
+                    [activeParameterCatalogId]="proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null"
+                    [b5dLoading]="b5dCargando()"
+                    [quantifications]="cuantificacionesB5d()"
+                    [informacionSeleccionada]="sharedSelectionInfo()"
+                    [tableFiltersVisible]="homeToolbarState().tableFiltersVisible ?? false"
+                    [storageScopeKey]="uiStorageScopeKey"
+                    (toolbarStateChange)="onParametersToolbarStateChange($event)"
+                    (rowsChange)="onParametersRowsChange($event)"
+                    (parameterCatalogChanged)="onParametersCatalogChanged()"
+                  />
+                } @placeholder { <div></div> }
+              }
+              @case ('report') {
+                @defer (on idle) {
+                  <app-parameters-report-panel
+                    [activeProject]="proyectoB5dActivo()"
+                    [parameters]="parametrosB5d()"
+                    [concepts]="b5dConcepts()"
+                    [catalogs]="b5dCatalogs()"
+                    [parameterCatalogs]="b5dParameterCatalogs()"
+                    [activeCatalogId]="homeToolbarState().selectedCatalogId ?? null"
+                    [activeParameterCatalogId]="proyectoB5dActivo()?.catalogo_parametro_activo_id ?? null"
+                    [b5dLoading]="b5dCargando()"
+                    [quantifications]="cuantificacionesB5d()"
+                    [storageScopeKey]="uiStorageScopeKey"
+                    (parameterCatalogChanged)="onParametersCatalogChanged()"
+                  />
+                } @placeholder { <div></div> }
+              }
+            }
+          </div>
         </div>
-      </div>
-      <app-catalog-structure-dialog
-        [visible]="catalogStructureDialogVisible()"
-        [mode]="catalogStructureDialogMode()"
-        [catalog]="catalogStructureDialogCatalog()"
-        [catalogs]="b5dCatalogs()"
-        [projectId]="proyectoB5dActivo()?.id ?? null"
-        [loading]="catalogStructureDialogLoading()"
-        (saveRequested)="guardarEstructuraCatalogoV2($event)"
-        (importRequested)="importarCatalogoDesdeXdb($event)"
-        (closeRequested)="cerrarDialogoEstructuraCatalogo()"
-      />
-      <app-parameters-import-dialog
-        [visible]="parameterImportDialogVisible()"
-        [activeProject]="proyectoB5dActivo()"
-        [existingParameters]="parametrosB5d()"
-        [loading]="b5dCargando()"
-        (closeRequested)="cerrarDialogoImportacionParametros()"
-        (importCompleted)="onParametersImportCompleted($event)"
-      />
-      @defer (when parameterB5dImportDialogVisible()) {
-        <app-parameters-b5d-import-dialog
-          [visible]="parameterB5dImportDialogVisible()"
-          [activeProject]="proyectoB5dActivo()"
-          [loading]="b5dCargando()"
-          (closeRequested)="cerrarDialogoImportacionParametrosB5d()"
-          (importCompleted)="onParametersB5dImportCompleted($event)"
-        />
-      }
-      @defer (when parameterXdbImportDialogVisible()) {
-        <app-parameters-xdb-import-dialog
-          [visible]="parameterXdbImportDialogVisible()"
-          [activeProjectId]="proyectoB5dActivo()?.id ?? null"
-          [loading]="b5dCargando()"
-          (closeRequested)="cerrarDialogoImportacionParametrosXdb()"
-          (importCompleted)="onParametersXdbImportCompleted($event)"
-        />
-      }
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top-right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
-        (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom-right')"
-      ></span>
-    </section>
+        @defer (when catalogStructureDialogVisible()) {
+          <app-catalog-structure-dialog
+            [visible]="catalogStructureDialogVisible()"
+            [mode]="catalogStructureDialogMode()"
+            [catalog]="catalogStructureDialogCatalog()"
+            [catalogs]="b5dCatalogs()"
+            [projectId]="proyectoB5dActivo()?.id ?? null"
+            [loading]="catalogStructureDialogLoading()"
+            (saveRequested)="guardarEstructuraCatalogoV2($event)"
+            (importRequested)="importarCatalogoDesdeXdb($event)"
+            (closeRequested)="cerrarDialogoEstructuraCatalogo()"
+          />
+        }
+        @defer (when parameterImportDialogVisible()) {
+          <app-parameters-import-dialog
+            [visible]="parameterImportDialogVisible()"
+            [activeProject]="proyectoB5dActivo()"
+            [existingParameters]="parametrosB5d()"
+            [loading]="b5dCargando()"
+            (closeRequested)="cerrarDialogoImportacionParametros()"
+            (importCompleted)="onParametersImportCompleted($event)"
+          />
+        }
+        @defer (when parameterB5dImportDialogVisible()) {
+          <app-parameters-b5d-import-dialog
+            [visible]="parameterB5dImportDialogVisible()"
+            [activeProject]="proyectoB5dActivo()"
+            [loading]="b5dCargando()"
+            (closeRequested)="cerrarDialogoImportacionParametrosB5d()"
+            (importCompleted)="onParametersB5dImportCompleted($event)"
+          />
+        }
+        @defer (when parameterXdbImportDialogVisible()) {
+          <app-parameters-xdb-import-dialog
+            [visible]="parameterXdbImportDialogVisible()"
+            [activeProjectId]="proyectoB5dActivo()?.id ?? null"
+            [loading]="b5dCargando()"
+            (closeRequested)="cerrarDialogoImportacionParametrosXdb()"
+            (importCompleted)="onParametersXdbImportCompleted($event)"
+          />
+        }
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'top-right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
+          (pointerdown)="startFloatingPanelResize($event, 'bottom', 'bottom-right')"
+        ></span>
+      </section>
+    } @placeholder {
+      <div></div>
+    }
   }
 
   @if (windowMode() === 'viewer' && isFloatingPanelVisible('models') && visorIfc.modelosIfcCargados().length) {
-    <section
-      class="b5d-floating-panel"
-      [class.b5d-floating-panel--docked]="isFloatingPanelDocked('models')"
-      [ngStyle]="getFloatingPanelStyles('models')"
-      (pointerdown)="bringFloatingPanelToFront('models')"
-    >
-      <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'models')">
-        <span class="b5d-floating-panel__title">Modelos IFC</span>
-        <span class="b5d-floating-panel__actions">
-          <button
-            class="b5d-floating-panel__action b5d-floating-panel__action--dock"
-            type="button"
-            [attr.aria-label]="getDockActionTitle('models')"
-            [title]="getDockActionTitle('models')"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="toggleFloatingPanelDock('models')"
-          >
-            <i
-              class="bi"
-              [class.bi-pin-angle-fill]="isFloatingPanelDocked('models')"
-              [class.bi-pin-angle]="!isFloatingPanelDocked('models')"
-            ></i>
-          </button>
-          <button
-            class="b5d-floating-panel__action"
-            type="button"
-            aria-label="Hide panel"
-            (pointerdown)="$event.stopPropagation()"
-            (click)="hideFloatingPanel('models')"
-          >
-            x
-          </button>
-        </span>
-      </header>
+    @defer (on idle) {
+      <section
+        class="b5d-floating-panel"
+        [class.b5d-floating-panel--docked]="isFloatingPanelDocked('models')"
+        [ngStyle]="getFloatingPanelStyles('models')"
+        (pointerdown)="bringFloatingPanelToFront('models')"
+      >
+        <header class="b5d-floating-panel__titlebar" (pointerdown)="startFloatingPanelDrag($event, 'models')">
+          <span class="b5d-floating-panel__title">Modelos IFC</span>
+          <span class="b5d-floating-panel__actions">
+            <button
+              class="b5d-floating-panel__action b5d-floating-panel__action--dock"
+              type="button"
+              [attr.aria-label]="getDockActionTitle('models')"
+              [title]="getDockActionTitle('models')"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="toggleFloatingPanelDock('models')"
+            >
+              <i
+                class="bi"
+                [class.bi-pin-angle-fill]="isFloatingPanelDocked('models')"
+                [class.bi-pin-angle]="!isFloatingPanelDocked('models')"
+              ></i>
+            </button>
+            <button
+              class="b5d-floating-panel__action"
+              type="button"
+              aria-label="Hide panel"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="hideFloatingPanel('models')"
+            >
+              x
+            </button>
+          </span>
+        </header>
 
-      <div class="b5d-floating-panel__body">
-        <app-model-visibility-panel
-          [modelos]="visorIfc.modelosIfcCargados()"
-          (alternar)="visorIfc.alternarVisibilidadIfc($event)"
-        />
-      </div>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'top')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'top-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'top-right')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom-left')"
-      ></span>
-      <span
-        class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
-        (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom-right')"
-      ></span>
-    </section>
+        <div class="b5d-floating-panel__body">
+          <app-model-visibility-panel
+            [modelos]="visorIfc.modelosIfcCargados()"
+            (alternar)="visorIfc.alternarVisibilidadIfc($event)"
+          />
+        </div>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'top')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--right"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--left"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-left"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'top-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--top-right"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'top-right')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-left"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom-left')"
+        ></span>
+        <span
+          class="b5d-floating-panel__resize-handle b5d-floating-panel__resize-handle--bottom-right"
+          (pointerdown)="startFloatingPanelResize($event, 'models', 'bottom-right')"
+        ></span>
+      </section>
+    } @placeholder {
+      <div></div>
+    }
   }
 
   @if (windowMode() === 'viewer') {
     <div #contenedorVisor class="b5d-viewer-screen__canvas"></div>
+  }
+
+  @defer (when deleteConfirmationVisible) {
+    <app-confirm-dialog
+      [visible]="deleteConfirmationVisible"
+      [message]="deleteConfirmationMessage"
+      (confirmed)="confirmPendingDelete()"
+      (cancelled)="cancelPendingDelete()"
+    />
   }
 </main>

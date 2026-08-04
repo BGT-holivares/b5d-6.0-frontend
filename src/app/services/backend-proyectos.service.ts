@@ -54,8 +54,36 @@ export interface ImportarCostosCatalogoAxaPayload {
   conceptos_seleccionados: number[];
 }
 
+export interface B5dImportTimingFile {
+  archivo: string;
+  indice: number;
+  total: number;
+  validacion_ms?: number;
+  copia_ms?: number;
+  apertura_ms?: number;
+  cursor_ms?: number;
+  lectura_ms?: number;
+  cierre_ms?: number;
+  total_ms?: number;
+}
+
+export interface B5dImportTiming {
+  archivos: B5dImportTimingFile[];
+  extraccion_total_ms?: number;
+  agrupacion_total_ms?: number;
+  agrupacion_importacion_total_ms?: number;
+  guardado_total_ms?: number;
+  total_ms?: number;
+}
+
 export interface ImportarParametrosXdbPayload {
   archivos: File[];
+  sizes?: Array<number | string | null>;
+  preview_rows?: Array<{
+    groupKey: string;
+    descripcion: string | null;
+    unidad: string | null;
+  }>;
   tipo_parametro?: 'costo' | 'costo_porcentaje' | 'cantidad';
   modo_agrupacion?: 'hojas' | 'agrupadores';
   tipo_edificacion?: string | null;
@@ -65,6 +93,12 @@ export interface ImportarParametrosXdbPayload {
 
 export interface ImportarParametrosB5dPayload {
   archivos: File[];
+  sizes?: Array<number | string | null>;
+  preview_rows?: Array<{
+    groupKey: string;
+    descripcion: string | null;
+    unidad: string | null;
+  }>;
   tipo_edificacion?: string | null;
   tipo_obra?: string | null;
   zona?: string | null;
@@ -195,9 +229,11 @@ export interface PrevisualizarParametrosXdbResponse {
       descripcion: string;
       tipo_parametro: string;
       unidad: string | null;
+      size: number | null;
       minimo: number | null;
       maximo: number | null;
       promedio: number | null;
+      sigma: number | null;
       cantidad_conceptos: number;
       cantidad_origenes: number;
       origenes: string[];
@@ -216,6 +252,7 @@ export interface ImportarParametrosB5dResponse {
     tipo_parametro: string;
   };
   parametros: ResultadosOrm<ParametroB5DOrm>;
+  timing?: B5dImportTiming;
 }
 
 export interface PrevisualizarParametrosB5dResponse {
@@ -231,14 +268,17 @@ export interface PrevisualizarParametrosB5dResponse {
       descripcion: string;
       tipo_parametro: string;
       unidad: string | null;
+      size: number | null;
       minimo: number | null;
       maximo: number | null;
       promedio: number | null;
+      sigma: number | null;
       cantidad_conceptos: number;
       cantidad_origenes: number;
       origenes: string[];
     }>;
   };
+  timing?: B5dImportTiming;
 }
 
 export interface AdministrarCatalogosParametroResponse {
@@ -273,9 +313,11 @@ export interface CrearParametroPayload {
   tipo_obra?: string | null;
   zona?: string | null;
   unidad?: string | null;
+  size?: number | null;
   minimo?: number | null;
   maximo?: number | null;
   promedio?: number | null;
+  sigma?: number | null;
   activo?: boolean;
 }
 
@@ -384,9 +426,11 @@ export class BackendProyectosService {
     payload: ImportarParametrosXdbPayload,
   ): Observable<ImportarParametrosXdbResponse> {
     const formData = new FormData();
-    for (const archivo of payload.archivos) {
+    payload.archivos.forEach((archivo, index) => {
       formData.append('archivos', archivo);
-    }
+      const size = payload.sizes?.[index];
+      formData.append('sizes', size == null ? '' : String(size));
+    });
     if (payload.tipo_parametro) {
       formData.append('tipo_parametro', payload.tipo_parametro);
     }
@@ -402,6 +446,9 @@ export class BackendProyectosService {
     if (payload.zona) {
       formData.append('zona', payload.zona);
     }
+    if (payload.preview_rows?.length) {
+      formData.append('preview_rows', JSON.stringify(payload.preview_rows));
+    }
     return this.http.post<ImportarParametrosXdbResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/importar-xdb/`),
       formData,
@@ -414,9 +461,11 @@ export class BackendProyectosService {
     payload: ImportarParametrosXdbPayload,
   ): Observable<PrevisualizarParametrosXdbResponse> {
     const formData = new FormData();
-    for (const archivo of payload.archivos) {
+    payload.archivos.forEach((archivo, index) => {
       formData.append('archivos', archivo);
-    }
+      const size = payload.sizes?.[index];
+      formData.append('sizes', size == null ? '' : String(size));
+    });
     if (payload.tipo_parametro) {
       formData.append('tipo_parametro', payload.tipo_parametro);
     }
@@ -444,9 +493,11 @@ export class BackendProyectosService {
     payload: ImportarParametrosB5dPayload,
   ): Observable<ImportarParametrosB5dResponse> {
     const formData = new FormData();
-    for (const archivo of payload.archivos) {
+    payload.archivos.forEach((archivo, index) => {
       formData.append('archivos', archivo);
-    }
+      const size = payload.sizes?.[index];
+      formData.append('sizes', size == null ? '' : String(size));
+    });
     if (payload.tipo_edificacion) {
       formData.append('tipo_edificacion', payload.tipo_edificacion);
     }
@@ -455,6 +506,9 @@ export class BackendProyectosService {
     }
     if (payload.zona) {
       formData.append('zona', payload.zona);
+    }
+    if (payload.preview_rows?.length) {
+      formData.append('preview_rows', JSON.stringify(payload.preview_rows));
     }
     return this.http.post<ImportarParametrosB5dResponse>(
       this.url(`/api/proyectos/${proyectoId}/parametros/importar-b5d/`),
@@ -468,9 +522,11 @@ export class BackendProyectosService {
     payload: ImportarParametrosB5dPayload,
   ): Observable<PrevisualizarParametrosB5dResponse> {
     const formData = new FormData();
-    for (const archivo of payload.archivos) {
+    payload.archivos.forEach((archivo, index) => {
       formData.append('archivos', archivo);
-    }
+      const size = payload.sizes?.[index];
+      formData.append('sizes', size == null ? '' : String(size));
+    });
     if (payload.tipo_edificacion) {
       formData.append('tipo_edificacion', payload.tipo_edificacion);
     }
