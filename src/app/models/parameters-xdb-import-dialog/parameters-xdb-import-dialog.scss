@@ -1,16 +1,15 @@
 .b5d-parameters-xdb-dialog {
-  width: min(760px, 100%);
-  max-height: min(88vh, 820px);
+  width: min(80%);
+  max-height: calc(100vh - 124px);
   overflow: auto;
+  position: fixed;
+  top: 119px;
 }
 
 .b5d-parameters-xdb-dialog__project {
   color: var(--b5d-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
-}
-
-.b5d-parameters-xdb-dialog__body {
 }
 
 .b5d-parameters-xdb-dialog__section-title {
@@ -148,6 +147,37 @@
   border-color: #86efac;
   background: #f0fdf4;
   color: #166534;
+}
+
+.b5d-parameters-xdb-dialog__trace {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--bd-soft);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--b5d-text);
+}
+
+.b5d-parameters-xdb-dialog__trace-title {
+  color: var(--b5d-text-muted);
+  font-size: var(--font-size-xxs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.b5d-parameters-xdb-dialog__trace-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.b5d-parameters-xdb-dialog__trace-item {
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .b5d-parameters-xdb-dialog__progress-fill {

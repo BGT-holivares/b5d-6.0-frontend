@@ -217,12 +217,34 @@
           }
         </div>
 
+        @if (previewDebugTrace.length) {
+          <div class="b5d-parameters-xdb-dialog__trace">
+            <div class="b5d-parameters-xdb-dialog__trace-title">Pasos actuales</div>
+            <div class="b5d-parameters-xdb-dialog__trace-list">
+              @for (line of previewDebugTrace; track line + '-' + $index) {
+                <div class="b5d-parameters-xdb-dialog__trace-item">{{ line }}</div>
+              }
+            </div>
+          </div>
+        }
+
         @if (validationMessage) {
           <div class="b5d-parameters-xdb-dialog__message">{{ validationMessage }}</div>
         }
 
         @if (processingMessage) {
           <div class="b5d-parameters-xdb-dialog__message b5d-parameters-xdb-dialog__message--info">{{ processingMessage }}</div>
+        }
+
+        @if (isImporting && importDebugTrace.length) {
+          <div class="b5d-parameters-xdb-dialog__trace">
+            <div class="b5d-parameters-xdb-dialog__trace-title">Registro de avance</div>
+            <div class="b5d-parameters-xdb-dialog__trace-list">
+              @for (line of importDebugTrace; track line + '-' + $index) {
+                <div class="b5d-parameters-xdb-dialog__trace-item">{{ line }}</div>
+              }
+            </div>
+          </div>
         }
 
         @if (importMessage) {

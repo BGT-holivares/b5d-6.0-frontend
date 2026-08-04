@@ -55,6 +55,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
   tipoObraValue = '';
   zonaValue = '';
   previewRows: B5dPreviewRow[] = [];
+  previewDebugTrace: string[] = [];
   validationMessage = '';
   previewMessage = '';
   processingMessage = '';
@@ -63,6 +64,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
   previewDirty = false;
   previewProgress = 0;
   isImporting = false;
+  importDebugTrace: string[] = [];
 
   private readonly backendProyectos = inject(BackendProyectosService);
   private readonly loadingPanel = inject(LoadingPanelService);
@@ -259,6 +261,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.startImportProgress(loadingSessionId);
     this.startImportStatusPolling(loadingSessionId);
     this.isImporting = true;
+    this.importDebugTrace = [];
     this.validationMessage = '';
     this.importMessage = '';
     this.processingMessage = 'Importando parámetros desde B5D...';
@@ -275,6 +278,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
         }),
       );
       this.logB5dTiming('import', response.timing);
+      this.setImportDebugTrace(response.proyecto?.debug_trace ?? []);
       this.loadingPanel.completeStep(loadingSessionId, 'importing', 'Parámetros generados.');
       this.importMessage = `Importación terminada: ${response.summary.created} creados, ${response.summary.updated} actualizados, ${response.summary.skipped} omitidos, ${response.summary.failed} fallidos.`;
       this.importCompleted.emit(response.summary);
@@ -325,6 +329,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.tipoObraValue = '';
     this.zonaValue = '';
     this.previewRows = [];
+    this.previewDebugTrace = [];
     this.validationMessage = '';
     this.previewMessage = '';
     this.processingMessage = '';
@@ -333,6 +338,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.previewLoading = false;
     this.previewProgress = 0;
     this.isImporting = false;
+    this.importDebugTrace = [];
     this.previewRequestId += 1;
   }
 
@@ -361,8 +367,8 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     }
 
     this.startPreviewProgress();
-    this.startPreviewStatusPolling(requestId);
     this.previewLoading = true;
+    this.previewDebugTrace = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewLoading');
 
     try {
@@ -377,6 +383,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
       );
       if (requestId !== this.previewRequestId) return;
       this.logB5dTiming('preview', response.timing);
+      this.setPreviewDebugTrace(response.proyecto?.debug_trace ?? []);
       this.previewRows = buildParameterImportPreviewRows(response.preview.resultados);
       this.previewDirty = false;
       this.previewMessage = this.previewRows.length
@@ -401,6 +408,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.stopPreviewStatusPolling();
     this.previewDirty = true;
     this.previewRows = [];
+    this.previewDebugTrace = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, 'parametersB5dImport.previewPending');
     this.previewLoading = false;
     this.previewProgress = 0;
@@ -412,6 +420,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     this.stopPreviewStatusPolling();
     this.previewDirty = dirty;
     this.previewRows = [];
+    this.previewDebugTrace = [];
     this.previewMessage = this.i18n.translateForComponent(this.translations, messageKey);
     this.previewLoading = false;
     this.previewProgress = 0;
@@ -503,6 +512,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
 
           const mensajeProgreso = proyecto.mensaje_progreso?.trim();
           const progresoBackend = Math.max(0, Math.min(95, proyecto.progreso_porcentaje ?? 0));
+          this.setPreviewDebugTrace(proyecto.debug_trace ?? []);
           if (mensajeProgreso) {
             this.previewMessage = mensajeProgreso;
           }
@@ -562,6 +572,14 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
     console.groupEnd();
   }
 
+  private setPreviewDebugTrace(trace: string[] | null | undefined): void {
+    this.previewDebugTrace = (trace ?? []).slice(-8);
+  }
+
+  private setImportDebugTrace(trace: string[] | null | undefined): void {
+    this.importDebugTrace = (trace ?? []).slice(-8);
+  }
+
   private startImportProgress(sessionId: number): void {
     this.stopImportProgress();
     this.loadingPanel.setStepProgress(
@@ -616,6 +634,7 @@ export class ParametersB5dImportDialog implements OnChanges, OnDestroy {
 
           const mensajeProgreso = proyecto.mensaje_progreso?.trim();
           const progresoBackend = Math.max(0, Math.min(95, proyecto.progreso_porcentaje ?? 0));
+          this.setImportDebugTrace(proyecto.debug_trace ?? []);
           if (mensajeProgreso) {
             this.processingMessage = mensajeProgreso;
           }
